@@ -1,0 +1,88 @@
+{{!-- META: {"name": "Hedera Client", "description": "Hedera SDK client configuration", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import { Client, PrivateKey, AccountId } from '@hashgraph/sdk';{{else}}const { Client, PrivateKey, AccountId } = require('@hashgraph/sdk');{{/ifLanguage}}
+
+{{#ifLanguage language "typescript"}}
+export interface HederaClientConfig {
+  network: 'testnet' | 'mainnet';
+  accountId?: string;
+  privateKey?: string;
+  mirrorNodeUrl?: string;
+}
+
+export class HederaClient {
+  private client: Client;
+  private operatorAccountId?: AccountId;
+  private operatorPrivateKey?: PrivateKey;
+
+  constructor(config: HederaClientConfig) {
+{{else}}
+class HederaClient {
+  constructor(config) {
+{{/ifLanguage}}
+    // Initialize client based on network
+    if (config.network === 'mainnet') {
+      this.client = Client.forMainnet();
+    } else {
+      this.client = Client.forTestnet();
+    }
+
+    // Set operator if credentials provided
+    if (config.accountId && config.privateKey) {
+      this.operatorAccountId = AccountId.fromString(config.accountId);
+      this.operatorPrivateKey = PrivateKey.fromStringECDSA(config.privateKey);
+      this.client.setOperator(this.operatorAccountId, this.operatorPrivateKey);
+    }
+
+    // Set mirror node URL if provided
+    if (config.mirrorNodeUrl) {
+      this.client.setMirrorNetwork(config.mirrorNodeUrl);
+    }
+  }
+
+  {{#ifLanguage language "typescript"}}getClient(): Client {{{else}}getClient() {{{/ifLanguage}}
+    return this.client;
+  }
+
+  {{#ifLanguage language "typescript"}}getOperatorAccountId(): AccountId | undefined {{{else}}getOperatorAccountId() {{{/ifLanguage}}
+    return this.operatorAccountId;
+  }
+
+  {{#ifLanguage language "typescript"}}getOperatorPrivateKey(): PrivateKey | undefined {{{else}}getOperatorPrivateKey() {{{/ifLanguage}}
+    return this.operatorPrivateKey;
+  }
+
+  {{#ifLanguage language "typescript"}}async close(): Promise<void> {{{else}}async close() {{{/ifLanguage}}
+    this.client.close();
+  }
+
+  // Utility method to check if operator is set
+  {{#ifLanguage language "typescript"}}hasOperator(): boolean {{{else}}hasOperator() {{{/ifLanguage}}
+    return !!(this.operatorAccountId && this.operatorPrivateKey);
+  }
+}
+
+// Default client configuration from environment
+{{#ifLanguage language "typescript"}}
+export const createDefaultClient = (): HederaClient => {
+{{else}}
+const createDefaultClient = () => {
+{{/ifLanguage}}
+  const config{{#ifLanguage language "typescript"}}: HederaClientConfig{{/ifLanguage}} = {
+    network: (process.env.HEDERA_NETWORK{{#ifLanguage language "typescript"}} as 'testnet' | 'mainnet'{{/ifLanguage}}) || 'testnet',
+    accountId: process.env.HEDERA_ACCOUNT_ID,
+    privateKey: process.env.HEDERA_PRIVATE_KEY,
+    mirrorNodeUrl: process.env.HEDERA_MIRROR_NODE_URL
+  };
+
+  return new HederaClient(config);
+};
+
+{{#ifLanguage language "javascript"}}
+module.exports = {
+  HederaClient,
+  createDefaultClient
+};
+{{else}}
+export { HederaClient, createDefaultClient };
+export default HederaClient;
+{{/ifLanguage}}

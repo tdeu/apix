@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm pkg set:*)",
+      "Read(//c/Users/thoma/Bureau/**)",
+      "Bash(npm run build:*)",
+      "Bash(npm install:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

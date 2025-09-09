@@ -1,0 +1,241 @@
+{{!-- META: {"name": "useWallet Hook", "description": "React hook for Hedera wallet management", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import { useState, useCallback, useEffect } from 'react';
+import { AccountId } from '@hashgraph/sdk';
+
+interface WalletState {
+  accountId: string | null;
+  isConnected: boolean;
+  isConnecting: boolean;
+  provider: string | null;
+  error: string | null;
+}
+
+interface UseWalletReturn extends WalletState {
+  connect: (provider: string) => Promise<void>;
+  disconnect: () => Promise<void>;
+  signTransaction: (transaction: any) => Promise<any>;
+}
+
+export const useWallet = (): UseWalletReturn => {
+{{else}}import { useState, useCallback, useEffect } from 'react';
+
+export const useWallet = () => {
+{{/ifLanguage}}
+  const [state, setState] = useState{{#ifLanguage language "typescript"}}<WalletState>{{/ifLanguage}}({
+    accountId: null,
+    isConnected: false,
+    isConnecting: false,
+    provider: null,
+    error: null
+  });
+
+  // Check for existing connection on mount
+  useEffect(() => {
+    checkExistingConnection();
+  }, []);
+
+  const checkExistingConnection = useCallback(async () => {
+    try {
+      // Check for saved connection in localStorage
+      const savedConnection = localStorage.getItem('hedera-wallet-connection');
+      if (savedConnection) {
+        const { provider, accountId } = JSON.parse(savedConnection);
+        
+        // Verify connection is still valid
+        const isValid = await verifyConnection(provider, accountId);
+        if (isValid) {
+          setState(prev => ({
+            ...prev,
+            accountId,
+            provider,
+            isConnected: true
+          }));
+        } else {
+          // Clear invalid connection
+          localStorage.removeItem('hedera-wallet-connection');
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to check existing connection:', error);
+    }
+  }, []);
+
+  const verifyConnection = async {{#ifLanguage language "typescript"}}(provider: string, accountId: string): Promise<boolean>{{else}}(provider, accountId){{/ifLanguage}} => {
+    try {
+      switch (provider) {
+        case 'hashpack':
+          return await verifyHashPackConnection(accountId);
+        case 'blade':
+          return await verifyBladeConnection(accountId);
+        default:
+          return false;
+      }
+    } catch {
+      return false;
+    }
+  };
+
+  const verifyHashPackConnection = async {{#ifLanguage language "typescript"}}(accountId: string): Promise<boolean>{{else}}(accountId){{/ifLanguage}} => {
+    if (window.hashpack) {
+      try {
+        const result = await window.hashpack.getAccountInfo();
+        return result.accountId === accountId;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  };
+
+  const verifyBladeConnection = async {{#ifLanguage language "typescript"}}(accountId: string): Promise<boolean>{{else}}(accountId){{/ifLanguage}} => {
+    if (window.bladeWallet) {
+      try {
+        const result = await window.bladeWallet.getAccountInfo();
+        return result.accountId === accountId;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  };
+
+  const connect = useCallback(async {{#ifLanguage language "typescript"}}(provider: string): Promise<void>{{else}}(provider){{/ifLanguage}} => {
+    setState(prev => ({ ...prev, isConnecting: true, error: null }));
+
+    try {
+      let accountId{{#ifLanguage language "typescript"}}: string{{/ifLanguage}};
+
+      switch (provider) {
+        case 'hashpack':
+          accountId = await connectHashPack();
+          break;
+        case 'blade':
+          accountId = await connectBlade();
+          break;
+        default:
+          throw new Error(`Unsupported wallet provider: ${provider}`);
+      }
+
+      // Save connection to localStorage
+      localStorage.setItem('hedera-wallet-connection', JSON.stringify({
+        provider,
+        accountId,
+        timestamp: Date.now()
+      }));
+
+      setState(prev => ({
+        ...prev,
+        accountId,
+        provider,
+        isConnected: true,
+        isConnecting: false,
+        error: null
+      }));
+
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        isConnecting: false,
+        error: error{{#ifLanguage language "typescript"}} as Error{{/ifLanguage}}.message || 'Connection failed'
+      }));
+      throw error;
+    }
+  }, []);
+
+  const connectHashPack = async {{#ifLanguage language "typescript"}}(): Promise<string>{{else}}(){{/ifLanguage}} => {
+    if (!window.hashpack) {
+      throw new Error('HashPack wallet not found. Please install the HashPack extension.');
+    }
+
+    const result = await window.hashpack.connectToSite();
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to connect to HashPack');
+    }
+
+    return result.accountId;
+  };
+
+  const connectBlade = async {{#ifLanguage language "typescript"}}(): Promise<string>{{else}}(){{/ifLanguage}} => {
+    if (!window.bladeWallet) {
+      throw new Error('Blade Wallet not found. Please install the Blade Wallet extension.');
+    }
+
+    const result = await window.bladeWallet.connectWallet();
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to connect to Blade Wallet');
+    }
+
+    return result.accountId;
+  };
+
+  const disconnect = useCallback(async {{#ifLanguage language "typescript"}}(): Promise<void>{{else}}(){{/ifLanguage}} => {
+    try {
+      // Clear localStorage
+      localStorage.removeItem('hedera-wallet-connection');
+
+      // Disconnect from wallet if possible
+      if (state.provider === 'hashpack' && window.hashpack) {
+        await window.hashpack.disconnect();
+      } else if (state.provider === 'blade' && window.bladeWallet) {
+        await window.bladeWallet.disconnect();
+      }
+
+      setState({
+        accountId: null,
+        isConnected: false,
+        isConnecting: false,
+        provider: null,
+        error: null
+      });
+
+    } catch (error) {
+      console.warn('Error during disconnect:', error);
+      // Still clear local state even if wallet disconnect fails
+      setState({
+        accountId: null,
+        isConnected: false,
+        isConnecting: false,
+        provider: null,
+        error: null
+      });
+    }
+  }, [state.provider]);
+
+  const signTransaction = useCallback(async {{#ifLanguage language "typescript"}}(transaction: any): Promise<any>{{else}}(transaction){{/ifLanguage}} => {
+    if (!state.isConnected || !state.provider) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      switch (state.provider) {
+        case 'hashpack':
+          if (!window.hashpack) throw new Error('HashPack not available');
+          return await window.hashpack.signTransaction(transaction);
+        
+        case 'blade':
+          if (!window.bladeWallet) throw new Error('Blade Wallet not available');
+          return await window.bladeWallet.signTransaction(transaction);
+        
+        default:
+          throw new Error(`Unsupported provider: ${state.provider}`);
+      }
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        error: error{{#ifLanguage language "typescript"}} as Error{{/ifLanguage}}.message || 'Transaction signing failed'
+      }));
+      throw error;
+    }
+  }, [state.isConnected, state.provider]);
+
+  return {
+    ...state,
+    connect,
+    disconnect,
+    signTransaction
+  };
+};
+
+{{#ifLanguage language "javascript"}}
+export default useWallet;
+{{/ifLanguage}}

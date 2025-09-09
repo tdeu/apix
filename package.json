@@ -1,0 +1,50 @@
+{
+  "name": "apix",
+  "version": "1.0.0",
+  "description": "AI-powered CLI for Hedera blockchain integrations",
+  "main": "dist/cli/index.js",
+  "bin": {
+    "apix": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "nodemon --exec ts-node src/cli/index.ts",
+    "test": "jest",
+    "start": "node dist/cli/index.js",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write src/**/*.ts"
+  },
+  "keywords": [
+    "hedera",
+    "blockchain",
+    "cli",
+    "ai",
+    "integration"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "@hashgraph/sdk": "^2.40.0",
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "fs-extra": "^11.1.1",
+    "handlebars": "^4.7.8",
+    "inquirer": "^9.2.12",
+    "ora": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/inquirer": "^9.0.9",
+    "@types/jest": "^29.5.6",
+    "@types/node": "^20.8.0",
+    "@typescript-eslint/eslint-plugin": "^6.7.4",
+    "@typescript-eslint/parser": "^6.7.4",
+    "eslint": "^8.51.0",
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.1",
+    "prettier": "^3.0.3",
+    "ts-jest": "^29.1.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.2.2"
+  }
+}

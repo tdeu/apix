@@ -1,0 +1,296 @@
+{{!-- META: {"name": "Wallet Connect Component", "description": "React component for connecting Hedera wallets", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import React, { useState, useCallback } from 'react';
+import { useWallet } from '../hooks/useWallet';
+
+interface WalletConnectProps {
+  className?: string;
+  onConnectionChange?: (connected: boolean) => void;
+}
+
+export const WalletConnect: React.FC<WalletConnectProps> = ({ 
+  className = '', 
+  onConnectionChange 
+}) => {
+{{else}}import React, { useState, useCallback } from 'react';
+import { useWallet } from '../hooks/useWallet';
+
+export const WalletConnect = ({ className = '', onConnectionChange }) => {
+{{/ifLanguage}}
+  const { 
+    accountId, 
+    isConnected, 
+    isConnecting, 
+    connect, 
+    disconnect, 
+    error 
+  } = useWallet();
+
+  const [showModal, setShowModal] = useState(false);
+
+  const handleConnect = useCallback(async {{#ifLanguage language "typescript"}}(provider: string){{else}}(provider){{/ifLanguage}} => {
+    try {
+      await connect(provider);
+      setShowModal(false);
+      onConnectionChange?.(true);
+    } catch (err) {
+      console.error('Connection failed:', err);
+    }
+  }, [connect, onConnectionChange]);
+
+  const handleDisconnect = useCallback(async () => {
+    try {
+      await disconnect();
+      onConnectionChange?.(false);
+    } catch (err) {
+      console.error('Disconnection failed:', err);
+    }
+  }, [disconnect, onConnectionChange]);
+
+  if (isConnected && accountId) {
+    return (
+      <div className={`wallet-connected ${className}`}>
+        <div className="wallet-info">
+          <div className="account-id">
+            {accountId}
+          </div>
+          <button 
+            onClick={handleDisconnect}
+            className="disconnect-btn"
+            disabled={isConnecting}
+          >
+            Disconnect
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`wallet-connect ${className}`}>
+      <button
+        onClick={() => setShowModal(true)}
+        className="connect-btn"
+        disabled={isConnecting}
+      >
+        {isConnecting ? 'Connecting...' : 'Connect Wallet'}
+      </button>
+
+      {showModal && (
+        <div className="wallet-modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="wallet-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="wallet-modal-header">
+              <h3>Connect Your Wallet</h3>
+              <button 
+                onClick={() => setShowModal(false)}
+                className="modal-close"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="wallet-options">
+              <button
+                onClick={() => handleConnect('hashpack')}
+                className="wallet-option"
+                disabled={isConnecting}
+              >
+                <img 
+                  src="https://www.hashpack.app/img/logo.svg" 
+                  alt="HashPack" 
+                  className="wallet-logo"
+                />
+                <span>HashPack</span>
+              </button>
+
+              <button
+                onClick={() => handleConnect('blade')}
+                className="wallet-option"
+                disabled={isConnecting}
+              >
+                <img 
+                  src="/blade-logo.svg" 
+                  alt="Blade Wallet" 
+                  className="wallet-logo"
+                />
+                <span>Blade Wallet</span>
+              </button>
+            </div>
+
+            {error && (
+              <div className="error-message">
+                {error}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        .wallet-connected {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .wallet-info {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 8px 16px;
+          background: #f0f9ff;
+          border: 1px solid #0ea5e9;
+          border-radius: 8px;
+        }
+
+        .account-id {
+          font-family: monospace;
+          font-size: 14px;
+          color: #0ea5e9;
+        }
+
+        .connect-btn, .disconnect-btn {
+          padding: 10px 20px;
+          border: none;
+          border-radius: 8px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .connect-btn {
+          background: #0ea5e9;
+          color: white;
+        }
+
+        .connect-btn:hover:not(:disabled) {
+          background: #0284c7;
+        }
+
+        .disconnect-btn {
+          background: #ef4444;
+          color: white;
+          font-size: 12px;
+          padding: 6px 12px;
+        }
+
+        .disconnect-btn:hover:not(:disabled) {
+          background: #dc2626;
+        }
+
+        .connect-btn:disabled, .disconnect-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .wallet-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+
+        .wallet-modal {
+          background: white;
+          border-radius: 12px;
+          padding: 24px;
+          width: 90%;
+          max-width: 400px;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .wallet-modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 24px;
+        }
+
+        .wallet-modal-header h3 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 600;
+        }
+
+        .modal-close {
+          background: none;
+          border: none;
+          font-size: 24px;
+          cursor: pointer;
+          padding: 0;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 4px;
+        }
+
+        .modal-close:hover {
+          background: #f3f4f6;
+        }
+
+        .wallet-options {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .wallet-option {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          padding: 16px;
+          border: 2px solid #e5e7eb;
+          border-radius: 8px;
+          background: white;
+          cursor: pointer;
+          transition: all 0.2s;
+          font-weight: 500;
+        }
+
+        .wallet-option:hover:not(:disabled) {
+          border-color: #0ea5e9;
+          background: #f0f9ff;
+        }
+
+        .wallet-option:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .wallet-logo {
+          width: 32px;
+          height: 32px;
+          object-fit: contain;
+        }
+
+        .error-message {
+          margin-top: 16px;
+          padding: 12px;
+          background: #fef2f2;
+          border: 1px solid #fca5a5;
+          border-radius: 6px;
+          color: #dc2626;
+          font-size: 14px;
+        }
+
+        @media (max-width: 640px) {
+          .wallet-modal {
+            margin: 20px;
+            width: calc(100% - 40px);
+          }
+        }
+      `}</style>
+    </div>
+  );
+};
+
+{{#ifLanguage language "javascript"}}
+export default WalletConnect;
+{{/ifLanguage}}
