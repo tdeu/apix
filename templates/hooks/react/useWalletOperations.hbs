@@ -1,0 +1,139 @@
+{{!-- META: {"name": "useWalletOperations Hook", "description": "React hook for wallet operations using WalletContext", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}// Re-export the wallet context hooks for backward compatibility
+export { 
+  useWallet,
+  useWalletState,
+  useWalletActions,
+  useCurrentAccount,
+  useWalletConnection,
+  WalletProvider,
+  type WalletContextState,
+  type WalletContextActions,
+  type WalletProviderProps
+} from '@/contexts/WalletContext';
+
+// Additional convenience hook for common wallet operations
+import { useCallback } from 'react';
+import { useWallet as useWalletContext } from '@/contexts/WalletContext';
+import { Transaction } from '@hashgraph/sdk';
+
+export interface UseWalletReturn {
+  // State
+  isConnected: boolean;
+  isConnecting: boolean;
+  isInitialized: boolean;
+  account?: any;
+  accounts: any[];
+  availableWallets: string[];
+  provider?: string;
+  error?: string;
+
+  // Actions
+  connect: (providerId: string) => Promise<void>;
+  disconnect: () => Promise<void>;
+  switchAccount: (accountId: string) => Promise<void>;
+  signTransaction: (transaction: Transaction, accountId?: string) => Promise<Transaction>;
+  refreshWallets: () => Promise<void>;
+  clearError: () => void;
+}
+
+export const useWalletOperations = (): UseWalletReturn => {
+  const { state, actions } = useWalletContext();
+
+  return {
+    // State
+    isConnected: state.isConnected,
+    isConnecting: state.isConnecting,
+    isInitialized: state.isInitialized,
+    account: state.account,
+    accounts: state.accounts,
+    availableWallets: state.availableWallets,
+    provider: state.provider,
+    error: state.error,
+
+    // Actions
+    connect: actions.connect,
+    disconnect: actions.disconnect,
+    switchAccount: actions.switchAccount,
+    signTransaction: actions.signTransaction,
+    refreshWallets: actions.refreshWallets,
+    clearError: actions.clearError
+  };
+};
+
+// Hook for quick connection status check
+export const useWalletStatus = () => {
+  const { state } = useWalletContext();
+  
+  return {
+    isConnected: state.isConnected,
+    isConnecting: state.isConnecting,
+    hasError: !!state.error,
+    accountId: state.account?.accountId,
+    provider: state.provider
+  };
+};
+
+// Hook for transaction signing with error handling
+export const useTransactionSigner = () => {
+  const { state, actions } = useWalletContext();
+
+  const signAndExecute = useCallback(async (
+    transaction: Transaction,
+    accountId?: string
+  ): Promise<any> => {
+    if (!state.isConnected) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      const signedTx = await actions.signTransaction(transaction, accountId);
+      
+      // Execute the signed transaction
+      // Note: This would typically use the Hedera client
+      // For now, we'll return the signed transaction
+      return {
+        transaction: signedTx,
+        transactionId: signedTx.transactionId?.toString(),
+        status: 'SIGNED'
+      };
+    } catch (error) {
+      throw error;
+    }
+  }, [state.isConnected, actions.signTransaction]);
+
+  return {
+    signAndExecute,
+    canSign: state.isConnected && !!state.account
+  };
+};
+{{else}}// Re-export the wallet context hooks for backward compatibility
+export { 
+  useWallet,
+  WalletProvider
+} from '@/contexts/WalletContext';
+
+// Additional convenience hooks
+export const useWalletOperations = () => {
+  const { state, actions } = useWallet();
+
+  return {
+    // State
+    isConnected: state.isConnected,
+    isConnecting: state.isConnecting,
+    account: state.account,
+    accounts: state.accounts,
+    availableWallets: state.availableWallets,
+    provider: state.provider,
+    error: state.error,
+
+    // Actions
+    connect: actions.connect,
+    disconnect: actions.disconnect,
+    switchAccount: actions.switchAccount,
+    signTransaction: actions.signTransaction,
+    refreshWallets: actions.refreshWallets,
+    clearError: actions.clearError
+  };
+};
+{{/ifLanguage}}

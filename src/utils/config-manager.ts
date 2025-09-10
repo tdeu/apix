@@ -2,7 +2,7 @@
 
 import * as fs from 'fs-extra';
 import * as path from 'path';
-import { APIxConfig, HederaConfiguration } from '@/types';
+import { APIxConfig, HederaConfiguration } from '../types';
 import { logger } from './logger';
 
 export class ConfigurationManager {
@@ -76,7 +76,9 @@ export class ConfigurationManager {
   }
 
   async updateHederaConfig(hederaConfig: Partial<HederaConfiguration>): Promise<void> {
-    await this.update({ hedera: hederaConfig });
+    const currentConfig = await this.load();
+    const updatedHederaConfig = { ...currentConfig.hedera, ...hederaConfig };
+    await this.update({ hedera: updatedHederaConfig as HederaConfiguration });
   }
 
   private getDefaultConfig(): APIxConfig {

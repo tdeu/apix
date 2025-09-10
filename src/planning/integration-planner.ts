@@ -13,8 +13,8 @@ import {
     SmartContractConfiguration,
     WalletConfiguration,
     WalletProvider
-  } from '@/types';
-  import { logger } from '@utils/logger';
+  } from '../types';
+  import { logger } from '../utils/logger';
   
   export class IntegrationPlanner {
     
@@ -201,10 +201,10 @@ import {
       
       // Core HTS utility template
       templates.push({
-        templateId: 'hts-core',
+        templateId: 'utils/common/hts-operations',
         templateType: 'utility',
         framework: framework as any,
-        outputPath: 'lib/hedera/hts.ts',
+        outputPath: 'lib/hedera/hts-operations.ts',
         variables: { ...config }
       });
       
@@ -213,14 +213,21 @@ import {
         case 'next.js':
           templates.push(
             {
-              templateId: 'hts-api-routes',
+              templateId: 'api/nextjs/tokens/create',
               templateType: 'api',
               framework: 'next.js',
-              outputPath: 'app/api/tokens',
+              outputPath: 'app/api/tokens/create/route.ts',
               variables: { tokenName: config.name, symbol: config.symbol }
             },
             {
-              templateId: 'hts-components',
+              templateId: 'api/nextjs/tokens/info',
+              templateType: 'api',
+              framework: 'next.js',
+              outputPath: 'app/api/tokens/info/route.ts',
+              variables: { tokenName: config.name, symbol: config.symbol }
+            },
+            {
+              templateId: 'components/react/TokenManager',
               templateType: 'component',
               framework: 'next.js',
               outputPath: 'components/TokenManager.tsx',
@@ -232,30 +239,20 @@ import {
         case 'react':
           templates.push(
             {
-              templateId: 'hts-hooks',
+              templateId: 'hooks/react/useTokenOperations',
               templateType: 'hook',
               framework: 'react',
-              outputPath: 'hooks/useToken.ts',
+              outputPath: 'hooks/useTokenOperations.ts',
               variables: { ...config }
             },
             {
-              templateId: 'hts-context',
+              templateId: 'components/react/TokenManager',
               templateType: 'component',
               framework: 'react',
-              outputPath: 'contexts/TokenContext.tsx',
+              outputPath: 'components/TokenManager.tsx',
               variables: { ...config }
             }
           );
-          break;
-          
-        case 'express':
-          templates.push({
-            templateId: 'hts-express-routes',
-            templateType: 'api',
-            framework: 'express',
-            outputPath: 'routes/tokens.js',
-            variables: { ...config }
-          });
           break;
       }
       
@@ -382,35 +379,42 @@ import {
     private selectWalletTemplates(framework: string, config: WalletConfiguration): TemplateSelection[] {
       const templates: TemplateSelection[] = [];
       
-      // Core wallet utility
+      // Core wallet service
       templates.push({
-        templateId: 'wallet-core',
+        templateId: 'utils/common/wallet-service',
         templateType: 'utility',
         framework: framework as any,
-        outputPath: 'lib/hedera/wallet.ts',
+        outputPath: 'lib/hedera/wallet-service.ts',
         variables: { ...config }
       });
       
       // Framework-specific templates
       switch (framework) {
         case 'next.js':
-          templates.push({
-            templateId: 'wallet-context-nextjs',
-            templateType: 'component',
-            framework: 'next.js',
-            outputPath: 'contexts/WalletContext.tsx',
-            variables: { ...config }
-          });
-          break;
-          
         case 'react':
-          templates.push({
-            templateId: 'wallet-context-react',
-            templateType: 'component',
-            framework: 'react',
-            outputPath: 'contexts/WalletContext.tsx',
-            variables: { ...config }
-          });
+          templates.push(
+            {
+              templateId: 'contexts/react/WalletContext',
+              templateType: 'component',
+              framework: framework as any,
+              outputPath: 'contexts/WalletContext.tsx',
+              variables: { ...config }
+            },
+            {
+              templateId: 'components/react/WalletConnectionModal',
+              templateType: 'component',
+              framework: framework as any,
+              outputPath: 'components/WalletConnectionModal.tsx',
+              variables: { ...config }
+            },
+            {
+              templateId: 'components/react/WalletConnect',
+              templateType: 'component',
+              framework: framework as any,
+              outputPath: 'components/WalletConnect.tsx',
+              variables: { ...config }
+            }
+          );
           break;
       }
       

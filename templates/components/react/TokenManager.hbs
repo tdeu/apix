@@ -1,0 +1,371 @@
+{{!-- META: {"name": "Token Manager Component", "description": "React component for comprehensive token management", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import React, { useState, useCallback } from 'react';
+import { useWallet } from '@/hooks/useWallet';
+import { useTokens } from '@/hooks/useTokens';
+import { CreateTokenParams, MintTokenParams, TransferTokenParams, TokenInfo } from '@/types/hedera';
+import { TransactionStatus } from './TransactionStatus';
+import { Button } from './ui/Button';
+import { Input } from './ui/Input';
+import { Card } from './ui/Card';
+
+interface TokenManagerProps {
+  onTokenCreated?: (token: TokenInfo) => void;
+  onTokenMinted?: (result: any) => void;
+  onTokenTransferred?: (result: any) => void;
+  initialTokenId?: string;
+}
+
+export const TokenManager: React.FC<TokenManagerProps> = ({
+  onTokenCreated,
+  onTokenMinted,
+  onTokenTransferred,
+  initialTokenId = ''
+}) => {
+  const { wallet } = useWallet();
+  const { 
+    createToken, 
+    mintToken, 
+    transferToken, 
+    getTokenInfo, 
+    isLoading, 
+    error 
+  } = useTokens();
+
+  const [activeTab, setActiveTab] = useState<'create' | 'mint' | 'transfer' | 'info'>('create');
+  const [lastTransaction, setLastTransaction] = useState<any>(null);
+  const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
+
+  // Create Token Form State
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    symbol: '',
+    decimals: 8,
+    initialSupply: 1000000,
+    maxSupply: 10000000
+  });
+
+  // Mint Token Form State
+  const [mintForm, setMintForm] = useState({
+    tokenId: initialTokenId,
+    amount: 1000
+  });
+
+  // Transfer Token Form State
+  const [transferForm, setTransferForm] = useState({
+    tokenId: initialTokenId,
+    toAccountId: '',
+    amount: 100
+  });
+
+  // Info Token Form State
+  const [infoTokenId, setInfoTokenId] = useState(initialTokenId);
+
+  const handleCreateToken = useCallback(async () => {
+    if (!wallet.isConnected || !wallet.currentAccount) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    try {
+      const params: CreateTokenParams = {
+        ...createForm,
+        treasuryAccountId: wallet.currentAccount.accountId
+      };
+
+      const result = await createToken(params);
+      setLastTransaction(result);
+      
+      if (result.tokenId) {
+        const info = await getTokenInfo(result.tokenId);
+        onTokenCreated?.(info);
+      }
+    } catch (err) {
+      console.error('Create token error:', err);
+    }
+  }, [createForm, createToken, getTokenInfo, onTokenCreated, wallet]);
+
+  const handleMintToken = useCallback(async () => {
+    if (!wallet.isConnected) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    try {
+      const result = await mintToken(mintForm);
+      setLastTransaction(result);
+      onTokenMinted?.(result);
+    } catch (err) {
+      console.error('Mint token error:', err);
+    }
+  }, [mintForm, mintToken, onTokenMinted, wallet]);
+
+  const handleTransferToken = useCallback(async () => {
+    if (!wallet.isConnected || !wallet.currentAccount) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    try {
+      const params: TransferTokenParams = {
+        ...transferForm,
+        fromAccountId: wallet.currentAccount.accountId
+      };
+
+      const result = await transferToken(params);
+      setLastTransaction(result);
+      onTokenTransferred?.(result);
+    } catch (err) {
+      console.error('Transfer token error:', err);
+    }
+  }, [transferForm, transferToken, onTokenTransferred, wallet]);
+
+  const handleGetTokenInfo = useCallback(async () => {
+    try {
+      const info = await getTokenInfo(infoTokenId);
+      setTokenInfo(info);
+    } catch (err) {
+      console.error('Get token info error:', err);
+    }
+  }, [infoTokenId, getTokenInfo]);
+
+  const tabs = [
+    { id: 'create', label: 'Create Token' },
+    { id: 'mint', label: 'Mint Tokens' },
+    { id: 'transfer', label: 'Transfer Tokens' },
+    { id: 'info', label: 'Token Info' }
+  ] as const;
+
+  return (
+    <div className="token-manager space-y-6">
+      <div className="flex justify-center">
+        <div className="bg-gray-100 rounded-lg p-1 flex">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 rounded-md transition-colors ${
+                activeTab === tab.id
+                  ? 'bg-white shadow-sm text-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+          <strong>Error:</strong> {error}
+        </div>
+      )}
+
+      {/* Create Token Tab */}
+      {activeTab === 'create' && (
+        <Card>
+          <h3 className="text-lg font-semibold mb-4">Create New Token</h3>
+          <div className="space-y-4">
+            <Input
+              label="Token Name"
+              placeholder="My Token"
+              value={createForm.name}
+              onChange={(e) => setCreateForm(prev => ({ ...prev, name: e.target.value }))}
+              required
+            />
+            <Input
+              label="Token Symbol"
+              placeholder="MTK"
+              value={createForm.symbol}
+              onChange={(e) => setCreateForm(prev => ({ ...prev, symbol: e.target.value.toUpperCase() }))}
+              maxLength={6}
+              required
+            />
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Decimals"
+                type="number"
+                min="0"
+                max="18"
+                value={createForm.decimals}
+                onChange={(e) => setCreateForm(prev => ({ ...prev, decimals: parseInt(e.target.value) }))}
+              />
+              <Input
+                label="Initial Supply"
+                type="number"
+                min="0"
+                value={createForm.initialSupply}
+                onChange={(e) => setCreateForm(prev => ({ ...prev, initialSupply: parseInt(e.target.value) }))}
+              />
+            </div>
+            <Input
+              label="Max Supply"
+              type="number"
+              min="0"
+              value={createForm.maxSupply}
+              onChange={(e) => setCreateForm(prev => ({ ...prev, maxSupply: parseInt(e.target.value) }))}
+            />
+            <Button 
+              onClick={handleCreateToken}
+              disabled={isLoading || !createForm.name || !createForm.symbol}
+              className="w-full"
+            >
+              {isLoading ? 'Creating Token...' : 'Create Token'}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Mint Token Tab */}
+      {activeTab === 'mint' && (
+        <Card>
+          <h3 className="text-lg font-semibold mb-4">Mint Tokens</h3>
+          <div className="space-y-4">
+            <Input
+              label="Token ID"
+              placeholder="0.0.123"
+              value={mintForm.tokenId}
+              onChange={(e) => setMintForm(prev => ({ ...prev, tokenId: e.target.value }))}
+              required
+            />
+            <Input
+              label="Amount to Mint"
+              type="number"
+              min="1"
+              value={mintForm.amount}
+              onChange={(e) => setMintForm(prev => ({ ...prev, amount: parseInt(e.target.value) }))}
+              required
+            />
+            <Button 
+              onClick={handleMintToken}
+              disabled={isLoading || !mintForm.tokenId || mintForm.amount <= 0}
+              className="w-full"
+            >
+              {isLoading ? 'Minting Tokens...' : 'Mint Tokens'}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Transfer Token Tab */}
+      {activeTab === 'transfer' && (
+        <Card>
+          <h3 className="text-lg font-semibold mb-4">Transfer Tokens</h3>
+          <div className="space-y-4">
+            <Input
+              label="Token ID"
+              placeholder="0.0.123"
+              value={transferForm.tokenId}
+              onChange={(e) => setTransferForm(prev => ({ ...prev, tokenId: e.target.value }))}
+              required
+            />
+            <Input
+              label="To Account ID"
+              placeholder="0.0.456"
+              value={transferForm.toAccountId}
+              onChange={(e) => setTransferForm(prev => ({ ...prev, toAccountId: e.target.value }))}
+              required
+            />
+            <Input
+              label="Amount to Transfer"
+              type="number"
+              min="1"
+              value={transferForm.amount}
+              onChange={(e) => setTransferForm(prev => ({ ...prev, amount: parseInt(e.target.value) }))}
+              required
+            />
+            <Button 
+              onClick={handleTransferToken}
+              disabled={isLoading || !transferForm.tokenId || !transferForm.toAccountId || transferForm.amount <= 0}
+              className="w-full"
+            >
+              {isLoading ? 'Transferring Tokens...' : 'Transfer Tokens'}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Token Info Tab */}
+      {activeTab === 'info' && (
+        <Card>
+          <h3 className="text-lg font-semibold mb-4">Token Information</h3>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                label="Token ID"
+                placeholder="0.0.123"
+                value={infoTokenId}
+                onChange={(e) => setInfoTokenId(e.target.value)}
+                className="flex-1"
+                required
+              />
+              <Button 
+                onClick={handleGetTokenInfo}
+                disabled={isLoading || !infoTokenId}
+                className="mt-6"
+              >
+                {isLoading ? 'Loading...' : 'Get Info'}
+              </Button>
+            </div>
+            
+            {tokenInfo && (
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div><strong>Token ID:</strong> {tokenInfo.tokenId}</div>
+                  <div><strong>Name:</strong> {tokenInfo.name}</div>
+                  <div><strong>Symbol:</strong> {tokenInfo.symbol}</div>
+                  <div><strong>Decimals:</strong> {tokenInfo.decimals}</div>
+                  <div><strong>Total Supply:</strong> {tokenInfo.totalSupply}</div>
+                  <div><strong>Max Supply:</strong> {tokenInfo.maxSupply}</div>
+                  <div><strong>Treasury:</strong> {tokenInfo.treasuryAccountId}</div>
+                  <div><strong>Type:</strong> {tokenInfo.tokenType}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Transaction Status */}
+      {lastTransaction && (
+        <TransactionStatus 
+          transaction={lastTransaction} 
+          showDetails={true}
+        />
+      )}
+    </div>
+  );
+};
+{{else}}import React, { useState, useCallback } from 'react';
+import { useWallet } from '@/hooks/useWallet';
+import { useTokens } from '@/hooks/useTokens';
+
+export const TokenManager = ({
+  onTokenCreated,
+  onTokenMinted,
+  onTokenTransferred,
+  initialTokenId = ''
+}) => {
+  const { wallet } = useWallet();
+  const { 
+    createToken, 
+    mintToken, 
+    transferToken, 
+    getTokenInfo, 
+    isLoading, 
+    error 
+  } = useTokens();
+
+  const [activeTab, setActiveTab] = useState('create');
+  const [lastTransaction, setLastTransaction] = useState(null);
+
+  // Form handling logic similar to TypeScript version
+  // but without type annotations
+
+  return (
+    <div className="token-manager space-y-6">
+      {/* Component JSX similar to TypeScript version */}
+    </div>
+  );
+};
+{{/ifLanguage}}

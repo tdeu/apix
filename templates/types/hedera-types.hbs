@@ -1,0 +1,398 @@
+{{!-- META: {"name": "Hedera TypeScript Definitions", "description": "Comprehensive TypeScript types for Hedera integration", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}// types/hedera.ts
+import { TokenType, TokenSupplyType, CustomFixedFee, CustomFractionalFee, PrivateKey } from '@hashgraph/sdk';
+
+// ==========================
+// Core Hedera Types
+// ==========================
+
+export interface HederaConfig {
+  network: 'testnet' | 'mainnet';
+  operatorId: string;
+  operatorKey: string;
+  mirrorNodeUrl?: string;
+  nodes?: string[];
+}
+
+export interface HederaAccount {
+  accountId: string;
+  publicKey?: string;
+  privateKey?: string;
+  balance?: string;
+  evmAddress?: string;
+}
+
+// ==========================
+// Token Service Types (HTS)
+// ==========================
+
+export interface CreateTokenParams {
+  name: string;
+  symbol: string;
+  decimals?: number;
+  initialSupply?: number;
+  maxSupply?: number;
+  treasuryAccountId?: string;
+  adminKey?: PrivateKey;
+  supplyKey?: PrivateKey;
+  freezeKey?: PrivateKey;
+  wipeKey?: PrivateKey;
+  kycKey?: PrivateKey;
+  pauseKey?: PrivateKey;
+  customFees?: (CustomFixedFee | CustomFractionalFee)[];
+  tokenType?: TokenType;
+  supplyType?: TokenSupplyType;
+  freezeDefault?: boolean;
+}
+
+export interface TokenInfo {
+  tokenId: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  totalSupply: string;
+  treasuryAccountId: string;
+  adminKey?: string;
+  supplyKey?: string;
+  freezeKey?: string;
+  wipeKey?: string;
+  kycKey?: string;
+  pauseKey?: string;
+  tokenType: string;
+  supplyType: string;
+  maxSupply: string;
+  freezeDefault: boolean;
+  customFees: any[];
+}
+
+export interface MintTokenParams {
+  tokenId: string;
+  amount?: number;
+  metadata?: Uint8Array[];
+}
+
+export interface BurnTokenParams {
+  tokenId: string;
+  amount: number;
+  serialNumbers?: number[];
+}
+
+export interface TransferTokenParams {
+  tokenId: string;
+  fromAccountId: string;
+  toAccountId: string;
+  amount: number;
+}
+
+export interface TokenAssociateParams {
+  accountId: string;
+  tokenId: string;
+}
+
+export interface TokenBalance {
+  tokenId: string;
+  balance: string;
+  decimals: number;
+  frozen?: boolean;
+  kycGranted?: boolean;
+}
+
+export interface AccountTokenBalances {
+  accountId: string;
+  tokens: TokenBalance[];
+}
+
+// ==========================
+// Transaction Types
+// ==========================
+
+export interface TransactionResult {
+  transactionId: string;
+  status: string;
+  consensusTimestamp?: string;
+  charged?: string;
+  receipt?: any;
+}
+
+export interface TokenOperationResult extends TransactionResult {
+  tokenId?: string;
+  newTotalSupply?: string;
+  serialNumbers?: number[];
+}
+
+// ==========================
+// Wallet Integration Types
+// ==========================
+
+export interface WalletProvider {
+  name: string;
+  id: 'hashpack' | 'blade' | 'metamask' | 'walletconnect';
+  icon?: string;
+  isAvailable: boolean;
+  isConnected: boolean;
+  accounts: HederaAccount[];
+  network?: string;
+}
+
+export interface WalletConnectionState {
+  isConnecting: boolean;
+  isConnected: boolean;
+  currentAccount?: HederaAccount;
+  availableProviders: WalletProvider[];
+  selectedProvider?: WalletProvider;
+  error?: string;
+}
+
+export interface SignTransactionParams {
+  transaction: any;
+  accountId?: string;
+  returnTransaction?: boolean;
+}
+
+// ==========================
+// Smart Contract Types
+// ==========================
+
+export interface ContractInfo {
+  contractId: string;
+  accountId: string;
+  adminKey?: string;
+  expirationTime?: string;
+  autoRenewPeriod?: string;
+  storage?: number;
+  memo?: string;
+}
+
+export interface ContractFunctionParams {
+  contractId: string;
+  functionName: string;
+  functionParameters?: any[];
+  gas?: number;
+  payableAmount?: number;
+}
+
+export interface ContractCallResult {
+  contractId: string;
+  gasUsed: number;
+  result?: any;
+  errorMessage?: string;
+  transactionId?: string;
+}
+
+// ==========================
+// Consensus Service Types (HCS)
+// ==========================
+
+export interface TopicInfo {
+  topicId: string;
+  topicMemo?: string;
+  runningHash?: string;
+  sequenceNumber?: number;
+  expirationTime?: string;
+  adminKey?: string;
+  submitKey?: string;
+  autoRenewPeriod?: string;
+  autoRenewAccount?: string;
+}
+
+export interface SubmitMessageParams {
+  topicId: string;
+  message: string | Uint8Array;
+  submitKey?: PrivateKey;
+}
+
+export interface TopicMessage {
+  topicId: string;
+  consensusTimestamp: string;
+  sequenceNumber: number;
+  message: Uint8Array;
+  runningHash: string;
+  transactionId?: string;
+}
+
+// ==========================
+// File Service Types
+// ==========================
+
+export interface FileInfo {
+  fileId: string;
+  size: number;
+  expirationTime?: string;
+  keys?: string[];
+  deleted?: boolean;
+}
+
+export interface FileCreateParams {
+  contents: Uint8Array;
+  keys?: PrivateKey[];
+  expirationTime?: Date;
+  memo?: string;
+}
+
+// ==========================
+// Mirror Node Types
+// ==========================
+
+export interface MirrorTransaction {
+  transactionId: string;
+  validStartTimestamp: string;
+  type: string;
+  result: string;
+  consensusTimestamp: string;
+  charged: number;
+  maxFee: number;
+  memo?: string;
+}
+
+export interface MirrorAccount {
+  account: string;
+  balance: {
+    balance: number;
+    timestamp: string;
+  };
+  publicKey?: string;
+  deleted?: boolean;
+}
+
+export interface MirrorTokenBalance {
+  account: string;
+  tokens: Array<{
+    token_id: string;
+    balance: number;
+  }>;
+}
+
+// ==========================
+// Error Types
+// ==========================
+
+export interface HederaError {
+  status: string;
+  message: string;
+  transactionId?: string;
+  receipt?: any;
+}
+
+export interface APIResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  details?: any;
+}
+
+// ==========================
+// Component Props Types
+// ==========================
+
+export interface TokenManagerProps {
+  onTokenCreated?: (token: TokenInfo) => void;
+  onTokenMinted?: (result: TokenOperationResult) => void;
+  onTokenTransferred?: (result: TokenOperationResult) => void;
+  initialTokenId?: string;
+}
+
+export interface WalletConnectProps {
+  onConnect?: (account: HederaAccount) => void;
+  onDisconnect?: () => void;
+  showBalance?: boolean;
+  autoConnect?: boolean;
+  supportedProviders?: string[];
+}
+
+export interface TransactionStatusProps {
+  transaction?: TransactionResult;
+  isLoading?: boolean;
+  showDetails?: boolean;
+  onRetry?: () => void;
+}
+
+// ==========================
+// Hook Return Types
+// ==========================
+
+export interface UseWalletReturn {
+  wallet: WalletConnectionState;
+  connect: (providerId?: string) => Promise<void>;
+  disconnect: () => Promise<void>;
+  switchAccount: (accountId: string) => Promise<void>;
+  signTransaction: (params: SignTransactionParams) => Promise<any>;
+  getBalance: (accountId?: string) => Promise<string>;
+}
+
+export interface UseTokensReturn {
+  createToken: (params: CreateTokenParams) => Promise<TokenOperationResult>;
+  mintToken: (params: MintTokenParams) => Promise<TokenOperationResult>;
+  burnToken: (params: BurnTokenParams) => Promise<TokenOperationResult>;
+  transferToken: (params: TransferTokenParams) => Promise<TokenOperationResult>;
+  getTokenInfo: (tokenId: string) => Promise<TokenInfo>;
+  getTokenBalances: (accountId: string) => Promise<TokenBalance[]>;
+  associateToken: (params: TokenAssociateParams) => Promise<TransactionResult>;
+  isLoading: boolean;
+  error: string | null;
+}
+
+// ==========================
+// Configuration Types
+// ==========================
+
+export interface APIxConfig {
+  hedera: HederaConfig;
+  wallet: {
+    autoConnect: boolean;
+    defaultProvider: string;
+    supportedProviders: string[];
+  };
+  ui: {
+    theme: 'light' | 'dark' | 'auto';
+    showAdvancedOptions: boolean;
+  };
+}
+{{else}}// types/hedera.js - JavaScript version with JSDoc types
+
+/**
+ * @typedef {Object} HederaConfig
+ * @property {'testnet' | 'mainnet'} network
+ * @property {string} operatorId
+ * @property {string} operatorKey
+ * @property {string} [mirrorNodeUrl]
+ * @property {string[]} [nodes]
+ */
+
+/**
+ * @typedef {Object} CreateTokenParams
+ * @property {string} name
+ * @property {string} symbol
+ * @property {number} [decimals]
+ * @property {number} [initialSupply]
+ * @property {number} [maxSupply]
+ * @property {string} [treasuryAccountId]
+ */
+
+/**
+ * @typedef {Object} TokenInfo
+ * @property {string} tokenId
+ * @property {string} name
+ * @property {string} symbol
+ * @property {number} decimals
+ * @property {string} totalSupply
+ * @property {string} treasuryAccountId
+ */
+
+/**
+ * @typedef {Object} TransferTokenParams
+ * @property {string} tokenId
+ * @property {string} fromAccountId
+ * @property {string} toAccountId
+ * @property {number} amount
+ */
+
+/**
+ * @typedef {Object} APIResponse
+ * @property {boolean} success
+ * @property {*} [data]
+ * @property {string} [error]
+ * @property {*} [details]
+ */
+
+module.exports = {};
+{{/ifLanguage}}

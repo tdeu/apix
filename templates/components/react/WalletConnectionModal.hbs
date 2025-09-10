@@ -1,0 +1,158 @@
+{{!-- META: {"name": "Wallet Connection Modal", "description": "Modal component for wallet selection and connection", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import React, { useState, useEffect } from 'react';
+import { useWallet } from '@/hooks/useWalletOperations';
+import { WalletProvider } from '@/lib/hedera/wallet-service';
+import { Button } from '@/components/ui/Button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+
+interface WalletConnectionModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConnect?: (provider: WalletProvider) => void;
+  title?: string;
+  description?: string;
+}
+
+interface WalletOption {
+  id: WalletProvider;
+  name: string;
+  icon: string;
+  description: string;
+  downloadUrl?: string;
+}
+
+const WALLET_OPTIONS: WalletOption[] = [
+  {
+    id: 'hashpack',
+    name: 'HashPack',
+    icon: 'https://www.hashpack.app/img/logo.svg',
+    description: 'The most popular Hedera wallet',
+    downloadUrl: 'https://www.hashpack.app/download'
+  },
+  {
+    id: 'blade',
+    name: 'Blade',
+    icon: 'https://bladewallet.io/img/logo.svg',
+    description: 'Secure multi-chain wallet',
+    downloadUrl: 'https://bladewallet.io'
+  }
+];
+
+export const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
+  isOpen,
+  onClose,
+  onConnect,
+  title = 'Connect Wallet',
+  description = 'Choose a wallet to connect to your Hedera account'
+}) => {
+  const { 
+    availableWallets, 
+    isConnecting, 
+    error, 
+    connect, 
+    clearError,
+    refreshWallets 
+  } = useWallet();
+  
+  const [selectedWallet, setSelectedWallet] = useState<WalletProvider | null>(null);
+
+  const handleConnect = async (walletId: WalletProvider) => {
+    setSelectedWallet(walletId);
+    try {
+      await connect(walletId);
+      onConnect?.(walletId);
+      onClose();
+    } catch (err) {
+      console.error('Connection failed:', err);
+    } finally {
+      setSelectedWallet(null);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="fixed inset-0 bg-black bg-opacity-50" onClick={onClose} />
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <Card className="w-full max-w-md relative">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>{title}</span>
+              <button onClick={onClose} className="text-gray-400 hover:text-gray-600">×</button>
+            </CardTitle>
+            <p className="text-sm text-gray-600">{description}</p>
+          </CardHeader>
+          
+          <CardContent>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-sm text-red-800">{error}</p>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {WALLET_OPTIONS.map((wallet) => {
+                const isAvailable = availableWallets.includes(wallet.id);
+                const isCurrentlyConnecting = isConnecting && selectedWallet === wallet.id;
+
+                return (
+                  <div
+                    key={wallet.id}
+                    className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                      isAvailable ? 'hover:border-blue-300 hover:bg-blue-50' : 'opacity-50'
+                    }`}
+                    onClick={() => isAvailable && !isConnecting && handleConnect(wallet.id)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <img src={wallet.icon} alt={wallet.name} className="w-10 h-10 rounded-full" />
+                      <div className="flex-1">
+                        <h3 className="text-sm font-medium">{wallet.name}</h3>
+                        <p className="text-xs text-gray-500">{wallet.description}</p>
+                        {isAvailable ? (
+                          <span className="text-xs text-green-600">Available</span>
+                        ) : (
+                          <span className="text-xs text-gray-500">Not Installed</span>
+                        )}
+                      </div>
+                      {isCurrentlyConnecting && (
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+};
+{{else}}import React, { useState } from 'react';
+import { useWallet } from '@/hooks/useWalletOperations';
+
+const WALLET_OPTIONS = [
+  {
+    id: 'hashpack',
+    name: 'HashPack',
+    icon: 'https://www.hashpack.app/img/logo.svg',
+    description: 'Popular Hedera wallet'
+  }
+];
+
+export const WalletConnectionModal = ({ isOpen, onClose, onConnect }) => {
+  const { availableWallets, isConnecting, connect } = useWallet();
+  
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md">
+        <h2 className="text-lg font-semibold mb-4">Connect Wallet</h2>
+        {/* Wallet options */}
+      </div>
+    </div>
+  );
+};
+{{/ifLanguage}}

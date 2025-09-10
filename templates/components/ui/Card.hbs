@@ -1,0 +1,258 @@
+{{!-- META: {"name": "Card UI Component", "description": "Reusable card component with header and content", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import React, { HTMLAttributes, forwardRef } from 'react';
+import { cn } from '@/lib/utils';
+
+export interface CardProps extends HTMLAttributes<HTMLDivElement> {
+  children: React.ReactNode;
+}
+
+export interface CardHeaderProps extends HTMLAttributes<HTMLDivElement> {
+  children: React.ReactNode;
+}
+
+export interface CardContentProps extends HTMLAttributes<HTMLDivElement> {
+  children: React.ReactNode;
+}
+
+export interface CardFooterProps extends HTMLAttributes<HTMLDivElement> {
+  children: React.ReactNode;
+}
+
+// Main Card Component
+export const Card = forwardRef<HTMLDivElement, CardProps>(
+  ({ className, children, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          'bg-white rounded-lg border border-gray-200 shadow-sm',
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  }
+);
+
+Card.displayName = 'Card';
+
+// Card Header Component
+export const CardHeader = forwardRef<HTMLDivElement, CardHeaderProps>(
+  ({ className, children, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          'px-6 py-4 border-b border-gray-200',
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  }
+);
+
+CardHeader.displayName = 'CardHeader';
+
+// Card Content Component
+export const CardContent = forwardRef<HTMLDivElement, CardContentProps>(
+  ({ className, children, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={cn('px-6 py-4', className)}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  }
+);
+
+CardContent.displayName = 'CardContent';
+
+// Card Footer Component
+export const CardFooter = forwardRef<HTMLDivElement, CardFooterProps>(
+  ({ className, children, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          'px-6 py-4 border-t border-gray-200 bg-gray-50',
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  }
+);
+
+CardFooter.displayName = 'CardFooter';
+
+// Card Title Component
+export interface CardTitleProps extends HTMLAttributes<HTMLHeadingElement> {
+  children: React.ReactNode;
+  as?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+}
+
+export const CardTitle = forwardRef<HTMLHeadingElement, CardTitleProps>(
+  ({ className, children, as: Component = 'h3', ...props }, ref) => {
+    return (
+      <Component
+        ref={ref as any}
+        className={cn(
+          'text-lg font-semibold text-gray-900 leading-6',
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </Component>
+    );
+  }
+);
+
+CardTitle.displayName = 'CardTitle';
+
+// Card Description Component
+export interface CardDescriptionProps extends HTMLAttributes<HTMLParagraphElement> {
+  children: React.ReactNode;
+}
+
+export const CardDescription = forwardRef<HTMLParagraphElement, CardDescriptionProps>(
+  ({ className, children, ...props }, ref) => {
+    return (
+      <p
+        ref={ref}
+        className={cn(
+          'text-sm text-gray-500 mt-1',
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </p>
+    );
+  }
+);
+
+CardDescription.displayName = 'CardDescription';
+
+// Utility function for class names (if not available)
+function cn(...classes: (string | undefined | null | false)[]): string {
+  return classes.filter(Boolean).join(' ');
+}
+
+// Example usage:
+/*
+<Card>
+  <CardHeader>
+    <CardTitle>Create Token</CardTitle>
+    <CardDescription>Create a new fungible token on Hedera</CardDescription>
+  </CardHeader>
+  <CardContent>
+    <form>...</form>
+  </CardContent>
+  <CardFooter>
+    <Button type="submit">Create Token</Button>
+  </CardFooter>
+</Card>
+*/
+{{else}}import React, { forwardRef } from 'react';
+
+// Main Card Component
+export const Card = forwardRef(({ className = '', children, ...props }, ref) => {
+  return (
+    <div
+      ref={ref}
+      className={`bg-white rounded-lg border border-gray-200 shadow-sm ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+});
+
+Card.displayName = 'Card';
+
+// Card Header Component
+export const CardHeader = forwardRef(({ className = '', children, ...props }, ref) => {
+  return (
+    <div
+      ref={ref}
+      className={`px-6 py-4 border-b border-gray-200 ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+});
+
+CardHeader.displayName = 'CardHeader';
+
+// Card Content Component
+export const CardContent = forwardRef(({ className = '', children, ...props }, ref) => {
+  return (
+    <div
+      ref={ref}
+      className={`px-6 py-4 ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+});
+
+CardContent.displayName = 'CardContent';
+
+// Card Footer Component
+export const CardFooter = forwardRef(({ className = '', children, ...props }, ref) => {
+  return (
+    <div
+      ref={ref}
+      className={`px-6 py-4 border-t border-gray-200 bg-gray-50 ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+});
+
+CardFooter.displayName = 'CardFooter';
+
+// Card Title Component
+export const CardTitle = forwardRef(({ className = '', children, as: Component = 'h3', ...props }, ref) => {
+  return (
+    <Component
+      ref={ref}
+      className={`text-lg font-semibold text-gray-900 leading-6 ${className}`}
+      {...props}
+    >
+      {children}
+    </Component>
+  );
+});
+
+CardTitle.displayName = 'CardTitle';
+
+// Card Description Component
+export const CardDescription = forwardRef(({ className = '', children, ...props }, ref) => {
+  return (
+    <p
+      ref={ref}
+      className={`text-sm text-gray-500 mt-1 ${className}`}
+      {...props}
+    >
+      {children}
+    </p>
+  );
+});
+
+CardDescription.displayName = 'CardDescription';
+{{/ifLanguage}}

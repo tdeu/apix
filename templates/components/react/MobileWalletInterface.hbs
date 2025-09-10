@@ -1,0 +1,401 @@
+{{!-- META: {"name": "Mobile Wallet Interface", "description": "Mobile-responsive wallet interface component", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import React, { useState } from 'react';
+import { useWallet } from '@/hooks/useWalletOperations';
+import { WalletConnectionModal } from './WalletConnectionModal';
+import { Button } from '@/components/ui/Button';
+
+export interface MobileWalletInterfaceProps {
+  showBalance?: boolean;
+  showNetworkBadge?: boolean;
+  onConnect?: (account: any) => void;
+  onDisconnect?: () => void;
+}
+
+export const MobileWalletInterface: React.FC<MobileWalletInterfaceProps> = ({
+  showBalance = true,
+  showNetworkBadge = true,
+  onConnect,
+  onDisconnect
+}) => {
+  const { 
+    isConnected, 
+    isConnecting, 
+    account, 
+    accounts,
+    provider,
+    error,
+    disconnect,
+    switchAccount,
+    clearError 
+  } = useWallet();
+
+  const [showModal, setShowModal] = useState(false);
+  const [showAccountDetails, setShowAccountDetails] = useState(false);
+
+  const handleConnect = (provider: string) => {
+    onConnect?.(account);
+    setShowModal(false);
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      await disconnect();
+      onDisconnect?.();
+      setShowAccountDetails(false);
+    } catch (error) {
+      console.error('Disconnect failed:', error);
+    }
+  };
+
+  const formatAccountForMobile = (accountId: string) => {
+    const parts = accountId.split('.');
+    return `${parts[0]}.${parts[1]}.${parts[2].slice(-4)}`;
+  };
+
+  const getNetworkColor = (network?: string) => {
+    switch (network) {
+      case 'mainnet': return 'bg-green-500';
+      case 'testnet': return 'bg-blue-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  // Connected state - Mobile optimized
+  if (isConnected && account) {
+    return (
+      <div className="w-full">
+        {/* Compact header for mobile */}
+        <div 
+          className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg cursor-pointer"
+          onClick={() => setShowAccountDetails(!showAccountDetails)}
+        >
+          <div className="flex items-center space-x-3">
+            {/* Account avatar */}
+            <div className="w-10 h-10 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+              <span className="text-white text-sm font-medium">
+                {account.accountId.split('.')[2].slice(-2)}
+              </span>
+            </div>
+            
+            {/* Account info */}
+            <div>
+              <div className="flex items-center space-x-2">
+                <p className="text-white font-medium text-sm">
+                  {formatAccountForMobile(account.accountId)}
+                </p>
+                {showNetworkBadge && account.network && (
+                  <div className={`w-3 h-3 rounded-full ${getNetworkColor(account.network)}`} />
+                )}
+              </div>
+              
+              {showBalance && (
+                <p className="text-white text-opacity-80 text-xs">
+                  Balance: -- HBAR
+                </p>
+              )}
+              
+              {provider && (
+                <p className="text-white text-opacity-60 text-xs capitalize">
+                  via {provider}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Chevron icon */}
+          <svg
+            className={`w-5 h-5 text-white transition-transform ${
+              showAccountDetails ? 'rotate-180' : ''
+            }`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+
+        {/* Expanded account details */}
+        {showAccountDetails && (
+          <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-lg">
+            <div className="p-4">
+              {/* Full account details */}
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-gray-900 mb-2">Account Details</h3>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="text-sm">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-gray-600">Account ID:</span>
+                      <span className="font-mono text-gray-900">{account.accountId}</span>
+                    </div>
+                    
+                    {showBalance && (
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-gray-600">Balance:</span>
+                        <span className="font-semibold">-- HBAR</span>
+                      </div>
+                    )}
+                    
+                    {account.network && (
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-gray-600">Network:</span>
+                        <span className={`px-2 py-1 text-xs rounded-full text-white ${getNetworkColor(account.network)}`}>
+                          {account.network}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {account.evmAddress && (
+                      <div className="mb-2">
+                        <span className="text-gray-600 text-xs block">EVM Address:</span>
+                        <span className="font-mono text-xs text-gray-900 break-all">
+                          {account.evmAddress}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Account switching for mobile */}
+              {accounts.length > 1 && (
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-gray-900 mb-2">Switch Account</h4>
+                  <div className="space-y-2">
+                    {accounts.filter(acc => acc.accountId !== account.accountId).map((acc) => (
+                      <button
+                        key={acc.accountId}
+                        onClick={() => switchAccount(acc.accountId)}
+                        className="w-full text-left px-3 py-2 text-sm bg-gray-50 hover:bg-gray-100 rounded-md transition-colors"
+                      >
+                        <span className="font-mono">{formatAccountForMobile(acc.accountId)}</span>
+                        {acc.network && (
+                          <span className="ml-2 text-xs text-gray-500">({acc.network})</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAccountDetails(false)}
+                  className="text-sm"
+                >
+                  Close
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDisconnect}
+                  className="text-sm"
+                >
+                  Disconnect
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error display */}
+        {error && (
+          <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-800">{error}</p>
+            <button
+              onClick={clearError}
+              className="text-xs text-red-600 hover:text-red-800 mt-1"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Disconnected state - Mobile optimized
+  return (
+    <div className="w-full">
+      <Button
+        onClick={() => setShowModal(true)}
+        disabled={isConnecting}
+        className="w-full flex items-center justify-center space-x-2 py-3"
+        variant="primary"
+      >
+        {isConnecting ? (
+          <>
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+            <span>Connecting...</span>
+          </>
+        ) : (
+          <>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            <span>Connect Wallet</span>
+          </>
+        )}
+      </Button>
+
+      {error && (
+        <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-800">{error}</p>
+          <button
+            onClick={clearError}
+            className="text-xs text-red-600 hover:text-red-800 mt-1"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <WalletConnectionModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        onConnect={handleConnect}
+      />
+    </div>
+  );
+};
+
+// Mobile-specific token manager
+export interface MobileTokenManagerProps {
+  onTokenCreated?: (token: any) => void;
+}
+
+export const MobileTokenManager: React.FC<MobileTokenManagerProps> = ({
+  onTokenCreated
+}) => {
+  const { isConnected } = useWallet();
+  const [activeAction, setActiveAction] = useState<'create' | 'transfer' | null>(null);
+
+  if (!isConnected) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-500 mb-4">Connect your wallet to manage tokens</p>
+        <MobileWalletInterface />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Action buttons */}
+      <div className="grid grid-cols-2 gap-3">
+        <Button
+          onClick={() => setActiveAction('create')}
+          className="py-4 text-center"
+          variant={activeAction === 'create' ? 'primary' : 'outline'}
+        >
+          <div>
+            <div className="text-lg mb-1">🪙</div>
+            <div className="text-sm">Create Token</div>
+          </div>
+        </Button>
+        
+        <Button
+          onClick={() => setActiveAction('transfer')}
+          className="py-4 text-center"
+          variant={activeAction === 'transfer' ? 'primary' : 'outline'}
+        >
+          <div>
+            <div className="text-lg mb-1">📤</div>
+            <div className="text-sm">Transfer</div>
+          </div>
+        </Button>
+      </div>
+
+      {/* Action forms would go here */}
+      {activeAction && (
+        <div className="p-4 bg-gray-50 rounded-lg">
+          <p className="text-sm text-gray-600">
+            {activeAction === 'create' ? 'Token creation form' : 'Transfer form'} would be implemented here
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+{{else}}import React, { useState } from 'react';
+import { useWallet } from '@/hooks/useWalletOperations';
+import { WalletConnectionModal } from './WalletConnectionModal';
+
+export const MobileWalletInterface = ({ 
+  showBalance = true, 
+  onConnect, 
+  onDisconnect 
+}) => {
+  const { isConnected, account, provider, disconnect } = useWallet();
+  const [showModal, setShowModal] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+
+  const handleDisconnect = async () => {
+    await disconnect();
+    onDisconnect && onDisconnect();
+  };
+
+  const formatAccountForMobile = (accountId) => {
+    const parts = accountId.split('.');
+    return `${parts[0]}.${parts[1]}.${parts[2].slice(-4)}`;
+  };
+
+  if (isConnected && account) {
+    return (
+      <div className="w-full">
+        <div 
+          className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg cursor-pointer"
+          onClick={() => setShowDetails(!showDetails)}
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+              <span className="text-white text-sm font-medium">
+                {account.accountId.split('.')[2].slice(-2)}
+              </span>
+            </div>
+            <div>
+              <p className="text-white font-medium text-sm">
+                {formatAccountForMobile(account.accountId)}
+              </p>
+              {showBalance && (
+                <p className="text-white text-opacity-80 text-xs">Balance: -- HBAR</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {showDetails && (
+          <div className="mt-2 bg-white border rounded-lg p-4">
+            <button
+              onClick={handleDisconnect}
+              className="w-full bg-red-500 text-white py-2 rounded-md"
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full">
+      <button
+        onClick={() => setShowModal(true)}
+        className="w-full bg-blue-600 text-white py-3 rounded-lg"
+      >
+        Connect Wallet
+      </button>
+
+      <WalletConnectionModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        onConnect={() => setShowModal(false)}
+      />
+    </div>
+  );
+};
+{{/ifLanguage}}

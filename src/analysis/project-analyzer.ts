@@ -1,7 +1,14 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { ProjectContext, SupportedFramework, Dependency, ProjectStructure, ExistingIntegration } from '@/types';
-import { logger } from '@utils/logger';
+import { ProjectContext, SupportedFramework, Dependency, ProjectStructure, ExistingIntegration } from '../types';
+import { logger } from '../utils/logger';
+
+export interface CompatibilityCheck {
+  supported: boolean;
+  framework?: SupportedFramework;
+  message: string;
+  suggestions: string[];
+}
 
 export class ProjectAnalyzer {
   async analyzeProject(directory: string): Promise<ProjectContext> {
@@ -14,6 +21,19 @@ export class ProjectAnalyzer {
       }
 
       const packageJson = await fs.readJSON(path.join(projectPath, 'package.json'));
+      
+      // Validate compatibility first
+      const compatibility = this.validateCompatibility(projectPath, packageJson);
+      
+      if (!compatibility.supported) {
+        logger.warn('Unsupported project type detected');
+        logger.info('APIX works best with:');
+        compatibility.suggestions.forEach(suggestion => {
+          logger.info(`  • ${suggestion}`);
+        });
+        
+        throw new Error(compatibility.message);
+      }
       
       // Detect framework
       const framework = this.detectFramework(packageJson);
@@ -65,6 +85,85 @@ export class ProjectAnalyzer {
       logger.error('Project analysis failed:', error);
       throw error;
     }
+  }
+
+  private validateCompatibility(projectPath: string, packageJson: any): CompatibilityCheck {
+    const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+    const hasReact = !!deps.react;
+    const hasNext = !!deps.next;
+    const hasVue = !!deps.vue;
+    const hasAngular = !!deps['@angular/core'];
+    const hasExpress = !!deps.express;
+    
+    // Check for React/Next.js (fully supported)
+    if (hasNext) {
+      return {
+        supported: true,
+        framework: 'next.js',
+        message: 'Next.js project detected - fully supported!',
+        suggestions: []
+      };
+    }
+    
+    if (hasReact) {
+      return {
+        supported: true,
+        framework: 'react',
+        message: 'React project detected - fully supported!',
+        suggestions: []
+      };
+    }
+    
+    // Check for Vue (experimental support)
+    if (hasVue) {
+      return {
+        supported: false, // Change to true when Vue support is ready
+        framework: 'vue',
+        message: 'Vue.js detected - experimental support coming soon',
+        suggestions: [
+          'Create a Next.js project: npx create-next-app@latest my-hedera-app',
+          'Create a React project: npx create-react-app my-hedera-app --template typescript',
+          'Convert to React for full APIX support'
+        ]
+      };
+    }
+    
+    // Unsupported frameworks
+    if (hasAngular) {
+      return {
+        supported: false,
+        message: 'Angular projects are not supported',
+        suggestions: [
+          'APIX specializes in React-based applications',
+          'Create a Next.js project: npx create-next-app@latest my-hedera-app',
+          'Create a React project: npx create-react-app my-hedera-app --template typescript'
+        ]
+      };
+    }
+    
+    if (hasExpress) {
+      return {
+        supported: false, // Change to true when backend support is ready
+        message: 'Express.js backend detected - frontend integration recommended',
+        suggestions: [
+          'Create a Next.js frontend: npx create-next-app@latest my-hedera-frontend',
+          'Add React frontend to your Express app',
+          'APIX works best with full-stack React applications'
+        ]
+      };
+    }
+    
+    // No recognized framework
+    return {
+      supported: false,
+      message: 'No supported framework detected',
+      suggestions: [
+        'APIX works best with modern React-based projects',
+        'Create a Next.js app: npx create-next-app@latest my-hedera-app',
+        'Create a React app: npx create-react-app my-hedera-app --template typescript',
+        'Add React to your existing project'
+      ]
+    };
   }
 
   private detectFramework(packageJson: any): SupportedFramework {

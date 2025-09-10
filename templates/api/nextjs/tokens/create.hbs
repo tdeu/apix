@@ -1,0 +1,128 @@
+{{!-- META: {"name": "Token Create API Route", "description": "Next.js API route for token creation", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}// pages/api/tokens/create.ts or app/api/tokens/create/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { htsManager } from '@/lib/hedera/hts-operations';
+import { CreateTokenParams } from '@/types/hedera';
+
+export async function POST(request: NextRequest) {
+  try {
+    const body: CreateTokenParams = await request.json();
+    
+    // Validate required fields
+    if (!body.name || !body.symbol) {
+      return NextResponse.json(
+        { error: 'Token name and symbol are required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate token symbol format
+    if (!/^[A-Z]{2,6}$/.test(body.symbol)) {
+      return NextResponse.json(
+        { error: 'Token symbol must be 2-6 uppercase letters' },
+        { status: 400 }
+      );
+    }
+
+    // Validate token name length
+    if (body.name.length < 2 || body.name.length > 50) {
+      return NextResponse.json(
+        { error: 'Token name must be 2-50 characters' },
+        { status: 400 }
+      );
+    }
+
+    const result = await htsManager.createToken(body);
+    
+    return NextResponse.json({
+      success: true,
+      data: result
+    });
+
+  } catch (error) {
+    console.error('Token creation error:', error);
+    
+    return NextResponse.json(
+      { 
+        error: 'Failed to create token',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// For Pages Router (pages/api/tokens/create.ts)
+export default async function handler(req: any, res: any) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const body: CreateTokenParams = req.body;
+    
+    if (!body.name || !body.symbol) {
+      return res.status(400).json({ error: 'Token name and symbol are required' });
+    }
+
+    if (!/^[A-Z]{2,6}$/.test(body.symbol)) {
+      return res.status(400).json({ error: 'Token symbol must be 2-6 uppercase letters' });
+    }
+
+    if (body.name.length < 2 || body.name.length > 50) {
+      return res.status(400).json({ error: 'Token name must be 2-50 characters' });
+    }
+
+    const result = await htsManager.createToken(body);
+    
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+
+  } catch (error) {
+    console.error('Token creation error:', error);
+    
+    res.status(500).json({
+      error: 'Failed to create token',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}
+{{else}}// pages/api/tokens/create.js
+const { htsManager } = require('@/lib/hedera/hts-operations');
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const { name, symbol, decimals, initialSupply } = req.body;
+    
+    if (!name || !symbol) {
+      return res.status(400).json({ error: 'Token name and symbol are required' });
+    }
+
+    const result = await htsManager.createToken({
+      name,
+      symbol,
+      decimals: decimals || 8,
+      initialSupply: initialSupply || 1000000
+    });
+    
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+
+  } catch (error) {
+    console.error('Token creation error:', error);
+    
+    res.status(500).json({
+      error: 'Failed to create token',
+      details: error.message || 'Unknown error'
+    });
+  }
+}
+{{/ifLanguage}}

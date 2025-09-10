@@ -1,6 +1,6 @@
 // src/utils/errors.ts
 
-import { APIxError } from '@/types';
+import { APIxError } from '../types';
 
 export class APIxCustomError extends Error implements APIxError {
   public code: string;

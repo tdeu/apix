@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { GeneratedFile, FileModification } from '@/types';
-import { logger } from '@utils/logger';
+import { GeneratedFile, FileModification } from '../types';
+import { logger } from '../utils/logger';
 
 export interface ConflictResolution {
   action: 'overwrite' | 'merge' | 'skip' | 'backup';

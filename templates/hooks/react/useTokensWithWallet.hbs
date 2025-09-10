@@ -1,0 +1,326 @@
+{{!-- META: {"name": "useTokensWithWallet Hook", "description": "React hook for wallet-integrated token operations", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import { useState, useCallback, useEffect } from 'react';
+import { useWallet } from '@/hooks/useWalletOperations';
+import { 
+  CreateTokenParams, 
+  MintTokenParams, 
+  TransferTokenParams, 
+  TokenOperationResult,
+  HTSWalletManager,
+  htsWalletManager
+} from '@/lib/hedera/hts-wallet-operations';
+import { TransactionOptions } from '@/lib/hedera/transaction-signer';
+
+export interface UseTokensWithWalletReturn {
+  // Core operations
+  createToken: (params: CreateTokenParams, options?: TransactionOptions) => Promise<TokenOperationResult>;
+  mintToken: (params: MintTokenParams, options?: TransactionOptions) => Promise<TokenOperationResult>;
+  burnToken: (tokenId: string, amount: number, options?: TransactionOptions) => Promise<TokenOperationResult>;
+  transferToken: (params: TransferTokenParams, options?: TransactionOptions) => Promise<TokenOperationResult>;
+  associateToken: (tokenId: string, accountId?: string, options?: TransactionOptions) => Promise<TokenOperationResult>;
+  getTokenInfo: (tokenId: string) => Promise<any>;
+
+  // Utility operations
+  createFungibleToken: (name: string, symbol: string, initialSupply?: number, decimals?: number) => Promise<TokenOperationResult>;
+  createNFTCollection: (name: string, symbol: string, maxSupply?: number) => Promise<TokenOperationResult>;
+
+  // State
+  isLoading: boolean;
+  error: string | null;
+  lastTransaction: TokenOperationResult | null;
+  
+  // Utility functions
+  clearError: () => void;
+  clearLastTransaction: () => void;
+  canPerformOperations: boolean;
+}
+
+export const useTokensWithWallet = (
+  htsManager?: HTSWalletManager
+): UseTokensWithWalletReturn => {
+  const wallet = useWallet();
+  const manager = htsManager || htsWalletManager;
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastTransaction, setLastTransaction] = useState<TokenOperationResult | null>(null);
+
+  // Check if operations can be performed
+  const canPerformOperations = wallet.isConnected && manager.canPerformOperations();
+
+  const handleOperation = useCallback(async <T extends TokenOperationResult>(
+    operation: () => Promise<T>,
+    operationName: string
+  ): Promise<T> => {
+    if (!canPerformOperations) {
+      throw new Error('Wallet not connected or cannot sign transactions');
+    }
+
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const result = await operation();
+      setLastTransaction(result);
+
+      // Show success notification if operation was successful
+      if (result.status === 'SUCCESS') {
+        console.log(`${operationName} completed successfully:`, result.transactionId);
+      }
+
+      return result;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : `${operationName} failed`;
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [canPerformOperations]);
+
+  const createToken = useCallback(async (
+    params: CreateTokenParams, 
+    options?: TransactionOptions
+  ): Promise<TokenOperationResult> => {
+    return handleOperation(
+      () => manager.createToken(params, options),
+      'Token creation'
+    );
+  }, [manager, handleOperation]);
+
+  const mintToken = useCallback(async (
+    params: MintTokenParams, 
+    options?: TransactionOptions
+  ): Promise<TokenOperationResult> => {
+    return handleOperation(
+      () => manager.mintToken(params, options),
+      'Token minting'
+    );
+  }, [manager, handleOperation]);
+
+  const burnToken = useCallback(async (
+    tokenId: string, 
+    amount: number, 
+    options?: TransactionOptions
+  ): Promise<TokenOperationResult> => {
+    return handleOperation(
+      () => manager.burnToken(tokenId, amount, options),
+      'Token burning'
+    );
+  }, [manager, handleOperation]);
+
+  const transferToken = useCallback(async (
+    params: TransferTokenParams, 
+    options?: TransactionOptions
+  ): Promise<TokenOperationResult> => {
+    return handleOperation(
+      () => manager.transferToken(params, options),
+      'Token transfer'
+    );
+  }, [manager, handleOperation]);
+
+  const associateToken = useCallback(async (
+    tokenId: string, 
+    accountId?: string, 
+    options?: TransactionOptions
+  ): Promise<TokenOperationResult> => {
+    return handleOperation(
+      () => manager.associateToken(tokenId, accountId, options),
+      'Token association'
+    );
+  }, [manager, handleOperation]);
+
+  const getTokenInfo = useCallback(async (tokenId: string): Promise<any> => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const info = await manager.getTokenInfo(tokenId);
+      return info;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to get token info';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [manager]);
+
+  const createFungibleToken = useCallback(async (
+    name: string,
+    symbol: string,
+    initialSupply: number = 1000000,
+    decimals: number = 8
+  ): Promise<TokenOperationResult> => {
+    return handleOperation(
+      () => manager.createFungibleToken(name, symbol, initialSupply, decimals),
+      'Fungible token creation'
+    );
+  }, [manager, handleOperation]);
+
+  const createNFTCollection = useCallback(async (
+    name: string,
+    symbol: string,
+    maxSupply?: number
+  ): Promise<TokenOperationResult> => {
+    return handleOperation(
+      () => manager.createNFTCollection(name, symbol, maxSupply),
+      'NFT collection creation'
+    );
+  }, [manager, handleOperation]);
+
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
+  const clearLastTransaction = useCallback(() => {
+    setLastTransaction(null);
+  }, []);
+
+  // Clear error when wallet connection changes
+  useEffect(() => {
+    if (!wallet.isConnected) {
+      setError(null);
+      setLastTransaction(null);
+    }
+  }, [wallet.isConnected]);
+
+  return {
+    // Core operations
+    createToken,
+    mintToken,
+    burnToken,
+    transferToken,
+    associateToken,
+    getTokenInfo,
+
+    // Utility operations
+    createFungibleToken,
+    createNFTCollection,
+
+    // State
+    isLoading,
+    error,
+    lastTransaction,
+    canPerformOperations,
+
+    // Utility functions
+    clearError,
+    clearLastTransaction
+  };
+};
+
+// Hook for transaction status monitoring
+export const useTransactionMonitor = () => {
+  const [transactions, setTransactions] = useState<TokenOperationResult[]>([]);
+
+  const addTransaction = useCallback((transaction: TokenOperationResult) => {
+    setTransactions(prev => [transaction, ...prev.slice(0, 9)]); // Keep last 10 transactions
+  }, []);
+
+  const clearTransactions = useCallback(() => {
+    setTransactions([]);
+  }, []);
+
+  const getTransactionsByStatus = useCallback((status: string) => {
+    return transactions.filter(tx => tx.status === status);
+  }, [transactions]);
+
+  return {
+    transactions,
+    addTransaction,
+    clearTransactions,
+    getTransactionsByStatus,
+    successfulTransactions: getTransactionsByStatus('SUCCESS'),
+    failedTransactions: getTransactionsByStatus('FAILED'),
+    pendingTransactions: getTransactionsByStatus('PENDING')
+  };
+};
+
+// Hook for fee estimation
+export const useTokenFeeEstimation = () => {
+  const [isEstimating, setIsEstimating] = useState(false);
+  const [estimatedFee, setEstimatedFee] = useState<string | null>(null);
+  const manager = htsWalletManager;
+
+  const estimateTokenCreationFee = useCallback(async (params: CreateTokenParams) => {
+    setIsEstimating(true);
+    try {
+      const fee = await manager.estimateTokenCreationFee(params);
+      setEstimatedFee(fee.toString());
+      return fee;
+    } catch (error) {
+      console.error('Fee estimation failed:', error);
+      throw error;
+    } finally {
+      setIsEstimating(false);
+    }
+  }, [manager]);
+
+  return {
+    estimateTokenCreationFee,
+    isEstimating,
+    estimatedFee,
+    clearEstimatedFee: () => setEstimatedFee(null)
+  };
+};
+{{else}}import { useState, useCallback, useEffect } from 'react';
+import { useWallet } from '@/hooks/useWalletOperations';
+import { htsWalletManager } from '@/lib/hedera/hts-wallet-operations';
+
+export const useTokensWithWallet = (htsManager) => {
+  const wallet = useWallet();
+  const manager = htsManager || htsWalletManager;
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [lastTransaction, setLastTransaction] = useState(null);
+
+  const canPerformOperations = wallet.isConnected && manager.canPerformOperations();
+
+  const handleOperation = useCallback(async (operation, operationName) => {
+    if (!canPerformOperations) {
+      throw new Error('Wallet not connected');
+    }
+
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const result = await operation();
+      setLastTransaction(result);
+      return result;
+    } catch (err) {
+      const errorMessage = err.message || `${operationName} failed`;
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [canPerformOperations]);
+
+  const createToken = useCallback(async (params, options) => {
+    return handleOperation(
+      () => manager.createToken(params, options),
+      'Token creation'
+    );
+  }, [manager, handleOperation]);
+
+  const transferToken = useCallback(async (params, options) => {
+    return handleOperation(
+      () => manager.transferToken(params, options),
+      'Token transfer'
+    );
+  }, [manager, handleOperation]);
+
+  return {
+    createToken,
+    transferToken,
+    isLoading,
+    error,
+    lastTransaction,
+    canPerformOperations,
+    clearError: () => setError(null)
+  };
+};
+{{/ifLanguage}}

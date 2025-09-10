@@ -1,0 +1,444 @@
+{{!-- META: {"name": "Wallet Service", "description": "Multi-wallet integration service for Hedera", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import { 
+  Client,
+  AccountId, 
+  PrivateKey,
+  Transaction,
+  TransactionId,
+  Hbar
+} from '@hashgraph/sdk';
+
+export type WalletProvider = 'hashpack' | 'blade' | 'walletconnect' | 'metamask';
+
+export interface WalletAccount {
+  accountId: string;
+  evmAddress?: string;
+  publicKey?: string;
+  network: 'testnet' | 'mainnet';
+}
+
+export interface WalletConnectionState {
+  isConnected: boolean;
+  isConnecting: boolean;
+  provider?: WalletProvider;
+  account?: WalletAccount;
+  accounts: WalletAccount[];
+  error?: string;
+}
+
+export interface SignTransactionOptions {
+  transaction: Transaction;
+  accountId?: string;
+  returnTransaction?: boolean;
+}
+
+export interface WalletAdapter {
+  id: WalletProvider;
+  name: string;
+  icon?: string;
+  isAvailable(): Promise<boolean>;
+  connect(): Promise<WalletAccount[]>;
+  disconnect(): Promise<void>;
+  signTransaction(options: SignTransactionOptions): Promise<Transaction>;
+  getAccountInfo(accountId: string): Promise<any>;
+}
+
+// HashPack Wallet Adapter
+export class HashPackAdapter implements WalletAdapter {
+  id: WalletProvider = 'hashpack';
+  name = 'HashPack';
+  icon = 'https://www.hashpack.app/img/logo.svg';
+
+  private hashpack: any;
+
+  constructor() {
+    // HashPack is injected into window object
+    this.hashpack = (window as any).hashpack;
+  }
+
+  async isAvailable(): Promise<boolean> {
+    return typeof window !== 'undefined' && !!(window as any).hashpack;
+  }
+
+  async connect(): Promise<WalletAccount[]> {
+    if (!this.hashpack) {
+      throw new Error('HashPack wallet not found. Please install HashPack extension.');
+    }
+
+    try {
+      const initData = await this.hashpack.init({
+        name: '{{projectName}}',
+        description: 'Hedera application powered by APIx',
+        iconUrl: 'https://hashpack.app/img/logo.svg'
+      });
+
+      if (!initData.success) {
+        throw new Error('Failed to initialize HashPack');
+      }
+
+      const accounts: WalletAccount[] = initData.savedPairings?.map((pairing: any) => ({
+        accountId: pairing.accountIds[0],
+        evmAddress: pairing.accountIds[0] ? this.accountIdToEvmAddress(pairing.accountIds[0]) : undefined,
+        network: pairing.network as 'testnet' | 'mainnet'
+      })) || [];
+
+      if (accounts.length === 0) {
+        // Request pairing if no saved pairings
+        const pairingData = await this.hashpack.requestAccountInfo();
+        
+        if (pairingData.success && pairingData.accountIds?.length > 0) {
+          accounts.push({
+            accountId: pairingData.accountIds[0],
+            evmAddress: this.accountIdToEvmAddress(pairingData.accountIds[0]),
+            network: pairingData.network as 'testnet' | 'mainnet'
+          });
+        }
+      }
+
+      return accounts;
+    } catch (error) {
+      throw new Error(`HashPack connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    if (this.hashpack) {
+      await this.hashpack.disconnect();
+    }
+  }
+
+  async signTransaction(options: SignTransactionOptions): Promise<Transaction> {
+    if (!this.hashpack) {
+      throw new Error('HashPack wallet not connected');
+    }
+
+    try {
+      const transactionBytes = options.transaction.toBytes();
+      const base64Transaction = Buffer.from(transactionBytes).toString('base64');
+
+      const signedTransaction = await this.hashpack.signTransaction({
+        transactionBytes: base64Transaction,
+        accountId: options.accountId
+      });
+
+      if (!signedTransaction.success) {
+        throw new Error('Transaction signing failed');
+      }
+
+      // Reconstruct transaction from signed bytes
+      const signedBytes = Buffer.from(signedTransaction.signedTransaction, 'base64');
+      return Transaction.fromBytes(signedBytes);
+    } catch (error) {
+      throw new Error(`Transaction signing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getAccountInfo(accountId: string): Promise<any> {
+    if (!this.hashpack) {
+      throw new Error('HashPack wallet not connected');
+    }
+
+    const response = await this.hashpack.requestAccountInfo();
+    return response;
+  }
+
+  private accountIdToEvmAddress(accountId: string): string {
+    // Convert Hedera account ID to EVM address
+    const parts = accountId.split('.');
+    if (parts.length !== 3) return '';
+    
+    const num = parseInt(parts[2]);
+    const hex = num.toString(16).padStart(40, '0');
+    return `0x${hex}`;
+  }
+}
+
+// Blade Wallet Adapter
+export class BladeAdapter implements WalletAdapter {
+  id: WalletProvider = 'blade';
+  name = 'Blade';
+  icon = 'https://bladewallet.io/img/logo.svg';
+
+  async isAvailable(): Promise<boolean> {
+    return typeof window !== 'undefined' && !!(window as any).bladeWallet;
+  }
+
+  async connect(): Promise<WalletAccount[]> {
+    const blade = (window as any).bladeWallet;
+    if (!blade) {
+      throw new Error('Blade wallet not found. Please install Blade extension.');
+    }
+
+    try {
+      const result = await blade.requestAccount();
+      
+      if (result.accounts && result.accounts.length > 0) {
+        return result.accounts.map((account: any) => ({
+          accountId: account.accountId,
+          evmAddress: account.evmAddress,
+          network: account.network || 'testnet'
+        }));
+      }
+
+      return [];
+    } catch (error) {
+      throw new Error(`Blade connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    const blade = (window as any).bladeWallet;
+    if (blade && blade.disconnect) {
+      await blade.disconnect();
+    }
+  }
+
+  async signTransaction(options: SignTransactionOptions): Promise<Transaction> {
+    const blade = (window as any).bladeWallet;
+    if (!blade) {
+      throw new Error('Blade wallet not connected');
+    }
+
+    try {
+      const transactionBytes = options.transaction.toBytes();
+      const result = await blade.signTransaction({
+        transaction: Buffer.from(transactionBytes).toString('base64'),
+        accountId: options.accountId
+      });
+
+      if (result.signedTransaction) {
+        const signedBytes = Buffer.from(result.signedTransaction, 'base64');
+        return Transaction.fromBytes(signedBytes);
+      }
+
+      throw new Error('No signed transaction returned');
+    } catch (error) {
+      throw new Error(`Transaction signing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getAccountInfo(accountId: string): Promise<any> {
+    const blade = (window as any).bladeWallet;
+    if (!blade) {
+      throw new Error('Blade wallet not connected');
+    }
+
+    return blade.getAccountInfo(accountId);
+  }
+}
+
+// Wallet Service Manager
+export class WalletService {
+  private adapters: Map<WalletProvider, WalletAdapter> = new Map();
+  private currentAdapter?: WalletAdapter;
+  private connectionState: WalletConnectionState = {
+    isConnected: false,
+    isConnecting: false,
+    accounts: []
+  };
+
+  constructor() {
+    this.registerAdapters();
+  }
+
+  private registerAdapters(): void {
+    this.adapters.set('hashpack', new HashPackAdapter());
+    this.adapters.set('blade', new BladeAdapter());
+  }
+
+  async getAvailableWallets(): Promise<WalletProvider[]> {
+    const available: WalletProvider[] = [];
+    
+    for (const [id, adapter] of this.adapters.entries()) {
+      try {
+        if (await adapter.isAvailable()) {
+          available.push(id);
+        }
+      } catch (error) {
+        console.warn(`Error checking wallet availability for ${id}:`, error);
+      }
+    }
+    
+    return available;
+  }
+
+  async connect(providerId: WalletProvider): Promise<WalletAccount[]> {
+    const adapter = this.adapters.get(providerId);
+    if (!adapter) {
+      throw new Error(`Wallet provider ${providerId} not supported`);
+    }
+
+    this.connectionState.isConnecting = true;
+    this.connectionState.error = undefined;
+
+    try {
+      const accounts = await adapter.connect();
+      
+      this.currentAdapter = adapter;
+      this.connectionState = {
+        isConnected: true,
+        isConnecting: false,
+        provider: providerId,
+        accounts,
+        account: accounts[0] // Default to first account
+      };
+
+      // Persist connection
+      this.saveConnectionState();
+
+      return accounts;
+    } catch (error) {
+      this.connectionState.isConnecting = false;
+      this.connectionState.error = error instanceof Error ? error.message : 'Connection failed';
+      throw error;
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    if (this.currentAdapter) {
+      await this.currentAdapter.disconnect();
+    }
+
+    this.currentAdapter = undefined;
+    this.connectionState = {
+      isConnected: false,
+      isConnecting: false,
+      accounts: []
+    };
+
+    this.clearConnectionState();
+  }
+
+  async switchAccount(accountId: string): Promise<void> {
+    const account = this.connectionState.accounts.find(acc => acc.accountId === accountId);
+    if (!account) {
+      throw new Error('Account not found');
+    }
+
+    this.connectionState.account = account;
+    this.saveConnectionState();
+  }
+
+  async signTransaction(transaction: Transaction, accountId?: string): Promise<Transaction> {
+    if (!this.currentAdapter || !this.connectionState.isConnected) {
+      throw new Error('Wallet not connected');
+    }
+
+    const targetAccountId = accountId || this.connectionState.account?.accountId;
+    if (!targetAccountId) {
+      throw new Error('No account selected');
+    }
+
+    return this.currentAdapter.signTransaction({
+      transaction,
+      accountId: targetAccountId
+    });
+  }
+
+  getConnectionState(): WalletConnectionState {
+    return { ...this.connectionState };
+  }
+
+  getCurrentAdapter(): WalletAdapter | undefined {
+    return this.currentAdapter;
+  }
+
+  // Auto-connect to previously connected wallet
+  async autoConnect(): Promise<boolean> {
+    const savedState = this.loadConnectionState();
+    if (savedState?.provider && savedState.isConnected) {
+      try {
+        await this.connect(savedState.provider);
+        return true;
+      } catch (error) {
+        console.warn('Auto-connect failed:', error);
+        this.clearConnectionState();
+      }
+    }
+    return false;
+  }
+
+  private saveConnectionState(): void {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('apix_wallet_connection', JSON.stringify({
+        provider: this.connectionState.provider,
+        accountId: this.connectionState.account?.accountId,
+        isConnected: this.connectionState.isConnected
+      }));
+    }
+  }
+
+  private loadConnectionState(): any {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('apix_wallet_connection');
+      return saved ? JSON.parse(saved) : null;
+    }
+    return null;
+  }
+
+  private clearConnectionState(): void {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('apix_wallet_connection');
+    }
+  }
+}
+
+// Default instance
+export const walletService = new WalletService();
+
+export default WalletService;
+{{else}}const { 
+  Client,
+  AccountId, 
+  PrivateKey,
+  Transaction,
+  TransactionId,
+  Hbar
+} = require('@hashgraph/sdk');
+
+class HashPackAdapter {
+  constructor() {
+    this.id = 'hashpack';
+    this.name = 'HashPack';
+    this.hashpack = typeof window !== 'undefined' ? window.hashpack : null;
+  }
+
+  async isAvailable() {
+    return typeof window !== 'undefined' && !!window.hashpack;
+  }
+
+  async connect() {
+    if (!this.hashpack) {
+      throw new Error('HashPack wallet not found');
+    }
+
+    // JavaScript implementation similar but without types
+    // Simplified for brevity
+  }
+
+  // ... other methods
+}
+
+class WalletService {
+  constructor() {
+    this.adapters = new Map();
+    this.connectionState = {
+      isConnected: false,
+      isConnecting: false,
+      accounts: []
+    };
+    this.registerAdapters();
+  }
+
+  registerAdapters() {
+    this.adapters.set('hashpack', new HashPackAdapter());
+  }
+
+  // ... other methods
+}
+
+module.exports = {
+  WalletService,
+  walletService: new WalletService()
+};
+{{/ifLanguage}}

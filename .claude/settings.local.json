@@ -4,7 +4,14 @@
       "Bash(npm pkg set:*)",
       "Read(//c/Users/thoma/Bureau/**)",
       "Bash(npm run build:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npx create-next-app@latest apix-test-project --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-install)",
+      "Bash(find:*)",
+      "Bash(node:*)",
+      "Bash(npm link:*)",
+      "Bash(apix analyze:*)",
+      "Bash(apix add:*)",
+      "Bash(apix health:*)"
     ],
     "deny": [],
     "ask": []

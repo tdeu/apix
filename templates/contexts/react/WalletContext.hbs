@@ -1,0 +1,438 @@
+{{!-- META: {"name": "Wallet Context", "description": "React context for wallet state management", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import React, { 
+  createContext, 
+  useContext, 
+  useReducer, 
+  useEffect, 
+  ReactNode,
+  useCallback
+} from 'react';
+import { 
+  WalletService, 
+  WalletProvider, 
+  WalletAccount, 
+  WalletConnectionState,
+  walletService 
+} from '@/lib/hedera/wallet-service';
+import { Transaction } from '@hashgraph/sdk';
+
+// Context Types
+export interface WalletContextState extends WalletConnectionState {
+  availableWallets: WalletProvider[];
+  isInitialized: boolean;
+}
+
+export interface WalletContextActions {
+  connect: (providerId: WalletProvider) => Promise<void>;
+  disconnect: () => Promise<void>;
+  switchAccount: (accountId: string) => Promise<void>;
+  signTransaction: (transaction: Transaction, accountId?: string) => Promise<Transaction>;
+  refreshWallets: () => Promise<void>;
+  clearError: () => void;
+}
+
+export interface WalletContextValue {
+  state: WalletContextState;
+  actions: WalletContextActions;
+}
+
+// Action Types
+type WalletAction =
+  | { type: 'SET_INITIALIZED'; payload: boolean }
+  | { type: 'SET_AVAILABLE_WALLETS'; payload: WalletProvider[] }
+  | { type: 'SET_CONNECTING'; payload: boolean }
+  | { type: 'SET_CONNECTED'; payload: { provider: WalletProvider; accounts: WalletAccount[]; account?: WalletAccount } }
+  | { type: 'SET_DISCONNECTED' }
+  | { type: 'SET_ACCOUNT'; payload: WalletAccount }
+  | { type: 'SET_ERROR'; payload: string }
+  | { type: 'CLEAR_ERROR' };
+
+// Initial State
+const initialState: WalletContextState = {
+  isInitialized: false,
+  isConnected: false,
+  isConnecting: false,
+  accounts: [],
+  availableWallets: []
+};
+
+// Reducer
+function walletReducer(state: WalletContextState, action: WalletAction): WalletContextState {
+  switch (action.type) {
+    case 'SET_INITIALIZED':
+      return { ...state, isInitialized: action.payload };
+    
+    case 'SET_AVAILABLE_WALLETS':
+      return { ...state, availableWallets: action.payload };
+    
+    case 'SET_CONNECTING':
+      return { 
+        ...state, 
+        isConnecting: action.payload,
+        error: action.payload ? undefined : state.error 
+      };
+    
+    case 'SET_CONNECTED':
+      return {
+        ...state,
+        isConnected: true,
+        isConnecting: false,
+        provider: action.payload.provider,
+        accounts: action.payload.accounts,
+        account: action.payload.account || action.payload.accounts[0],
+        error: undefined
+      };
+    
+    case 'SET_DISCONNECTED':
+      return {
+        ...state,
+        isConnected: false,
+        isConnecting: false,
+        provider: undefined,
+        accounts: [],
+        account: undefined,
+        error: undefined
+      };
+    
+    case 'SET_ACCOUNT':
+      return { ...state, account: action.payload };
+    
+    case 'SET_ERROR':
+      return { 
+        ...state, 
+        error: action.payload,
+        isConnecting: false 
+      };
+    
+    case 'CLEAR_ERROR':
+      return { ...state, error: undefined };
+    
+    default:
+      return state;
+  }
+}
+
+// Context Creation
+const WalletContext = createContext<WalletContextValue | null>(null);
+
+// Provider Props
+export interface WalletProviderProps {
+  children: ReactNode;
+  autoConnect?: boolean;
+}
+
+// Provider Component
+export const WalletProvider: React.FC<WalletProviderProps> = ({ 
+  children, 
+  autoConnect = true 
+}) => {
+  const [state, dispatch] = useReducer(walletReducer, initialState);
+
+  // Initialize wallet service and check available wallets
+  const initialize = useCallback(async () => {
+    try {
+      const availableWallets = await walletService.getAvailableWallets();
+      dispatch({ type: 'SET_AVAILABLE_WALLETS', payload: availableWallets });
+      
+      // Auto-connect if enabled and previously connected
+      if (autoConnect) {
+        const autoConnected = await walletService.autoConnect();
+        if (autoConnected) {
+          const connectionState = walletService.getConnectionState();
+          if (connectionState.isConnected && connectionState.provider) {
+            dispatch({ 
+              type: 'SET_CONNECTED', 
+              payload: {
+                provider: connectionState.provider,
+                accounts: connectionState.accounts,
+                account: connectionState.account
+              }
+            });
+          }
+        }
+      }
+      
+      dispatch({ type: 'SET_INITIALIZED', payload: true });
+    } catch (error) {
+      console.warn('Failed to initialize wallet service:', error);
+      dispatch({ type: 'SET_INITIALIZED', payload: true });
+    }
+  }, [autoConnect]);
+
+  // Connect to wallet
+  const connect = useCallback(async (providerId: WalletProvider) => {
+    dispatch({ type: 'SET_CONNECTING', payload: true });
+    
+    try {
+      const accounts = await walletService.connect(providerId);
+      dispatch({ 
+        type: 'SET_CONNECTED', 
+        payload: { 
+          provider: providerId, 
+          accounts,
+          account: accounts[0] 
+        }
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Connection failed';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+    }
+  }, []);
+
+  // Disconnect from wallet
+  const disconnect = useCallback(async () => {
+    try {
+      await walletService.disconnect();
+      dispatch({ type: 'SET_DISCONNECTED' });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Disconnect failed';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+    }
+  }, []);
+
+  // Switch account
+  const switchAccount = useCallback(async (accountId: string) => {
+    try {
+      await walletService.switchAccount(accountId);
+      const connectionState = walletService.getConnectionState();
+      if (connectionState.account) {
+        dispatch({ type: 'SET_ACCOUNT', payload: connectionState.account });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Account switch failed';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+    }
+  }, []);
+
+  // Sign transaction
+  const signTransaction = useCallback(async (transaction: Transaction, accountId?: string): Promise<Transaction> => {
+    try {
+      return await walletService.signTransaction(transaction, accountId);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Transaction signing failed';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+      throw error;
+    }
+  }, []);
+
+  // Refresh available wallets
+  const refreshWallets = useCallback(async () => {
+    try {
+      const availableWallets = await walletService.getAvailableWallets();
+      dispatch({ type: 'SET_AVAILABLE_WALLETS', payload: availableWallets });
+    } catch (error) {
+      console.warn('Failed to refresh wallets:', error);
+    }
+  }, []);
+
+  // Clear error
+  const clearError = useCallback(() => {
+    dispatch({ type: 'CLEAR_ERROR' });
+  }, []);
+
+  // Initialize on mount
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
+  // Listen to wallet events (if supported)
+  useEffect(() => {
+    const handleAccountsChanged = () => {
+      // Re-check connection state when accounts change
+      const connectionState = walletService.getConnectionState();
+      if (connectionState.isConnected && connectionState.provider) {
+        dispatch({ 
+          type: 'SET_CONNECTED', 
+          payload: {
+            provider: connectionState.provider,
+            accounts: connectionState.accounts,
+            account: connectionState.account
+          }
+        });
+      }
+    };
+
+    const handleDisconnect = () => {
+      dispatch({ type: 'SET_DISCONNECTED' });
+    };
+
+    // Listen to HashPack events if available
+    if (typeof window !== 'undefined' && (window as any).hashpack) {
+      const hashpack = (window as any).hashpack;
+      if (hashpack.on) {
+        hashpack.on('accountsChanged', handleAccountsChanged);
+        hashpack.on('disconnect', handleDisconnect);
+      }
+    }
+
+    return () => {
+      // Cleanup event listeners
+      if (typeof window !== 'undefined' && (window as any).hashpack) {
+        const hashpack = (window as any).hashpack;
+        if (hashpack.off) {
+          hashpack.off('accountsChanged', handleAccountsChanged);
+          hashpack.off('disconnect', handleDisconnect);
+        }
+      }
+    };
+  }, []);
+
+  const contextValue: WalletContextValue = {
+    state,
+    actions: {
+      connect,
+      disconnect,
+      switchAccount,
+      signTransaction,
+      refreshWallets,
+      clearError
+    }
+  };
+
+  return (
+    <WalletContext.Provider value={contextValue}>
+      {children}
+    </WalletContext.Provider>
+  );
+};
+
+// Hook to use wallet context
+export const useWallet = (): WalletContextValue => {
+  const context = useContext(WalletContext);
+  if (!context) {
+    throw new Error('useWallet must be used within a WalletProvider');
+  }
+  return context;
+};
+
+// Convenience hooks
+export const useWalletState = (): WalletContextState => {
+  const { state } = useWallet();
+  return state;
+};
+
+export const useWalletActions = (): WalletContextActions => {
+  const { actions } = useWallet();
+  return actions;
+};
+
+// Hook for current account
+export const useCurrentAccount = (): WalletAccount | undefined => {
+  const { state } = useWallet();
+  return state.account;
+};
+
+// Hook for connection status
+export const useWalletConnection = (): {
+  isConnected: boolean;
+  isConnecting: boolean;
+  provider?: WalletProvider;
+  error?: string;
+} => {
+  const { state } = useWallet();
+  return {
+    isConnected: state.isConnected,
+    isConnecting: state.isConnecting,
+    provider: state.provider,
+    error: state.error
+  };
+};
+{{else}}import React, { 
+  createContext, 
+  useContext, 
+  useReducer, 
+  useEffect,
+  useCallback
+} from 'react';
+import { walletService } from '@/lib/hedera/wallet-service';
+
+// Initial State
+const initialState = {
+  isInitialized: false,
+  isConnected: false,
+  isConnecting: false,
+  accounts: [],
+  availableWallets: []
+};
+
+// Reducer
+function walletReducer(state, action) {
+  switch (action.type) {
+    case 'SET_INITIALIZED':
+      return { ...state, isInitialized: action.payload };
+    
+    case 'SET_AVAILABLE_WALLETS':
+      return { ...state, availableWallets: action.payload };
+    
+    case 'SET_CONNECTING':
+      return { 
+        ...state, 
+        isConnecting: action.payload,
+        error: action.payload ? undefined : state.error 
+      };
+    
+    case 'SET_CONNECTED':
+      return {
+        ...state,
+        isConnected: true,
+        isConnecting: false,
+        provider: action.payload.provider,
+        accounts: action.payload.accounts,
+        account: action.payload.account || action.payload.accounts[0],
+        error: undefined
+      };
+    
+    case 'SET_DISCONNECTED':
+      return {
+        ...state,
+        isConnected: false,
+        isConnecting: false,
+        provider: undefined,
+        accounts: [],
+        account: undefined,
+        error: undefined
+      };
+    
+    default:
+      return state;
+  }
+}
+
+// Context Creation
+const WalletContext = createContext(null);
+
+// Provider Component
+export const WalletProvider = ({ children, autoConnect = true }) => {
+  const [state, dispatch] = useReducer(walletReducer, initialState);
+
+  // Similar implementation but without TypeScript types
+  // JavaScript implementation would be simpler but follow same patterns
+
+  const contextValue = {
+    state,
+    actions: {
+      connect: () => {},
+      disconnect: () => {},
+      switchAccount: () => {},
+      signTransaction: () => {},
+      refreshWallets: () => {},
+      clearError: () => {}
+    }
+  };
+
+  return (
+    <WalletContext.Provider value={contextValue}>
+      {children}
+    </WalletContext.Provider>
+  );
+};
+
+// Hook to use wallet context
+export const useWallet = () => {
+  const context = useContext(WalletContext);
+  if (!context) {
+    throw new Error('useWallet must be used within a WalletProvider');
+  }
+  return context;
+};
+{{/ifLanguage}}

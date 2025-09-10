@@ -1,0 +1,371 @@
+{{!-- META: {"name": "Transaction Signer", "description": "Abstraction layer for transaction signing across wallets", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import { 
+  Transaction, 
+  TransactionId, 
+  AccountId, 
+  Client,
+  Status,
+  TransactionReceipt,
+  Hbar
+} from '@hashgraph/sdk';
+import { WalletService, WalletProvider, walletService } from './wallet-service';
+import { createDefaultClient } from './hedera-client';
+
+export interface SignAndExecuteResult {
+  transactionId: string;
+  status: string;
+  receipt?: TransactionReceipt;
+  consensusTimestamp?: string;
+  charged?: string;
+  error?: string;
+}
+
+export interface TransactionOptions {
+  accountId?: string;
+  maxTransactionFee?: number;
+  memo?: string;
+  validateOnly?: boolean;
+}
+
+export class TransactionSigner {
+  private client: Client;
+  private walletService: WalletService;
+
+  constructor(client?: Client, walletService?: WalletService) {
+    this.client = client || createDefaultClient().getClient();
+    this.walletService = walletService || new WalletService();
+  }
+
+  /**
+   * Sign a transaction using the connected wallet
+   */
+  async signTransaction(
+    transaction: Transaction, 
+    options: TransactionOptions = {}
+  ): Promise<Transaction> {
+    const connectionState = this.walletService.getConnectionState();
+    
+    if (!connectionState.isConnected || !connectionState.account) {
+      throw new Error('Wallet not connected');
+    }
+
+    const accountId = options.accountId || connectionState.account.accountId;
+    
+    // Set transaction properties
+    if (options.maxTransactionFee) {
+      transaction.setMaxTransactionFee(Hbar.fromTinybars(options.maxTransactionFee));
+    }
+
+    if (options.memo) {
+      transaction.setTransactionMemo(options.memo);
+    }
+
+    // Generate transaction ID if not set
+    if (!transaction.transactionId) {
+      transaction.setTransactionId(TransactionId.generate(AccountId.fromString(accountId)));
+    }
+
+    // Freeze transaction before signing
+    if (!transaction.isFrozen()) {
+      transaction.freezeWith(this.client);
+    }
+
+    // Sign with wallet
+    const signedTransaction = await this.walletService.signTransaction(transaction, accountId);
+    
+    return signedTransaction;
+  }
+
+  /**
+   * Sign and execute a transaction
+   */
+  async signAndExecuteTransaction(
+    transaction: Transaction,
+    options: TransactionOptions = {}
+  ): Promise<SignAndExecuteResult> {
+    try {
+      // Sign the transaction
+      const signedTransaction = await this.signTransaction(transaction, options);
+
+      if (options.validateOnly) {
+        return {
+          transactionId: signedTransaction.transactionId?.toString() || 'unknown',
+          status: 'VALIDATED',
+        };
+      }
+
+      // Execute the transaction
+      const txResponse = await signedTransaction.execute(this.client);
+      const transactionId = txResponse.transactionId.toString();
+
+      // Get receipt
+      const receipt = await txResponse.getReceipt(this.client);
+      
+      return {
+        transactionId,
+        status: receipt.status.toString(),
+        receipt,
+        consensusTimestamp: receipt.consensusTimestamp?.toString(),
+        charged: txResponse.cost?.toString()
+      };
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      return {
+        transactionId: transaction.transactionId?.toString() || 'unknown',
+        status: 'FAILED',
+        error: errorMessage
+      };
+    }
+  }
+
+  /**
+   * Sign and execute multiple transactions in sequence
+   */
+  async signAndExecuteTransactions(
+    transactions: Transaction[],
+    options: TransactionOptions = {}
+  ): Promise<SignAndExecuteResult[]> {
+    const results: SignAndExecuteResult[] = [];
+
+    for (const transaction of transactions) {
+      const result = await this.signAndExecuteTransaction(transaction, options);
+      results.push(result);
+
+      // Stop if any transaction fails
+      if (result.status === 'FAILED') {
+        break;
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Estimate transaction fee
+   */
+  async estimateTransactionFee(
+    transaction: Transaction,
+    accountId?: string
+  ): Promise<Hbar> {
+    const connectionState = this.walletService.getConnectionState();
+    const operatorId = accountId || connectionState.account?.accountId;
+
+    if (!operatorId) {
+      throw new Error('No account ID available for fee estimation');
+    }
+
+    // Clone transaction to avoid modifying original
+    const clonedTx = transaction.toBytes();
+    const estimateTx = Transaction.fromBytes(clonedTx);
+
+    // Set operator for fee estimation
+    estimateTx.setTransactionId(TransactionId.generate(AccountId.fromString(operatorId)));
+    
+    if (!estimateTx.isFrozen()) {
+      estimateTx.freezeWith(this.client);
+    }
+
+    // Get cost estimate
+    const cost = await estimateTx.getCost(this.client);
+    return cost;
+  }
+
+  /**
+   * Check if wallet can sign transactions
+   */
+  canSignTransactions(): boolean {
+    const connectionState = this.walletService.getConnectionState();
+    return connectionState.isConnected && !!connectionState.account;
+  }
+
+  /**
+   * Get current signing account
+   */
+  getCurrentAccount(): string | undefined {
+    const connectionState = this.walletService.getConnectionState();
+    return connectionState.account?.accountId;
+  }
+
+  /**
+   * Wait for transaction consensus with timeout
+   */
+  async waitForConsensus(
+    transactionId: string,
+    timeoutMs: number = 30000
+  ): Promise<TransactionReceipt> {
+    const start = Date.now();
+
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const txId = TransactionId.fromString(transactionId);
+        const receipt = await txId.getReceipt(this.client);
+        
+        if (receipt.status === Status.Success) {
+          return receipt;
+        } else if (receipt.status !== Status.Unknown) {
+          throw new Error(`Transaction failed with status: ${receipt.status}`);
+        }
+      } catch (error) {
+        // Continue polling unless it's a definitive failure
+        if (error instanceof Error && !error.message.includes('UNKNOWN')) {
+          throw error;
+        }
+      }
+
+      // Wait before next attempt
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    throw new Error(`Transaction consensus timeout after ${timeoutMs}ms`);
+  }
+
+  /**
+   * Batch transactions for optimal execution
+   */
+  async batchExecuteTransactions(
+    transactions: Transaction[],
+    batchSize: number = 5,
+    options: TransactionOptions = {}
+  ): Promise<SignAndExecuteResult[]> {
+    const results: SignAndExecuteResult[] = [];
+    
+    for (let i = 0; i < transactions.length; i += batchSize) {
+      const batch = transactions.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(tx => this.signAndExecuteTransaction(tx, options))
+      );
+      results.push(...batchResults);
+
+      // Small delay between batches
+      if (i + batchSize < transactions.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    return results;
+  }
+}
+
+// Utility functions for transaction management
+export const TransactionUtils = {
+  /**
+   * Convert transaction result to user-friendly format
+   */
+  formatTransactionResult(result: SignAndExecuteResult): {
+    success: boolean;
+    transactionId: string;
+    status: string;
+    message: string;
+    explorerUrl?: string;
+  } {
+    const network = process.env.NEXT_PUBLIC_HEDERA_NETWORK === 'mainnet' ? '' : 'testnet.';
+    const explorerUrl = `https://${network}hashscan.io/transaction/${result.transactionId}`;
+
+    return {
+      success: result.status === 'SUCCESS' || result.status === Status.Success.toString(),
+      transactionId: result.transactionId,
+      status: result.status,
+      message: result.error || 'Transaction completed successfully',
+      explorerUrl
+    };
+  },
+
+  /**
+   * Check if transaction was successful
+   */
+  isTransactionSuccessful(result: SignAndExecuteResult): boolean {
+    return result.status === 'SUCCESS' || result.status === Status.Success.toString();
+  },
+
+  /**
+   * Extract token ID from transaction receipt
+   */
+  getTokenIdFromReceipt(receipt: TransactionReceipt): string | undefined {
+    return receipt.tokenId?.toString();
+  },
+
+  /**
+   * Extract serial numbers from NFT transaction receipt
+   */
+  getSerialNumbersFromReceipt(receipt: TransactionReceipt): number[] {
+    return receipt.serials.map(serial => serial.toNumber());
+  }
+};
+
+// Default instance
+export const transactionSigner = new TransactionSigner();
+
+export default TransactionSigner;
+{{else}}const { 
+  Transaction, 
+  TransactionId, 
+  AccountId, 
+  Client,
+  Status,
+  Hbar
+} = require('@hashgraph/sdk');
+const { walletService } = require('./wallet-service');
+const { createDefaultClient } = require('./hedera-client');
+
+class TransactionSigner {
+  constructor(client, walletService) {
+    this.client = client || createDefaultClient().getClient();
+    this.walletService = walletService || require('./wallet-service').walletService;
+  }
+
+  async signTransaction(transaction, options = {}) {
+    const connectionState = this.walletService.getConnectionState();
+    
+    if (!connectionState.isConnected || !connectionState.account) {
+      throw new Error('Wallet not connected');
+    }
+
+    // JavaScript implementation similar but without types
+    // Transaction signing logic here
+  }
+
+  async signAndExecuteTransaction(transaction, options = {}) {
+    try {
+      const signedTransaction = await this.signTransaction(transaction, options);
+      
+      if (options.validateOnly) {
+        return {
+          transactionId: signedTransaction.transactionId?.toString() || 'unknown',
+          status: 'VALIDATED',
+        };
+      }
+
+      const txResponse = await signedTransaction.execute(this.client);
+      const receipt = await txResponse.getReceipt(this.client);
+      
+      return {
+        transactionId: txResponse.transactionId.toString(),
+        status: receipt.status.toString(),
+        receipt,
+        consensusTimestamp: receipt.consensusTimestamp?.toString()
+      };
+
+    } catch (error) {
+      return {
+        transactionId: 'unknown',
+        status: 'FAILED',
+        error: error.message || 'Unknown error'
+      };
+    }
+  }
+
+  canSignTransactions() {
+    const connectionState = this.walletService.getConnectionState();
+    return connectionState.isConnected && !!connectionState.account;
+  }
+}
+
+const transactionSigner = new TransactionSigner();
+
+module.exports = {
+  TransactionSigner,
+  transactionSigner
+};
+{{/ifLanguage}}

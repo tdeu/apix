@@ -1,0 +1,540 @@
+{{!-- META: {"name": "HTS Wallet Operations", "description": "Wallet-integrated HTS operations with transaction signing", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import { 
+  Client,
+  TokenCreateTransaction, 
+  TokenMintTransaction,
+  TokenBurnTransaction,
+  TokenAssociateTransaction,
+  TransferTransaction,
+  TokenInfoQuery,
+  Hbar,
+  TokenId,
+  AccountId,
+  PrivateKey,
+  TokenSupplyType,
+  TokenType,
+  CustomFixedFee,
+  CustomFractionalFee
+} from '@hashgraph/sdk';
+
+import { 
+  TransactionSigner, 
+  transactionSigner, 
+  SignAndExecuteResult,
+  TransactionOptions 
+} from './transaction-signer';
+import { walletService, WalletConnectionState } from './wallet-service';
+import { createDefaultClient } from './hedera-client';
+
+export interface CreateTokenParams {
+  name: string;
+  symbol: string;
+  decimals?: number;
+  initialSupply?: number;
+  maxSupply?: number;
+  treasuryAccountId?: string;
+  adminKey?: PrivateKey;
+  supplyKey?: PrivateKey;
+  freezeKey?: PrivateKey;
+  wipeKey?: PrivateKey;
+  kycKey?: PrivateKey;
+  pauseKey?: PrivateKey;
+  customFees?: (CustomFixedFee | CustomFractionalFee)[];
+  tokenType?: TokenType;
+  supplyType?: TokenSupplyType;
+  freezeDefault?: boolean;
+}
+
+export interface MintTokenParams {
+  tokenId: string;
+  amount?: number;
+  metadata?: Uint8Array[];
+}
+
+export interface TransferTokenParams {
+  tokenId: string;
+  fromAccountId?: string; // Optional - defaults to connected account
+  toAccountId: string;
+  amount: number;
+}
+
+export interface TokenOperationResult extends SignAndExecuteResult {
+  tokenId?: string;
+  newTotalSupply?: string;
+  serialNumbers?: number[];
+}
+
+export class HTSWalletManager {
+  private client: Client;
+  private signer: TransactionSigner;
+
+  constructor(client?: Client, signer?: TransactionSigner) {
+    this.client = client || createDefaultClient().getClient();
+    this.signer = signer || new TransactionSigner();
+  }
+
+  /**
+   * Create a new token with wallet signing
+   */
+  async createToken(
+    params: CreateTokenParams, 
+    options: TransactionOptions = {}
+  ): Promise<TokenOperationResult> {
+    const connectionState = walletService.getConnectionState();
+    
+    if (!connectionState.isConnected || !connectionState.account) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      const {
+        name,
+        symbol,
+        decimals = 8,
+        initialSupply = 0,
+        maxSupply,
+        treasuryAccountId,
+        adminKey,
+        supplyKey,
+        freezeKey,
+        wipeKey,
+        kycKey,
+        pauseKey,
+        customFees = [],
+        tokenType = TokenType.FungibleCommon,
+        supplyType = TokenSupplyType.Finite,
+        freezeDefault = false
+      } = params;
+
+      // Use connected account as treasury if not specified
+      const treasury = treasuryAccountId || connectionState.account.accountId;
+
+      const transaction = new TokenCreateTransaction()
+        .setTokenName(name)
+        .setTokenSymbol(symbol)
+        .setDecimals(decimals)
+        .setInitialSupply(initialSupply)
+        .setTokenType(tokenType)
+        .setSupplyType(supplyType)
+        .setFreezeDefault(freezeDefault)
+        .setTreasuryAccountId(AccountId.fromString(treasury));
+
+      if (maxSupply) {
+        transaction.setMaxSupply(maxSupply);
+      }
+
+      if (adminKey) {
+        transaction.setAdminKey(adminKey);
+      }
+
+      if (supplyKey) {
+        transaction.setSupplyKey(supplyKey);
+      }
+
+      if (freezeKey) {
+        transaction.setFreezeKey(freezeKey);
+      }
+
+      if (wipeKey) {
+        transaction.setWipeKey(wipeKey);
+      }
+
+      if (kycKey) {
+        transaction.setKycKey(kycKey);
+      }
+
+      if (pauseKey) {
+        transaction.setPauseKey(pauseKey);
+      }
+
+      if (customFees.length > 0) {
+        transaction.setCustomFees(customFees);
+      }
+
+      const result = await this.signer.signAndExecuteTransaction(transaction, options);
+      
+      return {
+        ...result,
+        tokenId: result.receipt?.tokenId?.toString()
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to create token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Mint additional tokens with wallet signing
+   */
+  async mintToken(
+    params: MintTokenParams,
+    options: TransactionOptions = {}
+  ): Promise<TokenOperationResult> {
+    if (!this.signer.canSignTransactions()) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      const { tokenId, amount, metadata } = params;
+
+      const transaction = new TokenMintTransaction()
+        .setTokenId(TokenId.fromString(tokenId));
+
+      if (amount !== undefined) {
+        transaction.setAmount(amount);
+      }
+
+      if (metadata && metadata.length > 0) {
+        transaction.setMetadata(metadata);
+      }
+
+      const result = await this.signer.signAndExecuteTransaction(transaction, options);
+
+      return {
+        ...result,
+        tokenId,
+        newTotalSupply: result.receipt?.totalSupply?.toString(),
+        serialNumbers: result.receipt?.serials?.map(s => s.toNumber())
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to mint token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Burn tokens with wallet signing
+   */
+  async burnToken(
+    tokenId: string,
+    amount: number,
+    options: TransactionOptions = {}
+  ): Promise<TokenOperationResult> {
+    if (!this.signer.canSignTransactions()) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      const transaction = new TokenBurnTransaction()
+        .setTokenId(TokenId.fromString(tokenId))
+        .setAmount(amount);
+
+      const result = await this.signer.signAndExecuteTransaction(transaction, options);
+
+      return {
+        ...result,
+        tokenId,
+        newTotalSupply: result.receipt?.totalSupply?.toString()
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to burn token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Associate token with account using wallet signing
+   */
+  async associateToken(
+    tokenId: string,
+    accountId?: string,
+    options: TransactionOptions = {}
+  ): Promise<TokenOperationResult> {
+    const connectionState = walletService.getConnectionState();
+    
+    if (!connectionState.isConnected || !connectionState.account) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      const targetAccountId = accountId || connectionState.account.accountId;
+
+      const transaction = new TokenAssociateTransaction()
+        .setAccountId(AccountId.fromString(targetAccountId))
+        .setTokenIds([TokenId.fromString(tokenId)]);
+
+      const result = await this.signer.signAndExecuteTransaction(transaction, {
+        ...options,
+        accountId: targetAccountId
+      });
+
+      return {
+        ...result,
+        tokenId
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to associate token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Transfer tokens between accounts with wallet signing
+   */
+  async transferToken(
+    params: TransferTokenParams,
+    options: TransactionOptions = {}
+  ): Promise<TokenOperationResult> {
+    const connectionState = walletService.getConnectionState();
+    
+    if (!connectionState.isConnected || !connectionState.account) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      const { tokenId, fromAccountId, toAccountId, amount } = params;
+      const fromAccount = fromAccountId || connectionState.account.accountId;
+
+      const transaction = new TransferTransaction()
+        .addTokenTransfer(TokenId.fromString(tokenId), AccountId.fromString(fromAccount), -amount)
+        .addTokenTransfer(TokenId.fromString(tokenId), AccountId.fromString(toAccountId), amount);
+
+      const result = await this.signer.signAndExecuteTransaction(transaction, {
+        ...options,
+        accountId: fromAccount
+      });
+
+      return {
+        ...result,
+        tokenId
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to transfer token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get token information (read-only, no wallet required)
+   */
+  async getTokenInfo(tokenId: string): Promise<any> {
+    try {
+      const query = new TokenInfoQuery()
+        .setTokenId(TokenId.fromString(tokenId));
+
+      const tokenInfo = await query.execute(this.client);
+
+      return {
+        tokenId: tokenInfo.tokenId.toString(),
+        name: tokenInfo.name,
+        symbol: tokenInfo.symbol,
+        decimals: tokenInfo.decimals,
+        totalSupply: tokenInfo.totalSupply.toString(),
+        treasuryAccountId: tokenInfo.treasuryAccountId.toString(),
+        adminKey: tokenInfo.adminKey?.toString(),
+        supplyKey: tokenInfo.supplyKey?.toString(),
+        freezeKey: tokenInfo.freezeKey?.toString(),
+        wipeKey: tokenInfo.wipeKey?.toString(),
+        kycKey: tokenInfo.kycKey?.toString(),
+        pauseKey: tokenInfo.pauseKey?.toString(),
+        tokenType: tokenInfo.tokenType.toString(),
+        supplyType: tokenInfo.supplyType.toString(),
+        maxSupply: tokenInfo.maxSupply.toString(),
+        freezeDefault: tokenInfo.defaultFreezeStatus === true,
+        customFees: tokenInfo.customFees.map(fee => fee.toJSON())
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to get token info: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Create a fungible token with wallet signing and sensible defaults
+   */
+  async createFungibleToken(
+    name: string,
+    symbol: string,
+    initialSupply: number = 1000000,
+    decimals: number = 8,
+    options: TransactionOptions = {}
+  ): Promise<TokenOperationResult> {
+    return this.createToken({
+      name,
+      symbol,
+      initialSupply,
+      decimals,
+      tokenType: TokenType.FungibleCommon,
+      supplyType: TokenSupplyType.Finite
+    }, options);
+  }
+
+  /**
+   * Create an NFT collection with wallet signing and sensible defaults
+   */
+  async createNFTCollection(
+    name: string,
+    symbol: string,
+    maxSupply?: number,
+    options: TransactionOptions = {}
+  ): Promise<TokenOperationResult> {
+    return this.createToken({
+      name,
+      symbol,
+      decimals: 0,
+      initialSupply: 0,
+      maxSupply,
+      tokenType: TokenType.NonFungibleUnique,
+      supplyType: maxSupply ? TokenSupplyType.Finite : TokenSupplyType.Infinite
+    }, options);
+  }
+
+  /**
+   * Estimate fees for token operations
+   */
+  async estimateTokenCreationFee(params: CreateTokenParams): Promise<Hbar> {
+    const transaction = new TokenCreateTransaction()
+      .setTokenName(params.name)
+      .setTokenSymbol(params.symbol)
+      .setTokenType(params.tokenType || TokenType.FungibleCommon);
+
+    return this.signer.estimateTransactionFee(transaction);
+  }
+
+  /**
+   * Check if wallet is connected and can perform operations
+   */
+  canPerformOperations(): boolean {
+    return this.signer.canSignTransactions();
+  }
+
+  /**
+   * Get current wallet account
+   */
+  getCurrentAccount(): string | undefined {
+    return this.signer.getCurrentAccount();
+  }
+
+  /**
+   * Get wallet connection state
+   */
+  getWalletState(): WalletConnectionState {
+    return walletService.getConnectionState();
+  }
+}
+
+// Utility functions for HTS operations
+export const HTSUtils = {
+  /**
+   * Validate token symbol format
+   */
+  validateTokenSymbol(symbol: string): boolean {
+    return /^[A-Z]{2,6}$/.test(symbol);
+  },
+
+  /**
+   * Validate token name
+   */
+  validateTokenName(name: string): boolean {
+    return name.length >= 2 && name.length <= 50;
+  },
+
+  /**
+   * Format token amount with decimals
+   */
+  formatTokenAmount(amount: number, decimals: number): string {
+    return (amount / Math.pow(10, decimals)).toFixed(decimals);
+  },
+
+  /**
+   * Parse token amount to smallest unit
+   */
+  parseTokenAmount(amount: string, decimals: number): number {
+    return Math.round(parseFloat(amount) * Math.pow(10, decimals));
+  },
+
+  /**
+   * Check if account ID format is valid
+   */
+  validateAccountId(accountId: string): boolean {
+    return /^\d+\.\d+\.\d+$/.test(accountId);
+  }
+};
+
+// Default instance
+export const htsWalletManager = new HTSWalletManager();
+
+export default HTSWalletManager;
+{{else}}const { 
+  Client,
+  TokenCreateTransaction, 
+  TokenMintTransaction,
+  TokenBurnTransaction,
+  TokenAssociateTransaction,
+  TransferTransaction,
+  TokenInfoQuery,
+  TokenId,
+  AccountId,
+  TokenType,
+  TokenSupplyType
+} = require('@hashgraph/sdk');
+
+const { transactionSigner } = require('./transaction-signer');
+const { walletService } = require('./wallet-service');
+const { createDefaultClient } = require('./hedera-client');
+
+class HTSWalletManager {
+  constructor(client, signer) {
+    this.client = client || createDefaultClient().getClient();
+    this.signer = signer || transactionSigner;
+  }
+
+  async createToken(params, options = {}) {
+    const connectionState = walletService.getConnectionState();
+    
+    if (!connectionState.isConnected || !connectionState.account) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      const treasury = params.treasuryAccountId || connectionState.account.accountId;
+
+      const transaction = new TokenCreateTransaction()
+        .setTokenName(params.name)
+        .setTokenSymbol(params.symbol)
+        .setDecimals(params.decimals || 8)
+        .setInitialSupply(params.initialSupply || 0)
+        .setTokenType(params.tokenType || TokenType.FungibleCommon)
+        .setSupplyType(params.supplyType || TokenSupplyType.Finite)
+        .setTreasuryAccountId(AccountId.fromString(treasury));
+
+      const result = await this.signer.signAndExecuteTransaction(transaction, options);
+      
+      return {
+        ...result,
+        tokenId: result.receipt?.tokenId?.toString()
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to create token: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  async transferToken(params, options = {}) {
+    const connectionState = walletService.getConnectionState();
+    
+    if (!connectionState.isConnected) {
+      throw new Error('Wallet not connected');
+    }
+
+    const fromAccount = params.fromAccountId || connectionState.account.accountId;
+
+    const transaction = new TransferTransaction()
+      .addTokenTransfer(TokenId.fromString(params.tokenId), AccountId.fromString(fromAccount), -params.amount)
+      .addTokenTransfer(TokenId.fromString(params.tokenId), AccountId.fromString(params.toAccountId), params.amount);
+
+    return this.signer.signAndExecuteTransaction(transaction, options);
+  }
+
+  canPerformOperations() {
+    return this.signer.canSignTransactions();
+  }
+}
+
+const htsWalletManager = new HTSWalletManager();
+
+module.exports = {
+  HTSWalletManager,
+  htsWalletManager
+};
+{{/ifLanguage}}

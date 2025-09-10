@@ -1,0 +1,235 @@
+{{!-- META: {"name": "Adaptive Token Creation API Route", "description": "Token creation API route that adapts to Next.js App Router or Pages Router", "language": "typescript"} --}}
+{{#conditional "app-router"}}{{!-- Next.js 13+ App Router --}}
+{{#if hasTypeScript}}import { NextRequest, NextResponse } from 'next/server'{{#if usesSemicolons}};{{/if}}
+import { HTSManager } from '{{importPath "lib/hedera/hts-operations"}}'{{#if usesSemicolons}};{{/if}}
+import { CreateTokenParams } from '{{importPath "types/hedera"}}'{{#if usesSemicolons}};{{/if}}
+
+const htsManager = new HTSManager(){{#if usesSemicolons}};{{/if}}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body: CreateTokenParams = await request.json(){{#if usesSemicolons}};{{/if}}
+    
+    // Validation
+    if (!body.name || !body.symbol) {
+      return NextResponse.json(
+        { error: {{#if quotesStyle 'single'}}'Name and symbol are required'{{else}}"Name and symbol are required"{{/if}} },
+        { status: 400 }
+      ){{#if usesSemicolons}};{{/if}}
+    }
+
+    // Validate symbol format
+    if (!/^[A-Z]{2,6}$/.test(body.symbol)) {
+      return NextResponse.json(
+        { error: {{#if quotesStyle 'single'}}'Symbol must be 2-6 uppercase letters'{{else}}"Symbol must be 2-6 uppercase letters"{{/if}} },
+        { status: 400 }
+      ){{#if usesSemicolons}};{{/if}}
+    }
+
+    // Create token
+    const result = await htsManager.createToken({
+      name: body.name,
+      symbol: body.symbol,
+      decimals: body.decimals || {{#if options.defaultDecimals}}{{options.defaultDecimals}}{{else}}8{{/if}},
+      initialSupply: body.initialSupply || {{#if options.defaultInitialSupply}}{{options.defaultInitialSupply}}{{else}}1000000{{/if}},
+      maxSupply: body.maxSupply,
+      treasuryAccountId: body.treasuryAccountId || process.env.HEDERA_ACCOUNT_ID,
+      tokenType: body.tokenType || {{#if quotesStyle 'single'}}'FUNGIBLE_COMMON'{{else}}"FUNGIBLE_COMMON"{{/if}},
+      supplyType: body.supplyType || {{#if quotesStyle 'single'}}'FINITE'{{else}}"FINITE"{{/if}},
+      freezeDefault: body.freezeDefault || false
+    }){{#if usesSemicolons}};{{/if}}
+
+    return NextResponse.json({
+      success: true,
+      tokenId: result.tokenId,
+      transactionId: result.transactionId,
+      status: result.status,
+      explorerUrl: `https://hashscan.io/${body.network || {{#if quotesStyle 'single'}}'testnet'{{else}}"testnet"{{/if}}}/transaction/${result.transactionId}`
+    }){{#if usesSemicolons}};{{/if}}
+
+  } catch (error) {
+    console.error({{#if quotesStyle 'single'}}'Token creation error:'{{else}}"Token creation error:"{{/if}}, error){{#if usesSemicolons}};{{/if}}
+    
+    return NextResponse.json(
+      { 
+        error: {{#if quotesStyle 'single'}}'Token creation failed'{{else}}"Token creation failed"{{/if}},
+        details: error instanceof Error ? error.message : {{#if quotesStyle 'single'}}'Unknown error'{{else}}"Unknown error"{{/if}}
+      },
+      { status: 500 }
+    ){{#if usesSemicolons}};{{/if}}
+  }
+}
+
+// Handle OPTIONS for CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      {{#if quotesStyle 'single'}}'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type'{{else}}"Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS", 
+      "Access-Control-Allow-Headers": "Content-Type"{{/if}}
+    }
+  }){{#if usesSemicolons}};{{/if}}
+}{{else}}const { NextResponse } = require({{#if quotesStyle 'single'}}'next/server'{{else}}"next/server"{{/if}}){{#if usesSemicolons}};{{/if}}
+const { HTSManager } = require({{#if quotesStyle 'single'}}'{{importPath "lib/hedera/hts-operations"}}'{{else}}"{{importPath "lib/hedera/hts-operations"}}"{{/if}}){{#if usesSemicolons}};{{/if}}
+
+const htsManager = new HTSManager(){{#if usesSemicolons}};{{/if}}
+
+async function POST(request) {
+  try {
+    const body = await request.json(){{#if usesSemicolons}};{{/if}}
+    
+    if (!body.name || !body.symbol) {
+      return NextResponse.json(
+        { error: {{#if quotesStyle 'single'}}'Name and symbol are required'{{else}}"Name and symbol are required"{{/if}} },
+        { status: 400 }
+      ){{#if usesSemicolons}};{{/if}}
+    }
+
+    const result = await htsManager.createToken({
+      name: body.name,
+      symbol: body.symbol,
+      decimals: body.decimals || 8,
+      initialSupply: body.initialSupply || 1000000,
+      treasuryAccountId: body.treasuryAccountId || process.env.HEDERA_ACCOUNT_ID
+    }){{#if usesSemicolons}};{{/if}}
+
+    return NextResponse.json({
+      success: true,
+      tokenId: result.tokenId,
+      transactionId: result.transactionId
+    }){{#if usesSemicolons}};{{/if}}
+
+  } catch (error) {
+    return NextResponse.json(
+      { error: {{#if quotesStyle 'single'}}'Token creation failed'{{else}}"Token creation failed"{{/if}} },
+      { status: 500 }
+    ){{#if usesSemicolons}};{{/if}}
+  }
+}
+
+module.exports = { POST }{{#if usesSemicolons}};{{/if}}{{/if}}
+
+{{else}}{{!-- Next.js Pages Router --}}
+{{#if hasTypeScript}}import type { NextApiRequest, NextApiResponse } from 'next'{{#if usesSemicolons}};{{/if}}
+import { HTSManager } from '{{importPath "lib/hedera/hts-operations"}}'{{#if usesSemicolons}};{{/if}}
+import { CreateTokenParams } from '{{importPath "types/hedera"}}'{{#if usesSemicolons}};{{/if}}
+
+interface CreateTokenRequest extends NextApiRequest {
+  body: CreateTokenParams{{#if usesSemicolons}};{{/if}}
+}
+
+interface CreateTokenResponse {
+  success?: boolean{{#if usesSemicolons}};{{/if}}
+  tokenId?: string{{#if usesSemicolons}};{{/if}}
+  transactionId?: string{{#if usesSemicolons}};{{/if}}
+  status?: string{{#if usesSemicolons}};{{/if}}
+  explorerUrl?: string{{#if usesSemicolons}};{{/if}}
+  error?: string{{#if usesSemicolons}};{{/if}}
+  details?: string{{#if usesSemicolons}};{{/if}}
+}
+
+const htsManager = new HTSManager(){{#if usesSemicolons}};{{/if}}
+
+export default async function handler(
+  req: CreateTokenRequest,
+  res: NextApiResponse<CreateTokenResponse>
+) {
+  // CORS headers
+  res.setHeader({{#if quotesStyle 'single'}}'Access-Control-Allow-Origin'{{else}}"Access-Control-Allow-Origin"{{/if}}, {{#if quotesStyle 'single'}}'*'{{else}}"*"{{/if}}){{#if usesSemicolons}};{{/if}}
+  res.setHeader({{#if quotesStyle 'single'}}'Access-Control-Allow-Methods'{{else}}"Access-Control-Allow-Methods"{{/if}}, {{#if quotesStyle 'single'}}'POST, OPTIONS'{{else}}"POST, OPTIONS"{{/if}}){{#if usesSemicolons}};{{/if}}
+  res.setHeader({{#if quotesStyle 'single'}}'Access-Control-Allow-Headers'{{else}}"Access-Control-Allow-Headers"{{/if}}, {{#if quotesStyle 'single'}}'Content-Type'{{else}}"Content-Type"{{/if}}){{#if usesSemicolons}};{{/if}}
+
+  if (req.method === {{#if quotesStyle 'single'}}'OPTIONS'{{else}}"OPTIONS"{{/if}}) {
+    res.status(200).end(){{#if usesSemicolons}};{{/if}}
+    return{{#if usesSemicolons}};{{/if}}
+  }
+
+  if (req.method !== {{#if quotesStyle 'single'}}'POST'{{else}}"POST"{{/if}}) {
+    res.status(405).json({ error: {{#if quotesStyle 'single'}}'Method not allowed'{{else}}"Method not allowed"{{/if}} }){{#if usesSemicolons}};{{/if}}
+    return{{#if usesSemicolons}};{{/if}}
+  }
+
+  try {
+    const { name, symbol, decimals, initialSupply, maxSupply, treasuryAccountId, tokenType, supplyType, freezeDefault } = req.body{{#if usesSemicolons}};{{/if}}
+
+    // Validation
+    if (!name || !symbol) {
+      res.status(400).json({ error: {{#if quotesStyle 'single'}}'Name and symbol are required'{{else}}"Name and symbol are required"{{/if}} }){{#if usesSemicolons}};{{/if}}
+      return{{#if usesSemicolons}};{{/if}}
+    }
+
+    // Validate symbol format
+    if (!/^[A-Z]{2,6}$/.test(symbol)) {
+      res.status(400).json({ error: {{#if quotesStyle 'single'}}'Symbol must be 2-6 uppercase letters'{{else}}"Symbol must be 2-6 uppercase letters"{{/if}} }){{#if usesSemicolons}};{{/if}}
+      return{{#if usesSemicolons}};{{/if}}
+    }
+
+    // Create token
+    const result = await htsManager.createToken({
+      name,
+      symbol,
+      decimals: decimals || {{#if options.defaultDecimals}}{{options.defaultDecimals}}{{else}}8{{/if}},
+      initialSupply: initialSupply || {{#if options.defaultInitialSupply}}{{options.defaultInitialSupply}}{{else}}1000000{{/if}},
+      maxSupply,
+      treasuryAccountId: treasuryAccountId || process.env.HEDERA_ACCOUNT_ID,
+      tokenType: tokenType || {{#if quotesStyle 'single'}}'FUNGIBLE_COMMON'{{else}}"FUNGIBLE_COMMON"{{/if}},
+      supplyType: supplyType || {{#if quotesStyle 'single'}}'FINITE'{{else}}"FINITE"{{/if}},
+      freezeDefault: freezeDefault || false
+    }){{#if usesSemicolons}};{{/if}}
+
+    res.status(200).json({
+      success: true,
+      tokenId: result.tokenId,
+      transactionId: result.transactionId,
+      status: result.status,
+      explorerUrl: `https://hashscan.io/{{#if options.network}}{{options.network}}{{else}}testnet{{/if}}/transaction/${result.transactionId}`
+    }){{#if usesSemicolons}};{{/if}}
+
+  } catch (error) {
+    console.error({{#if quotesStyle 'single'}}'Token creation error:'{{else}}"Token creation error:"{{/if}}, error){{#if usesSemicolons}};{{/if}}
+    
+    res.status(500).json({
+      error: {{#if quotesStyle 'single'}}'Token creation failed'{{else}}"Token creation failed"{{/if}},
+      details: error instanceof Error ? error.message : {{#if quotesStyle 'single'}}'Unknown error'{{else}}"Unknown error"{{/if}}
+    }){{#if usesSemicolons}};{{/if}}
+  }
+}{{else}}const { HTSManager } = require({{#if quotesStyle 'single'}}'{{importPath "lib/hedera/hts-operations"}}'{{else}}"{{importPath "lib/hedera/hts-operations"}}"{{/if}}){{#if usesSemicolons}};{{/if}}
+
+const htsManager = new HTSManager(){{#if usesSemicolons}};{{/if}}
+
+export default async function handler(req, res) {
+  if (req.method !== {{#if quotesStyle 'single'}}'POST'{{else}}"POST"{{/if}}) {
+    res.status(405).json({ error: {{#if quotesStyle 'single'}}'Method not allowed'{{else}}"Method not allowed"{{/if}} }){{#if usesSemicolons}};{{/if}}
+    return{{#if usesSemicolons}};{{/if}}
+  }
+
+  try {
+    const { name, symbol, decimals, initialSupply } = req.body{{#if usesSemicolons}};{{/if}}
+
+    if (!name || !symbol) {
+      res.status(400).json({ error: {{#if quotesStyle 'single'}}'Name and symbol are required'{{else}}"Name and symbol are required"{{/if}} }){{#if usesSemicolons}};{{/if}}
+      return{{#if usesSemicolons}};{{/if}}
+    }
+
+    const result = await htsManager.createToken({
+      name,
+      symbol,
+      decimals: decimals || 8,
+      initialSupply: initialSupply || 1000000,
+      treasuryAccountId: process.env.HEDERA_ACCOUNT_ID
+    }){{#if usesSemicolons}};{{/if}}
+
+    res.status(200).json({
+      success: true,
+      tokenId: result.tokenId,
+      transactionId: result.transactionId
+    }){{#if usesSemicolons}};{{/if}}
+
+  } catch (error) {
+    res.status(500).json({ error: {{#if quotesStyle 'single'}}'Token creation failed'{{else}}"Token creation failed"{{/if}} }){{#if usesSemicolons}};{{/if}}
+  }
+}{{/if}}
+{{/conditional}}

@@ -1,8 +1,8 @@
 import Handlebars from 'handlebars';
 import fs from 'fs-extra';
 import path from 'path';
-import { SupportedFramework, ProjectContext, TemplateSelection, GeneratedFile } from '@/types';
-import { logger } from '@utils/logger';
+import { SupportedFramework, ProjectContext, TemplateSelection, GeneratedFile } from '../types';
+import { logger } from '../utils/logger';
 
 export interface TemplateContext {
   projectName: string;
@@ -52,12 +52,12 @@ export class TemplateEngine {
     });
 
     // Helper for conditional logic based on framework
-    this.handlebars.registerHelper('ifFramework', function(framework: string, expected: string, options: any) {
+    this.handlebars.registerHelper('ifFramework', function(this: any, framework: string, expected: string, options: any) {
       return framework === expected ? options.fn(this) : options.inverse(this);
     });
 
     // Helper for conditional logic based on language
-    this.handlebars.registerHelper('ifLanguage', function(language: string, expected: string, options: any) {
+    this.handlebars.registerHelper('ifLanguage', function(this: any, language: string, expected: string, options: any) {
       return language === expected ? options.fn(this) : options.inverse(this);
     });
 
@@ -69,6 +69,63 @@ export class TemplateEngine {
     // Helper for React file extensions
     this.handlebars.registerHelper('reactExtension', (language: string) => {
       return language === 'typescript' ? 'tsx' : 'jsx';
+    });
+
+    // Enhanced conditional helper for edge cases
+    this.handlebars.registerHelper('conditional', function(this: any, condition: string, options: any) {
+      const context = this;
+      let result = false;
+
+      switch (condition) {
+        case 'typescript':
+          result = context.hasTypeScript || context.language === 'typescript';
+          break;
+        case 'javascript':
+          result = !context.hasTypeScript && context.language === 'javascript';
+          break;
+        case 'nextjs':
+          result = context.hasNextJs || context.framework === 'next.js';
+          break;
+        case 'react':
+          result = context.hasReact || context.framework?.includes('react');
+          break;
+        case 'app-router':
+          result = context.usesAppRouter;
+          break;
+        case 'pages-router':
+          result = context.usesPagesRouter;
+          break;
+        case 'has-wallet':
+          result = context.hasExistingWallet;
+          break;
+        case 'has-hts':
+          result = context.hasExistingHTS;
+          break;
+        default:
+          result = false;
+      }
+
+      return result ? options.fn(this) : (options.inverse ? options.inverse(this) : '');
+    });
+
+    // Import path resolver helper
+    this.handlebars.registerHelper('importPath', function(this: any, pathStr: string) {
+      const context = this;
+      
+      // Simple path resolution with import prefix
+      if (context.importPrefix && !pathStr.startsWith('.') && !pathStr.startsWith('@')) {
+        return `${context.importPrefix}/${pathStr}`;
+      }
+      return pathStr;
+    });
+
+    // Enhanced file extension helper
+    this.handlebars.registerHelper('fileExt', function(this: any, isComponent: boolean = false) {
+      const context = this;
+      if (context.hasTypeScript || context.language === 'typescript') {
+        return isComponent ? '.tsx' : '.ts';
+      }
+      return isComponent ? '.jsx' : '.js';
     });
 
     // Helper for import/export syntax
@@ -92,7 +149,7 @@ export class TemplateEngine {
 
   async loadTemplates(): Promise<void> {
     try {
-      const categories = ['components', 'api', 'hooks', 'utils', 'configs', 'types'];
+      const categories = ['components', 'api', 'hooks', 'utils', 'configs', 'types', 'contexts'];
       
       for (const category of categories) {
         const categoryPath = path.join(this.templatesPath, category);
@@ -117,34 +174,53 @@ export class TemplateEngine {
         const stat = await fs.stat(frameworkPath);
         
         if (stat.isDirectory()) {
-          const templateFiles = await fs.readdir(frameworkPath);
-          
-          for (const file of templateFiles) {
-            if (file.endsWith('.hbs')) {
-              const templateId = `${category}/${framework}/${file.replace('.hbs', '')}`;
-              const filePath = path.join(frameworkPath, file);
-              const template = await fs.readFile(filePath, 'utf8');
-              
-              // Extract metadata from template
-              const metadata = this.extractTemplateMetadata(template);
-              
-              const templateFile: TemplateFile = {
-                id: templateId,
-                name: metadata.name || file.replace('.hbs', ''),
-                path: filePath,
-                template,
-                framework: framework as SupportedFramework,
-                language: metadata.language || 'typescript',
-                category: category as TemplateFile['category']
-              };
-              
-              this.loadedTemplates.set(templateId, templateFile);
-            }
-          }
+          await this.loadFrameworkTemplates(category, framework, frameworkPath);
         }
       }
     } catch (error) {
       logger.warn(`Failed to load templates from ${categoryPath}:`, error);
+    }
+  }
+
+  private async loadFrameworkTemplates(category: string, framework: string, frameworkPath: string, subPath: string = ''): Promise<void> {
+    try {
+      const items = await fs.readdir(frameworkPath);
+      
+      for (const item of items) {
+        const itemPath = path.join(frameworkPath, item);
+        const stat = await fs.stat(itemPath);
+        
+        if (stat.isDirectory()) {
+          // Recursively load templates from subdirectories
+          const newSubPath = subPath ? `${subPath}/${item}` : item;
+          await this.loadFrameworkTemplates(category, framework, itemPath, newSubPath);
+        } else if (item.endsWith('.hbs')) {
+          // Load template file
+          const templateName = item.replace('.hbs', '');
+          const templateId = subPath 
+            ? `${category}/${framework}/${subPath}/${templateName}`
+            : `${category}/${framework}/${templateName}`;
+          
+          const template = await fs.readFile(itemPath, 'utf8');
+          
+          // Extract metadata from template
+          const metadata = this.extractTemplateMetadata(template);
+          
+          const templateFile: TemplateFile = {
+            id: templateId,
+            name: metadata.name || templateName,
+            path: itemPath,
+            template,
+            framework: framework as SupportedFramework,
+            language: metadata.language || 'typescript',
+            category: category as TemplateFile['category']
+          };
+          
+          this.loadedTemplates.set(templateId, templateFile);
+        }
+      }
+    } catch (error) {
+      logger.warn(`Failed to load framework templates from ${frameworkPath}:`, error);
     }
   }
 
@@ -204,7 +280,7 @@ export class TemplateEngine {
         );
         generatedFiles.push(generatedFile);
       } catch (error) {
-        logger.error(`Failed to generate file from selection:`, selection, error);
+        logger.error(`Failed to generate file from selection:`, selection);
         throw error;
       }
     }
@@ -214,7 +290,7 @@ export class TemplateEngine {
 
   getTemplatesByFramework(framework: SupportedFramework): TemplateFile[] {
     return Array.from(this.loadedTemplates.values()).filter(
-      template => template.framework === framework || template.framework === 'common'
+      template => template.framework === framework || template.framework === ('common' as SupportedFramework)
     );
   }
 
@@ -267,17 +343,45 @@ export class TemplateEngine {
       logger.warn('Could not read project name from package.json');
     }
 
-    return {
-      projectName,
-      framework: projectContext.framework,
-      language: projectContext.language,
-      packageManager: projectContext.packageManager,
-      hederaNetwork: 'testnet', // Default to testnet
-      hasExistingAuth: projectContext.hasExistingAuth,
-      hasStateManagement: projectContext.hasStateManagement,
-      hasUILibrary: projectContext.hasUILibrary,
-      projectStructure: projectContext.projectStructure,
-      ...additionalContext
-    };
+    // Create enhanced context for better template handling
+    try {
+      const { TemplateEnhancer } = require('./template-enhancer');
+      const enhancedContext = TemplateEnhancer.createEnhancedContext(projectContext, additionalContext);
+      
+      // Merge with legacy context for backward compatibility
+      return {
+        projectName,
+        framework: projectContext.framework,
+        language: projectContext.language,
+        packageManager: projectContext.packageManager,
+        hederaNetwork: 'testnet', // Default to testnet
+        hasExistingAuth: projectContext.hasExistingAuth,
+        hasStateManagement: projectContext.hasStateManagement,
+        hasUILibrary: projectContext.hasUILibrary,
+        projectStructure: projectContext.projectStructure,
+        
+        // Enhanced context properties
+        ...enhancedContext,
+        
+        // Additional context overrides everything
+        ...additionalContext
+      };
+    } catch (error) {
+      logger.warn('Could not create enhanced template context, falling back to basic context:', error);
+      
+      // Fallback to basic context
+      return {
+        projectName,
+        framework: projectContext.framework,
+        language: projectContext.language,
+        packageManager: projectContext.packageManager,
+        hederaNetwork: 'testnet', // Default to testnet
+        hasExistingAuth: projectContext.hasExistingAuth,
+        hasStateManagement: projectContext.hasStateManagement,
+        hasUILibrary: projectContext.hasUILibrary,
+        projectStructure: projectContext.projectStructure,
+        ...additionalContext
+      };
+    }
   }
 }
