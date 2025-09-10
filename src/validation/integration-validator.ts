@@ -94,6 +94,71 @@ export class IntegrationValidator {
       }
     });
 
+    // Existing integration detection rule
+    this.rules.push({
+      id: 'existing-integration',
+      name: 'Existing Integration Check',
+      description: 'Check if integration already exists',
+      severity: 'warning',
+      check: async (context, plan) => {
+        const existingIntegration = context.existingIntegrations.find(
+          integration => integration.type === plan.type
+        );
+
+        if (existingIntegration && existingIntegration.active) {
+          return {
+            passed: false,
+            message: `${plan.type.toUpperCase()} integration already exists`,
+            details: [
+              `Version: ${existingIntegration.version || 'unknown'}`,
+              `Files: ${existingIntegration.files.length} detected`,
+              `Files detected: ${existingIntegration.files.slice(0, 3).join(', ')}${existingIntegration.files.length > 3 ? '...' : ''}`
+            ],
+            fixSuggestion: 'Use --force flag to overwrite existing integration, or run "apix status" to see details'
+          };
+        }
+
+        return {
+          passed: true,
+          message: `No existing ${plan.type} integration detected`,
+          details: ['Ready for fresh installation']
+        };
+      }
+    });
+
+    // File conflicts rule (enhanced)
+    this.rules.push({
+      id: 'file-conflicts',
+      name: 'File Conflicts',
+      description: 'Check for file conflicts with new integration files',
+      severity: 'warning',
+      check: async (context, plan) => {
+        const conflicts: string[] = [];
+        
+        for (const newFile of plan.newFiles) {
+          const fullPath = path.join(context.rootPath, newFile.path);
+          if (await fs.pathExists(fullPath)) {
+            conflicts.push(newFile.path);
+          }
+        }
+
+        if (conflicts.length > 0) {
+          return {
+            passed: false,
+            message: `${conflicts.length} file conflicts detected`,
+            details: conflicts.map(file => `Existing file: ${file}`),
+            fixSuggestion: 'Use --force flag to overwrite existing files, or rename conflicting files'
+          };
+        }
+
+        return {
+          passed: true,
+          message: 'No file conflicts detected',
+          details: ['All new files will be created successfully']
+        };
+      }
+    });
+
     // React dependency for React-based integrations
     this.rules.push({
       id: 'react-dependency',

@@ -251,32 +251,234 @@ export class ProjectAnalyzer {
   private async detectExistingIntegrations(projectPath: string, dependencies: Dependency[]): Promise<ExistingIntegration[]> {
     const integrations: ExistingIntegration[] = [];
     
-    // Check for Hedera SDK
-    const hasHederaSDK = dependencies.some(dep => dep.name === '@hashgraph/sdk');
-    if (hasHederaSDK) {
-      integrations.push({
-        type: 'account',
-        files: [],
-        active: true
-      });
+    // Detect HTS integration
+    const htsIntegration = await this.detectHTSIntegration(projectPath, dependencies);
+    if (htsIntegration) integrations.push(htsIntegration);
+
+    // Detect Wallet integration
+    const walletIntegration = await this.detectWalletIntegration(projectPath, dependencies);
+    if (walletIntegration) integrations.push(walletIntegration);
+
+    // Detect Account integration (basic Hedera SDK)
+    const accountIntegration = await this.detectAccountIntegration(projectPath, dependencies);
+    if (accountIntegration) integrations.push(accountIntegration);
+
+    return integrations;
+  }
+
+  private async detectHTSIntegration(projectPath: string, dependencies: Dependency[]): Promise<ExistingIntegration | null> {
+    const files: string[] = [];
+    const htsSignatures = [
+      'lib/hedera/hts-operations.ts',
+      'lib/hedera/hts-operations.js',
+      'hooks/useTokenOperations.ts',
+      'hooks/useTokenOperations.js',
+      'components/TokenManager.tsx',
+      'components/TokenManager.jsx',
+      'utils/hts-operations.ts',
+      'utils/hts-operations.js'
+    ];
+
+    // Check for APix-generated HTS files
+    for (const filePath of htsSignatures) {
+      const fullPath = path.join(projectPath, filePath);
+      if (await fs.pathExists(fullPath)) {
+        files.push(filePath);
+      }
     }
 
-    // Check for wallet integrations
+    // Check for HTS-specific imports in source files
+    const htsImports = await this.scanForImportPatterns(projectPath, [
+      'TokenCreateTransaction',
+      'TokenMintTransaction',
+      'TokenBurnTransaction',
+      'useTokenOperations',
+      'HTSManager'
+    ]);
+
+    if (files.length > 0 || htsImports.length > 0) {
+      // Try to detect version from file content or comments
+      const version = await this.detectIntegrationVersion(projectPath, files);
+      
+      return {
+        type: 'hts',
+        files: [...files, ...htsImports],
+        active: files.length > 0,
+        version
+      };
+    }
+
+    return null;
+  }
+
+  private async detectWalletIntegration(projectPath: string, dependencies: Dependency[]): Promise<ExistingIntegration | null> {
+    const files: string[] = [];
+    const walletSignatures = [
+      'contexts/WalletContext.tsx',
+      'contexts/WalletContext.jsx',
+      'hooks/useWallet.ts',
+      'hooks/useWallet.js',
+      'hooks/useWalletOperations.ts',
+      'hooks/useWalletOperations.js',
+      'components/WalletConnect.tsx',
+      'components/WalletConnect.jsx',
+      'components/WalletConnectionModal.tsx',
+      'components/WalletConnectionModal.jsx'
+    ];
+
+    // Check for APix-generated wallet files
+    for (const filePath of walletSignatures) {
+      const fullPath = path.join(projectPath, filePath);
+      if (await fs.pathExists(fullPath)) {
+        files.push(filePath);
+      }
+    }
+
+    // Check for wallet-specific dependencies
     const walletDeps = dependencies.filter(dep => 
       dep.name.includes('hashpack') || 
       dep.name.includes('walletconnect') ||
-      dep.name.includes('blade')
+      dep.name.includes('blade') ||
+      dep.name.includes('@walletconnect')
     );
-    
-    if (walletDeps.length > 0) {
-      integrations.push({
+
+    // Check for wallet-specific imports
+    const walletImports = await this.scanForImportPatterns(projectPath, [
+      'useWallet',
+      'WalletProvider',
+      'WalletContext',
+      'HashpackConnectionProvider',
+      'WalletConnectProvider'
+    ]);
+
+    if (files.length > 0 || walletDeps.length > 0 || walletImports.length > 0) {
+      const version = await this.detectIntegrationVersion(projectPath, files);
+      
+      return {
         type: 'wallet',
-        files: [],
-        active: true
-      });
+        files: [...files, ...walletImports],
+        active: files.length > 0 || walletDeps.length > 0,
+        version
+      };
     }
 
-    return integrations;
+    return null;
+  }
+
+  private async detectAccountIntegration(projectPath: string, dependencies: Dependency[]): Promise<ExistingIntegration | null> {
+    // Check for Hedera SDK
+    const hasHederaSDK = dependencies.some(dep => dep.name === '@hashgraph/sdk');
+    
+    if (hasHederaSDK) {
+      // Look for basic Hedera client usage
+      const accountFiles = await this.scanForImportPatterns(projectPath, [
+        'Client',
+        'PrivateKey',
+        'AccountId',
+        'TransactionReceipt'
+      ]);
+
+      return {
+        type: 'account',
+        files: accountFiles,
+        active: hasHederaSDK,
+        version: dependencies.find(dep => dep.name === '@hashgraph/sdk')?.version
+      };
+    }
+
+    return null;
+  }
+
+  private async scanForImportPatterns(projectPath: string, patterns: string[]): Promise<string[]> {
+    const foundFiles: string[] = [];
+    const commonPaths = ['src', 'lib', 'hooks', 'components', 'contexts', 'utils', 'pages', 'app'];
+    
+    for (const dir of commonPaths) {
+      const dirPath = path.join(projectPath, dir);
+      if (await fs.pathExists(dirPath)) {
+        try {
+          const files = await this.recursiveFileSearch(dirPath, ['.ts', '.tsx', '.js', '.jsx']);
+          
+          for (const file of files) {
+            try {
+              const content = await fs.readFile(file, 'utf-8');
+              
+              // Check for import patterns
+              const hasPattern = patterns.some(pattern => {
+                const importRegex = new RegExp(`import.*${pattern}.*from|import.*{.*${pattern}.*}.*from`, 'g');
+                return importRegex.test(content);
+              });
+              
+              if (hasPattern) {
+                foundFiles.push(path.relative(projectPath, file));
+              }
+            } catch (error) {
+              // Skip files that can't be read
+              continue;
+            }
+          }
+        } catch (error) {
+          // Skip directories that can't be accessed
+          continue;
+        }
+      }
+    }
+
+    return foundFiles;
+  }
+
+  private async recursiveFileSearch(dirPath: string, extensions: string[]): Promise<string[]> {
+    const files: string[] = [];
+    
+    try {
+      const items = await fs.readdir(dirPath);
+      
+      for (const item of items) {
+        const itemPath = path.join(dirPath, item);
+        const stat = await fs.stat(itemPath);
+        
+        if (stat.isDirectory()) {
+          // Skip node_modules, .git, and other common ignore patterns
+          if (!['node_modules', '.git', '.next', 'dist', 'build'].includes(item)) {
+            files.push(...await this.recursiveFileSearch(itemPath, extensions));
+          }
+        } else if (extensions.some(ext => item.endsWith(ext))) {
+          files.push(itemPath);
+        }
+      }
+    } catch (error) {
+      // Skip directories that can't be accessed
+    }
+    
+    return files;
+  }
+
+  private async detectIntegrationVersion(projectPath: string, files: string[]): Promise<string | undefined> {
+    // Try to find version in file comments or package.json
+    for (const filePath of files) {
+      try {
+        const fullPath = path.join(projectPath, filePath);
+        if (await fs.pathExists(fullPath)) {
+          const content = await fs.readFile(fullPath, 'utf-8');
+          
+          // Look for version comments like "Generated with APIx v1.0.0"
+          const versionMatch = content.match(/Generated with.*APIx.*v?([\d.]+)/i);
+          if (versionMatch) {
+            return versionMatch[1];
+          }
+          
+          // Look for META comments with version
+          const metaMatch = content.match(/META:.*"version":\s*"([^"]+)"/);
+          if (metaMatch) {
+            return metaMatch[1];
+          }
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+    
+    return undefined;
   }
 
   private async detectPackageManager(projectPath: string): Promise<'npm' | 'yarn' | 'pnpm'> {
@@ -316,20 +518,36 @@ export class ProjectAnalyzer {
 
   async getIntegrationStatus(context: ProjectContext): Promise<Record<string, any>> {
     const status: Record<string, any> = {
-      hts: { active: false, status: 'Not configured' },
-      wallet: { active: false, status: 'Not configured' },
-      consensus: { active: false, status: 'Not configured' },
-      'smart-contract': { active: false, status: 'Not configured' }
+      hts: { integrated: false, status: 'Not integrated', files: [], version: null },
+      wallet: { integrated: false, status: 'Not integrated', files: [], version: null },
+      account: { integrated: false, status: 'Not integrated', files: [], version: null },
+      consensus: { integrated: false, status: 'Not integrated', files: [], version: null },
+      'smart-contract': { integrated: false, status: 'Not integrated', files: [], version: null }
     };
 
     // Check for existing integrations
     context.existingIntegrations.forEach(integration => {
       status[integration.type] = {
-        active: integration.active,
-        status: integration.active ? 'Configured' : 'Partially configured'
+        integrated: integration.active,
+        status: integration.active ? 'Integrated' : 'Partially integrated',
+        files: integration.files,
+        version: integration.version || 'unknown',
+        fileCount: integration.files.length
       };
     });
 
     return status;
+  }
+
+  isIntegrationInstalled(context: ProjectContext, integrationType: string): boolean {
+    return context.existingIntegrations.some(
+      integration => integration.type === integrationType && integration.active
+    );
+  }
+
+  getIntegrationInfo(context: ProjectContext, integrationType: string): ExistingIntegration | null {
+    return context.existingIntegrations.find(
+      integration => integration.type === integrationType
+    ) || null;
   }
 }

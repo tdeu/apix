@@ -31,48 +31,36 @@ export class APIxCLI {
   }
 
   async analyze(options: AnalysisOptions): Promise<void> {
-    const progress = createProgressManager('ANALYSIS', { 
-      showTimer: true, 
-      showSteps: !options.verbose,
-      compact: false 
-    });
-
     try {
       const operations = [
         // Step 1: Scan project files
         async () => {
-          progress.updateSpinner('Scanning project structure and files...');
           return await this.analyzer.analyzeProject(options.directory);
         },
         
         // Step 2: Detect framework
         async () => {
-          progress.updateSpinner('Detecting framework and analyzing dependencies...');
           // This is done in step 1, just return the context
           return null;
         },
         
         // Step 3: Analyze opportunities  
         async () => {
-          progress.updateSpinner('Identifying integration opportunities...');
           return null;
         },
         
         // Step 4: Generate recommendations
         async () => {
-          progress.updateSpinner('Generating personalized recommendations...');
           const context = await this.analyzer.analyzeProject(options.directory);
           return await this.planner.generateRecommendations(context);
         }
       ];
 
-      progress.start();
       const results = await trackSteps(
         INTEGRATION_STEPS.ANALYSIS,
         operations,
-        { showTimer: true }
+        { showTimer: true, showSteps: !options.verbose, compact: false }
       );
-      progress.complete(true);
 
       const context = results[0] as ProjectContext;
       const recommendations = results[3] as any[];
@@ -82,7 +70,7 @@ export class APIxCLI {
       await this.promptNextSteps(recommendations);
 
     } catch (error) {
-      progress.fail('Analysis failed');
+      logger.error('Analysis failed');
       
       if (error instanceof Error) {
         // Handle compatibility errors with helpful messages
@@ -114,32 +102,56 @@ export class APIxCLI {
     // Select appropriate progress steps based on integration type
     const progressType = integration.toUpperCase() as keyof typeof INTEGRATION_STEPS;
     const steps = INTEGRATION_STEPS[progressType] || INTEGRATION_STEPS.HTS; // Default to HTS steps
-    
-    const progress = createProgressManager(progressType, { 
-      showTimer: true, 
-      showSteps: true,
-      compact: false 
-    });
 
     try {
+      // Shared state for early exit
+      let shouldSkipGeneration = false;
+      
       const operations = [
         // Step 1: Analyze project
         async () => {
-          progress.updateSpinner('Analyzing project structure and compatibility...');
           return await this.analyzer.analyzeProject('.');
         },
         
         // Step 2: Create plan
         async () => {
-          progress.updateSpinner('Creating integration plan and resolving dependencies...');
           const context = await this.analyzer.analyzeProject('.');
           return await this.planner.createIntegrationPlan(integration, options, context);
         },
         
         // Step 3: Validate plan
         async () => {
-          progress.updateSpinner('Validating integration plan and checking conflicts...');
           const context = await this.analyzer.analyzeProject('.');
+          
+          // Check for existing integration first
+          const existingIntegration = this.analyzer.getIntegrationInfo(context, integration);
+          if (existingIntegration && existingIntegration.active && !options.force) {
+            console.log(chalk.blue('\n🎯 Integration Detection Result:'));
+            console.log(chalk.green(`✅ ${integration.toUpperCase()} integration already installed!`));
+            console.log(chalk.gray(`   Version: ${existingIntegration.version || 'unknown'}`));
+            console.log(chalk.gray(`   Files: ${existingIntegration.files.length} detected`));
+            
+            if (existingIntegration.files.length > 0) {
+              console.log(chalk.gray('\n📁 Existing integration files:'));
+              existingIntegration.files.slice(0, 5).forEach(file => {
+                console.log(chalk.gray(`   • ${file}`));
+              });
+              if (existingIntegration.files.length > 5) {
+                console.log(chalk.gray(`   ... and ${existingIntegration.files.length - 5} more files`));
+              }
+            }
+            
+            console.log(chalk.cyan('\n💡 Available actions:'));
+            console.log(chalk.white(`   • Update integration: ${chalk.cyan(`apix add ${integration} --force`)}`));
+            console.log(chalk.white(`   • View status: ${chalk.cyan('apix status')}`));
+            console.log(chalk.white(`   • Full analysis: ${chalk.cyan('apix analyze')}`));
+            console.log(chalk.gray('\n✨ Your integration is ready to use!'));
+            
+            // Exit gracefully without throwing an error
+            shouldSkipGeneration = true;
+            return { context, plan: null, skipGeneration: true };
+          }
+          
           const plan = await this.planner.createIntegrationPlan(integration, options, context);
           
           // Run comprehensive validation
@@ -165,14 +177,15 @@ export class APIxCLI {
         
         // Step 4: Install dependencies (if needed)
         async () => {
-          progress.updateSpinner('Installing required dependencies...');
+          if (shouldSkipGeneration) return true; // Skip if existing integration detected
           // Dependencies are installed during generation, just return success
           return true;
         },
         
         // Step 5: Generate code
         async () => {
-          progress.updateSpinner('Generating components, hooks, and utilities...');
+          if (shouldSkipGeneration) return true; // Skip if existing integration detected
+          
           const context = await this.analyzer.analyzeProject('.');
           const plan = await this.planner.createIntegrationPlan(integration, options, context);
           return await this.generator.generateIntegration(plan, context);
@@ -180,23 +193,32 @@ export class APIxCLI {
         
         // Step 6: Configure
         async () => {
-          progress.updateSpinner('Updating configuration files...');
+          if (shouldSkipGeneration) return true; // Skip if existing integration detected
           // Configuration updates are done during generation
           return true;
         },
         
         // Step 7: Final validation
         async () => {
-          progress.updateSpinner('Running final validation checks...');
+          if (shouldSkipGeneration) return true; // Skip if existing integration detected
           // Could add post-generation validation here
           return true;
         }
       ];
 
-      progress.start();
-      const results = await trackSteps(steps, operations.slice(0, steps.length));
+      const results = await trackSteps(steps, operations.slice(0, steps.length), {
+        showTimer: true,
+        showSteps: true,
+        compact: false
+      });
+      
+      // Check if we should skip generation (existing integration detected)
+      if (shouldSkipGeneration) {
+        // Integration already exists, graceful exit
+        return;
+      }
+      
       const generationResult = results[4]; // Generation result is at index 4
-      progress.complete(true);
       
       // Show generation results with enhanced formatting
       console.log(chalk.green.bold('\n🎉 Integration Complete!\n'));
@@ -239,7 +261,7 @@ export class APIxCLI {
       }
 
     } catch (error) {
-      progress.fail(`Failed to add ${integration} integration`);
+      logger.error(`Failed to add ${integration} integration`);
       
       // Show contextual error help
       if (error instanceof Error) {
@@ -304,34 +326,41 @@ export class APIxCLI {
   }
 
   async health(options: { quick?: boolean; fix?: boolean }): Promise<void> {
-    const progress = createProgressManager('ANALYSIS', { 
-      showTimer: true, 
-      showSteps: true,
-      compact: options.quick 
-    });
-
     try {
-      progress.start();
+      const operations = [
+        // Step 1: Analyze project
+        async () => {
+          return await this.analyzer.analyzeProject('.');
+        },
+
+        // Step 2: Initialize health checker
+        async () => {
+          const context = await this.analyzer.analyzeProject('.');
+          return new HealthChecker(context);
+        },
+
+        // Step 3: Run health checks
+        async () => {
+          const context = await this.analyzer.analyzeProject('.');
+          const healthChecker = new HealthChecker(context);
+          return options.quick 
+            ? await healthChecker.runQuickHealthCheck() 
+            : await healthChecker.runCompleteHealthCheck();
+        },
+
+        // Step 4: Display results
+        async () => {
+          return true; // Just a placeholder for the display step
+        }
+      ];
+
+      const results = await trackSteps(
+        INTEGRATION_STEPS.ANALYSIS,
+        operations,
+        { showTimer: true, showSteps: true, compact: options.quick }
+      );
       
-      // Step 1: Analyze project
-      progress.updateSpinner('Analyzing project structure...');
-      const context = await this.analyzer.analyzeProject('.');
-      progress.nextStep(true);
-
-      // Step 2: Initialize health checker
-      progress.updateSpinner('Initializing health checks...');
-      const healthChecker = new HealthChecker(context);
-      progress.nextStep(true);
-
-      // Step 3: Run health checks
-      progress.updateSpinner('Running comprehensive health checks...');
-      const report = options.quick 
-        ? await healthChecker.runQuickHealthCheck() 
-        : await healthChecker.runCompleteHealthCheck();
-      progress.nextStep(true);
-
-      // Step 4: Display results
-      progress.updateSpinner('Generating health report...');
+      const report = results[2]; // Health report is at index 2
       if (options.quick) {
         const quickReport = report as { healthy: boolean; criticalIssues: string[] };
         if (quickReport.healthy) {
@@ -345,6 +374,8 @@ export class APIxCLI {
         }
       } else {
         const fullReport = report as any;
+        const context = results[0] as ProjectContext;
+        const healthChecker = new HealthChecker(context);
         console.log(healthChecker.formatHealthReport(fullReport));
         
         // Show suggestions for fixes if requested
@@ -356,11 +387,9 @@ export class APIxCLI {
           console.log(chalk.gray('   • Create .env.local with Hedera credentials'));
         }
       }
-      
-      progress.complete(true);
 
     } catch (error) {
-      progress.fail('Health check failed');
+      logger.error('Health check failed');
       throw error;
     }
   }
@@ -452,8 +481,33 @@ export class APIxCLI {
     console.log(chalk.cyan.bold('\n📊 Integration Status:'));
     
     Object.entries(status).forEach(([integration, info]: [string, any]) => {
-      const icon = info.active ? '✅' : '❌';
-      console.log(`${icon} ${integration}: ${info.status}`);
+      const icon = info.integrated ? '✅' : '❌';
+      const name = integration.toUpperCase();
+      
+      console.log(`${icon} ${name}: ${info.status}`);
+      
+      if (info.integrated) {
+        console.log(chalk.gray(`   Version: ${info.version}`));
+        console.log(chalk.gray(`   Files: ${info.fileCount} detected`));
+        
+        if (info.files.length > 0) {
+          const displayFiles = info.files.slice(0, 3);
+          console.log(chalk.gray(`   Key files: ${displayFiles.join(', ')}${info.files.length > 3 ? '...' : ''}`));
+        }
+      }
     });
+    
+    // Show summary
+    const integratedCount = Object.values(status).filter((info: any) => info.integrated).length;
+    const totalCount = Object.keys(status).length;
+    
+    console.log(chalk.gray(`\n📈 Summary: ${integratedCount}/${totalCount} integrations active`));
+    
+    if (integratedCount > 0) {
+      console.log(chalk.cyan('\n💡 Management commands:'));
+      console.log(chalk.gray('  • Add integration: apix add <type>'));
+      console.log(chalk.gray('  • Update integration: apix add <type> --force'));
+      console.log(chalk.gray('  • Health check: apix health'));
+    }
   }
 }

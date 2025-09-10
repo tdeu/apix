@@ -53,6 +53,64 @@ apix add consensus --topic "project-updates"
 - **Mainnet**: Production deployments
 - **Localnet**: Local development with Hedera Local Node
 
+### 🔍 Smart Integration Detection
+APix includes an intelligent integration detection system that automatically identifies existing Hedera integrations in your project:
+
+#### **Automatic Detection Features**
+- **HTS Integration Detection**: Identifies existing Token Service implementations
+- **Wallet Integration Detection**: Finds wallet connection components and hooks  
+- **Account Integration Detection**: Detects basic Hedera SDK usage patterns
+- **Version Detection**: Automatically identifies integration versions from code comments
+- **File Scanning**: Recursively scans project files for integration signatures
+
+#### **Integration Status Management**
+```bash
+# Check what's already integrated
+apix status
+
+# Example output:
+# 📊 Integration Status:
+# ✅ HTS: Integrated
+#    Version: 1.0.0
+#    Files: 3 detected
+#    Key files: hooks/useTokenOperations.ts, lib/hedera/hts-operations.ts...
+# ❌ WALLET: Not integrated
+# ❌ ACCOUNT: Not integrated
+
+# View detailed analysis
+apix analyze --verbose
+```
+
+#### **Existing Integration Handling**
+When APix detects existing integrations:
+
+```bash
+# Attempting to add existing integration
+apix add hts
+
+# ⚠️  HTS integration already detected!
+# Version: 1.0.0
+# Files found: 3
+# 
+# Integration files:
+#   • hooks/useTokenOperations.ts
+#   • lib/hedera/hts-operations.ts
+#   • components/TokenManager.tsx
+#
+# 💡 Options:
+#   • Update/overwrite: apix add hts --force
+#   • Check status: apix status
+#   • View all integrations: apix analyze
+```
+
+#### **Safe Integration Updates**
+- **Conflict Prevention**: Prevents accidental overwrites of existing code
+- **Force Override**: Use `--force` flag to intentionally update integrations
+- **Smart Merging**: Future versions will support intelligent code merging
+- **Backup Suggestions**: Provides guidance for safe integration updates
+
+This system ensures you never accidentally overwrite existing Hedera integrations while providing clear paths for intentional updates.
+
 ## 🏗️ Development Strategy
 
 ### 🎯 MVP-First Approach

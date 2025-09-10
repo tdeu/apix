@@ -37,10 +37,12 @@ export class ProgressManager {
     this.startTime = Date.now();
     this.stepStartTime = Date.now();
     
+    // Display steps only once at the beginning
     if (this.options.showSteps) {
       this.displaySteps();
     }
 
+    // Use either progress bar OR spinner, not both
     if (!this.options.compact) {
       this.progressBar = new cliProgress.SingleBar({
         format: chalk.cyan('{bar}') + ' {percentage}% | ETA: {eta}s | {value}/{total} steps',
@@ -110,30 +112,38 @@ export class ProgressManager {
     const step = this.steps[this.currentStep];
     this.stepStartTime = Date.now();
 
-    if (this.options.compact) {
-      this.spinner = ora({
-        text: step.label,
-        spinner: 'dots2'
-      }).start();
-    } else {
+    // Only use spinner when no progress bar is active
+    if (this.options.compact || !this.progressBar) {
       this.spinner = ora({
         text: `${step.label} (${this.currentStep + 1}/${this.steps.length})`,
         spinner: 'dots2'
       }).start();
+    } else {
+      // For progress bar mode, just print the current step without spinner
+      console.log(chalk.cyan(`⣾ ${step.label} (${this.currentStep + 1}/${this.steps.length})`));
     }
   }
 
   private completeCurrentStep(success: boolean): void {
-    if (!this.spinner) return;
-    
     const step = this.steps[this.currentStep];
     const stepTime = ((Date.now() - this.stepStartTime) / 1000).toFixed(1);
     
-    if (success) {
-      this.spinner.succeed(chalk.green(`✅ ${step.label}`) + 
-        (this.options.showTimer ? chalk.gray(` (${stepTime}s)`) : ''));
-    } else {
-      this.spinner.fail(chalk.red(`❌ ${step.label} failed`));
+    // Handle completion message based on display mode
+    if (this.spinner) {
+      if (success) {
+        this.spinner.succeed(chalk.green(`✅ ${step.label}`) + 
+          (this.options.showTimer ? chalk.gray(` (${stepTime}s)`) : ''));
+      } else {
+        this.spinner.fail(chalk.red(`❌ ${step.label} failed`));
+      }
+    } else if (this.progressBar) {
+      // For progress bar mode, just print completion status
+      if (success) {
+        console.log(chalk.green(`✔ ✅ ${step.label}`) + 
+          (this.options.showTimer ? chalk.gray(` (${stepTime}s)`) : ''));
+      } else {
+        console.log(chalk.red(`✖ ❌ ${step.label} failed`));
+      }
     }
 
     // Update progress bar

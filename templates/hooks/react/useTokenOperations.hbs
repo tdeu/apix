@@ -1,0 +1,306 @@
+{{!-- META: {"name": "useTokenOperations Hook", "description": "React hook for HTS token operations", "language": "typescript"} --}}
+{{#ifLanguage language "typescript"}}import { useState, useCallback } from 'react';
+import { HTSManager, CreateTokenParams, MintTokenParams, TransferTokenParams, TokenInfo } from '@/utils/hts-operations';
+
+export interface UseTokenOperationsReturn {
+  // State
+  isLoading: boolean;
+  error: string | null;
+  
+  // Token Creation
+  createToken: (params: CreateTokenParams) => Promise<{ tokenId: string; transactionId: string }>;
+  createFungibleToken: (name: string, symbol: string, initialSupply?: number, decimals?: number) => Promise<{ tokenId: string; transactionId: string }>;
+  createNFTCollection: (name: string, symbol: string, maxSupply?: number) => Promise<{ tokenId: string; transactionId: string }>;
+  
+  // Token Operations
+  mintToken: (params: MintTokenParams) => Promise<{ transactionId: string; newTotalSupply?: string }>;
+  burnToken: (tokenId: string, amount: number) => Promise<{ transactionId: string; newTotalSupply?: string }>;
+  transferToken: (params: TransferTokenParams) => Promise<{ transactionId: string }>;
+  associateToken: (accountId: string, tokenId: string) => Promise<{ transactionId: string }>;
+  
+  // Token Information
+  getTokenInfo: (tokenId: string) => Promise<TokenInfo>;
+  getAccountTokenBalance: (accountId: string, tokenId: string) => Promise<{ balance: string }>;
+  
+  // Utility
+  clearError: () => void;
+}
+
+export const useTokenOperations = (): UseTokenOperationsReturn => {
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const htsManager = new HTSManager();
+
+  const handleAsyncOperation = useCallback(async <T>(operation: () => Promise<T>): Promise<T> => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const result = await operation();
+      return result;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const createToken = useCallback(
+    (params: CreateTokenParams) => handleAsyncOperation(() => htsManager.createToken(params)),
+    [handleAsyncOperation]
+  );
+
+  const createFungibleToken = useCallback(
+    (name: string, symbol: string, initialSupply?: number, decimals?: number) =>
+      handleAsyncOperation(() => htsManager.createFungibleToken(name, symbol, initialSupply, decimals)),
+    [handleAsyncOperation]
+  );
+
+  const createNFTCollection = useCallback(
+    (name: string, symbol: string, maxSupply?: number) =>
+      handleAsyncOperation(() => htsManager.createNFTCollection(name, symbol, maxSupply)),
+    [handleAsyncOperation]
+  );
+
+  const mintToken = useCallback(
+    (params: MintTokenParams) => handleAsyncOperation(() => htsManager.mintToken(params)),
+    [handleAsyncOperation]
+  );
+
+  const burnToken = useCallback(
+    (tokenId: string, amount: number) => handleAsyncOperation(() => htsManager.burnToken(tokenId, amount)),
+    [handleAsyncOperation]
+  );
+
+  const transferToken = useCallback(
+    (params: TransferTokenParams) => handleAsyncOperation(() => htsManager.transferToken(params)),
+    [handleAsyncOperation]
+  );
+
+  const associateToken = useCallback(
+    (accountId: string, tokenId: string) => handleAsyncOperation(() => htsManager.associateToken(accountId, tokenId)),
+    [handleAsyncOperation]
+  );
+
+  const getTokenInfo = useCallback(
+    (tokenId: string) => handleAsyncOperation(() => htsManager.getTokenInfo(tokenId)),
+    [handleAsyncOperation]
+  );
+
+  const getAccountTokenBalance = useCallback(
+    (accountId: string, tokenId: string) => handleAsyncOperation(() => htsManager.getAccountTokenBalance(accountId, tokenId)),
+    [handleAsyncOperation]
+  );
+
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
+  return {
+    // State
+    isLoading,
+    error,
+    
+    // Token Creation
+    createToken,
+    createFungibleToken,
+    createNFTCollection,
+    
+    // Token Operations
+    mintToken,
+    burnToken,
+    transferToken,
+    associateToken,
+    
+    // Token Information
+    getTokenInfo,
+    getAccountTokenBalance,
+    
+    // Utility
+    clearError
+  };
+};
+
+// Convenience hook for token creation only
+export const useTokenCreation = () => {
+  const { createToken, createFungibleToken, createNFTCollection, isLoading, error, clearError } = useTokenOperations();
+  
+  return {
+    createToken,
+    createFungibleToken,
+    createNFTCollection,
+    isLoading,
+    error,
+    clearError
+  };
+};
+
+// Convenience hook for token management (mint, burn, transfer)
+export const useTokenManagement = () => {
+  const { mintToken, burnToken, transferToken, associateToken, isLoading, error, clearError } = useTokenOperations();
+  
+  return {
+    mintToken,
+    burnToken,
+    transferToken,
+    associateToken,
+    isLoading,
+    error,
+    clearError
+  };
+};
+
+// Convenience hook for token information queries
+export const useTokenInfo = () => {
+  const { getTokenInfo, getAccountTokenBalance, isLoading, error, clearError } = useTokenOperations();
+  
+  return {
+    getTokenInfo,
+    getAccountTokenBalance,
+    isLoading,
+    error,
+    clearError
+  };
+};
+{{else}}import { useState, useCallback } from 'react';
+import { HTSManager } from '@/utils/hts-operations';
+
+export const useTokenOperations = () => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const htsManager = new HTSManager();
+
+  const handleAsyncOperation = useCallback(async (operation) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const result = await operation();
+      return result;
+    } catch (err) {
+      const errorMessage = err.message || 'An unknown error occurred';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const createToken = useCallback(
+    (params) => handleAsyncOperation(() => htsManager.createToken(params)),
+    [handleAsyncOperation]
+  );
+
+  const createFungibleToken = useCallback(
+    (name, symbol, initialSupply, decimals) =>
+      handleAsyncOperation(() => htsManager.createFungibleToken(name, symbol, initialSupply, decimals)),
+    [handleAsyncOperation]
+  );
+
+  const createNFTCollection = useCallback(
+    (name, symbol, maxSupply) =>
+      handleAsyncOperation(() => htsManager.createNFTCollection(name, symbol, maxSupply)),
+    [handleAsyncOperation]
+  );
+
+  const mintToken = useCallback(
+    (params) => handleAsyncOperation(() => htsManager.mintToken(params)),
+    [handleAsyncOperation]
+  );
+
+  const burnToken = useCallback(
+    (tokenId, amount) => handleAsyncOperation(() => htsManager.burnToken(tokenId, amount)),
+    [handleAsyncOperation]
+  );
+
+  const transferToken = useCallback(
+    (params) => handleAsyncOperation(() => htsManager.transferToken(params)),
+    [handleAsyncOperation]
+  );
+
+  const associateToken = useCallback(
+    (accountId, tokenId) => handleAsyncOperation(() => htsManager.associateToken(accountId, tokenId)),
+    [handleAsyncOperation]
+  );
+
+  const getTokenInfo = useCallback(
+    (tokenId) => handleAsyncOperation(() => htsManager.getTokenInfo(tokenId)),
+    [handleAsyncOperation]
+  );
+
+  const getAccountTokenBalance = useCallback(
+    (accountId, tokenId) => handleAsyncOperation(() => htsManager.getAccountTokenBalance(accountId, tokenId)),
+    [handleAsyncOperation]
+  );
+
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
+  return {
+    // State
+    isLoading,
+    error,
+    
+    // Token Creation
+    createToken,
+    createFungibleToken,
+    createNFTCollection,
+    
+    // Token Operations
+    mintToken,
+    burnToken,
+    transferToken,
+    associateToken,
+    
+    // Token Information
+    getTokenInfo,
+    getAccountTokenBalance,
+    
+    // Utility
+    clearError
+  };
+};
+
+// Convenience hooks
+export const useTokenCreation = () => {
+  const { createToken, createFungibleToken, createNFTCollection, isLoading, error, clearError } = useTokenOperations();
+  
+  return {
+    createToken,
+    createFungibleToken,
+    createNFTCollection,
+    isLoading,
+    error,
+    clearError
+  };
+};
+
+export const useTokenManagement = () => {
+  const { mintToken, burnToken, transferToken, associateToken, isLoading, error, clearError } = useTokenOperations();
+  
+  return {
+    mintToken,
+    burnToken,
+    transferToken,
+    associateToken,
+    isLoading,
+    error,
+    clearError
+  };
+};
+
+export const useTokenInfo = () => {
+  const { getTokenInfo, getAccountTokenBalance, isLoading, error, clearError } = useTokenOperations();
+  
+  return {
+    getTokenInfo,
+    getAccountTokenBalance,
+    isLoading,
+    error,
+    clearError
+  };
+};
+{{/ifLanguage}}
