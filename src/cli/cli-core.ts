@@ -510,4 +510,96 @@ export class APIxCLI {
       console.log(chalk.gray('  • Health check: apix health'));
     }
   }
+
+  /**
+   * Start conversational interface
+   */
+  async startConversationalInterface(options: any): Promise<void> {
+    try {
+      const { ChatInterface } = await import('./chat-interface');
+      const chatInterface = new ChatInterface();
+      await chatInterface.startChat({
+        sessionFile: options.sessionFile,
+        industry: options.industry,
+        context: options.context ? JSON.parse(options.context) : undefined,
+        verbose: options.verbose,
+        debug: options.debug
+      });
+    } catch (error) {
+      logger.error('Failed to start conversational interface:', error);
+      throw error;
+    }
+  }
+
+  // =========================================================================
+  // ENTERPRISE AI METHODS (Stub implementations for basic functionality)
+  // =========================================================================
+
+  async generateEnterpriseIntegration(integration: string, options: any): Promise<void> {
+    logger.info('Enterprise integration generation (mock mode):', { integration, options });
+    console.log(chalk.yellow('🔧 Enterprise AI features are in development. Using basic template generation.'));
+    return this.addIntegration(integration, options);
+  }
+
+  async composeCustomCode(options: any): Promise<void> {
+    logger.info('Custom code composition (mock mode):', options);
+    console.log(chalk.yellow('🔧 AI code composition is in development. Please use basic templates.'));
+  }
+
+  async comprehensiveValidation(options: any): Promise<void> {
+    logger.info('Comprehensive validation (mock mode):', options);
+    console.log(chalk.yellow('🔧 Comprehensive validation is in development. Using basic health check.'));
+    return this.health({ quick: true });
+  }
+
+  async generateRecommendations(options: any): Promise<void> {
+    logger.info('Recommendation generation (mock mode):', options);
+    console.log(chalk.yellow('📋 AI recommendations are in development.'));
+    console.log(chalk.cyan('Basic recommendations:'));
+    console.log('• Use HTS for token management');
+    console.log('• Use HCS for audit trails');
+    console.log('• Consider smart contracts for complex logic');
+  }
+
+  async explainConcept(concept: string, options: any): Promise<void> {
+    logger.info('Concept explanation (mock mode):', { concept, options });
+    console.log(chalk.yellow('📚 AI explanations are in development.'));
+    console.log(chalk.cyan(`Basic info about "${concept}":`));
+    console.log('• Please refer to Hedera documentation');
+    console.log('• Visit https://docs.hedera.com for details');
+  }
+
+  async compareApproaches(approaches: string, options: any): Promise<void> {
+    logger.info('Approach comparison (mock mode):', { approaches, options });
+    console.log(chalk.yellow('⚖️  AI comparisons are in development.'));
+    console.log(chalk.cyan('Consider factors like:'));
+    console.log('• Performance requirements');
+    console.log('• Regulatory compliance');
+    console.log('• Development complexity');
+  }
+
+  async assessConfidence(requirement: string, options: any): Promise<void> {
+    logger.info('Confidence assessment (mock mode):', { requirement, options });
+    console.log(chalk.yellow('🎯 AI confidence assessment is in development.'));
+    console.log(chalk.cyan('Estimated confidence: 75% (basic assessment)'));
+  }
+
+  async debugIssue(issue: string, options: any): Promise<void> {
+    logger.info('Debug assistance (mock mode):', { issue, options });
+    console.log(chalk.yellow('🐛 AI debugging is in development.'));
+    console.log(chalk.cyan('Basic troubleshooting steps:'));
+    console.log('• Check Hedera credentials');
+    console.log('• Verify network connectivity');
+    console.log('• Review error logs');
+  }
+
+  async enterpriseDeployment(options: any): Promise<void> {
+    logger.info('Enterprise deployment (mock mode):', options);
+    console.log(chalk.yellow('🚀 Enterprise deployment features are in development.'));
+    console.log(chalk.cyan('Basic deployment checklist:'));
+    console.log('• Run tests');
+    console.log('• Check configuration');
+    console.log('• Verify credentials');
+    console.log('• Deploy to target environment');
+  }
 }

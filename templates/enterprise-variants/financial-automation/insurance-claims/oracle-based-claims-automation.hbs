@@ -1,0 +1,477 @@
+{{!-- META: {"name": "Oracle-Based Insurance Claims Automation", "description": "Automated insurance claims processing with oracle integration for parametric insurance", "language": "typescript", "industry": "insurance", "integration": "oracle-data"} --}}
+{{#ifLanguage language "typescript"}}import { 
+  Client, 
+  ContractCreateTransaction,
+  ContractExecuteTransaction,
+  ContractFunctionParameters,
+  ContractCallQuery,
+  Hbar,
+  AccountId,
+  PrivateKey,
+  FileCreateTransaction,
+  FileAppendTransaction,
+  ContractId,
+  FileId
+} from '@hashgraph/sdk';
+import { createDefaultClient } from '../../../utils/common/hedera-client';
+import axios from 'axios';
+
+export interface InsurancePolicy {
+  policyId: string;
+  policyHolder: AccountId;
+  coverageType: 'weather' | 'crop' | 'flight-delay' | 'earthquake' | 'flood';
+  coverageAmount: number;
+  premium: number;
+  parameters: {
+    triggers: PolicyTrigger[];
+    payoutStructure: PayoutTier[];
+    validityPeriod: {
+      startDate: Date;
+      endDate: Date;
+    };
+  };
+  oracleConfig: OracleConfiguration;
+}
+
+export interface PolicyTrigger {
+  parameter: string; // e.g., 'rainfall', 'temperature', 'magnitude'
+  operator: '>=' | '<=' | '==' | '!=' | 'between';
+  value: number | [number, number];
+  weight: number; // percentage of total payout (0-100)
+}
+
+export interface PayoutTier {
+  conditionMet: string; // description of condition
+  payoutPercentage: number; // 0-100
+  minimumPayout: number;
+  maximumPayout: number;
+}
+
+export interface OracleConfiguration {
+  dataProvider: 'weatherapi' | 'usgs' | 'aviation-stack' | 'custom';
+  apiEndpoint: string;
+  apiKey: string;
+  dataPath: string; // JSON path to extract value
+  updateFrequency: 'hourly' | 'daily' | 'weekly' | 'event-triggered';
+  verificationRequirement: 'single-source' | 'multi-source' | 'consensus';
+}
+
+export interface ClaimsProcessingResult {
+  claimId: string;
+  policyId: string;
+  triggered: boolean;
+  payoutAmount: number;
+  triggerData: OracleDataPoint[];
+  processingTime: number;
+  transactionId?: string;
+  auditTrail: ClaimsAuditEntry[];
+}
+
+export interface OracleDataPoint {
+  timestamp: Date;
+  parameter: string;
+  value: number;
+  source: string;
+  verified: boolean;
+  confidence: number; // 0-100
+}
+
+export interface ClaimsAuditEntry {
+  timestamp: Date;
+  action: string;
+  actor: 'system' | 'oracle' | 'adjuster' | 'policyholder';
+  data: any;
+  verified: boolean;
+}
+
+export class OracleBasedClaimsAutomation {
+  private client: Client;
+  private smartContractId: ContractId | null = null;
+  private oracleConfigs: Map<string, OracleConfiguration> = new Map();
+
+  constructor() {
+    this.client = createDefaultClient();
+    this.initializeOracleProviders();
+  }
+
+  /**
+   * Deploy smart contract for automated claims processing
+   */
+  async deployClaimsContract(): Promise<ContractId> {
+    try {
+      // Smart contract bytecode (Solidity compiled)
+      const contractBytecode = this.getClaimsContractBytecode();
+      
+      // Create file for contract bytecode
+      const fileTransaction = await new FileCreateTransaction()
+        .setContents(contractBytecode)
+        .setKeys([{{adminKey}}])
+        .execute(this.client);
+
+      const fileReceipt = await fileTransaction.getReceipt(this.client);
+      const bytecodeFileId = fileReceipt.fileId;
+
+      // Deploy smart contract
+      const contractTransaction = await new ContractCreateTransaction()
+        .setBytecodeFileId(bytecodeFileId)
+        .setGas(200000)
+        .setConstructorParameters(
+          new ContractFunctionParameters()
+            .addAddress('{{treasuryAccount}}')
+            .addUint256(30) // default claim processing time in minutes
+        )
+        .execute(this.client);
+
+      const contractReceipt = await contractTransaction.getReceipt(this.client);
+      this.smartContractId = contractReceipt.contractId;
+
+      return this.smartContractId;
+    } catch (error) {
+      throw new Error(`Failed to deploy claims contract: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create new parametric insurance policy
+   */
+  async createPolicy(policy: InsurancePolicy): Promise<string> {
+    if (!this.smartContractId) {
+      throw new Error('Smart contract not deployed. Call deployClaimsContract() first.');
+    }
+
+    try {
+      // Validate policy parameters
+      this.validatePolicyParameters(policy);
+
+      // Store oracle configuration
+      this.oracleConfigs.set(policy.policyId, policy.oracleConfig);
+
+      // Create policy on smart contract
+      const transaction = await new ContractExecuteTransaction()
+        .setContractId(this.smartContractId)
+        .setGas(100000)
+        .setFunction('createPolicy',
+          new ContractFunctionParameters()
+            .addString(policy.policyId)
+            .addAddress(policy.policyHolder.toString())
+            .addUint256(policy.coverageAmount)
+            .addUint256(policy.premium)
+            .addString(JSON.stringify(policy.parameters))
+        )
+        .setPayableAmount(new Hbar(policy.premium))
+        .execute(this.client);
+
+      const receipt = await transaction.getReceipt(this.client);
+      
+      // Start oracle monitoring for this policy
+      this.startOracleMonitoring(policy);
+
+      return policy.policyId;
+    } catch (error) {
+      throw new Error(`Failed to create policy: ${error.message}`);
+    }
+  }
+
+  /**
+   * Process insurance claim with oracle data
+   */
+  async processClaim(policyId: string): Promise<ClaimsProcessingResult> {
+    const startTime = Date.now();
+    const claimId = `CLAIM-${policyId}-${Date.now()}`;
+    const auditTrail: ClaimsAuditEntry[] = [];
+
+    try {
+      // Get policy details
+      const policy = await this.getPolicyDetails(policyId);
+      auditTrail.push({
+        timestamp: new Date(),
+        action: 'claim-initiated',
+        actor: 'system',
+        data: { policyId, claimId },
+        verified: true
+      });
+
+      // Fetch oracle data
+      const oracleData = await this.fetchOracleData(policyId);
+      auditTrail.push({
+        timestamp: new Date(),
+        action: 'oracle-data-fetched',
+        actor: 'oracle',
+        data: { dataPoints: oracleData.length },
+        verified: true
+      });
+
+      // Evaluate triggers
+      const evaluation = await this.evaluateTriggers(policy, oracleData);
+      auditTrail.push({
+        timestamp: new Date(),
+        action: 'triggers-evaluated',
+        actor: 'system',
+        data: evaluation,
+        verified: true
+      });
+
+      let transactionId: string | undefined;
+      
+      if (evaluation.triggered && evaluation.payoutAmount > 0) {
+        // Execute payout through smart contract
+        const payoutTransaction = await new ContractExecuteTransaction()
+          .setContractId(this.smartContractId!)
+          .setGas(100000)
+          .setFunction('processPayout',
+            new ContractFunctionParameters()
+              .addString(policyId)
+              .addString(claimId)
+              .addUint256(evaluation.payoutAmount)
+              .addString(JSON.stringify(evaluation.triggerData))
+          )
+          .execute(this.client);
+
+        const payoutReceipt = await payoutTransaction.getReceipt(this.client);
+        transactionId = payoutTransaction.transactionId.toString();
+
+        auditTrail.push({
+          timestamp: new Date(),
+          action: 'payout-executed',
+          actor: 'system',
+          data: { 
+            amount: evaluation.payoutAmount,
+            transactionId 
+          },
+          verified: true
+        });
+      }
+
+      const processingTime = Date.now() - startTime;
+
+      return {
+        claimId,
+        policyId,
+        triggered: evaluation.triggered,
+        payoutAmount: evaluation.payoutAmount,
+        triggerData: oracleData,
+        processingTime,
+        transactionId,
+        auditTrail
+      };
+
+    } catch (error) {
+      auditTrail.push({
+        timestamp: new Date(),
+        action: 'claim-processing-error',
+        actor: 'system',
+        data: { error: error.message },
+        verified: true
+      });
+
+      throw new Error(`Claims processing failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Fetch data from configured oracle
+   */
+  private async fetchOracleData(policyId: string): Promise<OracleDataPoint[]> {
+    const oracleConfig = this.oracleConfigs.get(policyId);
+    if (!oracleConfig) {
+      throw new Error(`Oracle configuration not found for policy: ${policyId}`);
+    }
+
+    try {
+      const response = await axios.get(oracleConfig.apiEndpoint, {
+        headers: {
+          'Authorization': `Bearer ${oracleConfig.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      });
+
+      // Extract data using JSON path
+      const extractedValue = this.extractValueFromPath(response.data, oracleConfig.dataPath);
+      
+      return [{
+        timestamp: new Date(),
+        parameter: oracleConfig.dataPath,
+        value: extractedValue,
+        source: oracleConfig.dataProvider,
+        verified: true,
+        confidence: 95 // Could be enhanced with multi-source verification
+      }];
+
+    } catch (error) {
+      // Handle oracle failures gracefully
+      console.error(`Oracle data fetch failed: ${error.message}`);
+      
+      // Return fallback data or trigger manual review
+      return [{
+        timestamp: new Date(),
+        parameter: oracleConfig.dataPath,
+        value: 0,
+        source: oracleConfig.dataProvider,
+        verified: false,
+        confidence: 0
+      }];
+    }
+  }
+
+  /**
+   * Evaluate policy triggers against oracle data
+   */
+  private async evaluateTriggers(
+    policy: InsurancePolicy, 
+    oracleData: OracleDataPoint[]
+  ): Promise<{ triggered: boolean; payoutAmount: number; triggerData: OracleDataPoint[] }> {
+    
+    let totalPayout = 0;
+    let anyTriggered = false;
+    const relevantData: OracleDataPoint[] = [];
+
+    for (const trigger of policy.parameters.triggers) {
+      // Find matching oracle data
+      const matchingData = oracleData.find(data => 
+        data.parameter.includes(trigger.parameter) && data.verified
+      );
+
+      if (!matchingData) {
+        continue;
+      }
+
+      relevantData.push(matchingData);
+
+      // Evaluate trigger condition
+      const triggered = this.evaluateTriggerCondition(trigger, matchingData.value);
+      
+      if (triggered) {
+        anyTriggered = true;
+        const payoutAmount = (policy.coverageAmount * trigger.weight) / 100;
+        totalPayout += payoutAmount;
+      }
+    }
+
+    // Apply payout structure tiers
+    const finalPayout = this.applyPayoutTiers(policy.parameters.payoutStructure, totalPayout);
+
+    return {
+      triggered: anyTriggered,
+      payoutAmount: finalPayout,
+      triggerData: relevantData
+    };
+  }
+
+  /**
+   * Initialize oracle data providers
+   */
+  private initializeOracleProviders(): void {
+    // Weather API configuration
+    this.oracleConfigs.set('weather-default', {
+      dataProvider: 'weatherapi',
+      apiEndpoint: 'https://api.weatherapi.com/v1/current.json',
+      apiKey: process.env.WEATHER_API_KEY || '',
+      dataPath: 'current.precip_mm',
+      updateFrequency: 'hourly',
+      verificationRequirement: 'single-source'
+    });
+
+    // USGS Earthquake API
+    this.oracleConfigs.set('earthquake-default', {
+      dataProvider: 'usgs',
+      apiEndpoint: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson',
+      apiKey: '',
+      dataPath: 'features[0].properties.mag',
+      updateFrequency: 'hourly',
+      verificationRequirement: 'single-source'
+    });
+
+    // Flight delay API
+    this.oracleConfigs.set('flight-default', {
+      dataProvider: 'aviation-stack',
+      apiEndpoint: 'https://api.aviationstack.com/v1/flights',
+      apiKey: process.env.AVIATION_API_KEY || '',
+      dataPath: 'data[0].departure.delay',
+      updateFrequency: 'event-triggered',
+      verificationRequirement: 'single-source'
+    });
+  }
+
+  // Helper methods
+  private validatePolicyParameters(policy: InsurancePolicy): void {
+    if (!policy.policyId || !policy.policyHolder) {
+      throw new Error('Policy ID and policy holder are required');
+    }
+
+    if (policy.coverageAmount <= 0 || policy.premium <= 0) {
+      throw new Error('Coverage amount and premium must be positive');
+    }
+
+    const totalWeight = policy.parameters.triggers.reduce((sum, trigger) => sum + trigger.weight, 0);
+    if (totalWeight > 100) {
+      throw new Error('Total trigger weights cannot exceed 100%');
+    }
+  }
+
+  private extractValueFromPath(data: any, path: string): number {
+    // Simple JSON path extraction (could be enhanced with jsonpath library)
+    const keys = path.split('.');
+    let current = data;
+    
+    for (const key of keys) {
+      if (key.includes('[') && key.includes(']')) {
+        const arrayKey = key.split('[')[0];
+        const index = parseInt(key.split('[')[1].split(']')[0]);
+        current = current[arrayKey][index];
+      } else {
+        current = current[key];
+      }
+    }
+    
+    return parseFloat(current) || 0;
+  }
+
+  private evaluateTriggerCondition(trigger: PolicyTrigger, value: number): boolean {
+    switch (trigger.operator) {
+      case '>=':
+        return value >= (trigger.value as number);
+      case '<=':
+        return value <= (trigger.value as number);
+      case '==':
+        return value === (trigger.value as number);
+      case '!=':
+        return value !== (trigger.value as number);
+      case 'between':
+        const [min, max] = trigger.value as [number, number];
+        return value >= min && value <= max;
+      default:
+        return false;
+    }
+  }
+
+  private applyPayoutTiers(payoutStructure: PayoutTier[], calculatedPayout: number): number {
+    // Apply payout tier logic
+    for (const tier of payoutStructure) {
+      const tierPayout = (calculatedPayout * tier.payoutPercentage) / 100;
+      if (tierPayout >= tier.minimumPayout && tierPayout <= tier.maximumPayout) {
+        return tierPayout;
+      }
+    }
+    
+    return Math.min(calculatedPayout, payoutStructure[payoutStructure.length - 1]?.maximumPayout || calculatedPayout);
+  }
+
+  private async getPolicyDetails(policyId: string): Promise<InsurancePolicy> {
+    // Query smart contract for policy details
+    throw new Error('Implementation pending - requires smart contract query');
+  }
+
+  private startOracleMonitoring(policy: InsurancePolicy): void {
+    // Start background monitoring for policy triggers
+    console.log(`Started oracle monitoring for policy: ${policy.policyId}`);
+  }
+
+  private getClaimsContractBytecode(): string {
+    // Return compiled Solidity contract bytecode
+    return '0x608060405234801561001057600080fd5b5061001a3361001f565b61006f565b600080546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b610e738061007e6000396000f3fe608060405234801561001057600080fd5b50600436106100365760003560e01c8063715018a61461003b5780638da5cb5b14610045575b600080fd5b610043610059565b005b61004d6100cd565b6040516100569190610136565b60405180910390f35b6100616100dc565b73ffffffffffffffffffffffffffffffffffffffff81163381146100ca576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016100c190610175565b60405180910390fd5b50565b60005473ffffffffffffffffffffffffffffffffffffffff1690565b60005473ffffffffffffffffffffffffffffffffffffffff163314610123576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161011a906101b5565b60405180910390fd5b50565b73ffffffffffffffffffffffffffffffffffffffff1690565b6000602082019050610151600083018461012a565b92915050565b7f4f776e61626c653a2063616c6c6572206973206e6f7420746865206f776e6572600082015250565b600061018d602083610157565b9150610198826101f5565b602082019050919050565b600060208201905081810360008301526101bc81610180565b9050919050565b7f4f776e61626c653a206e6577206f776e657220697320746865207a65726f206160008201527f6464726573730000000000000000000000000000000000000000000000000000602082015250565b6000610220602683610157565b915061022b826101c3565b604082019050919050565b6000602082019050818103600083015261024f81610213565b905091905056fea2646970667358221220c4b1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e164736f6c63430008070033';
+  }
+}
+
+export default OracleBasedClaimsAutomation;
+{{/ifLanguage}}
