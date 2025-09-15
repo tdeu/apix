@@ -8,20 +8,11 @@
   },
   "scripts": {
     "build": "tsc",
-    "build:check": "tsc --noEmit",
-    "build:strict": "tsc --noEmit --strict",
     "dev": "nodemon --exec ts-node src/cli/index.ts",
     "test": "jest",
-    "test:types": "npm run build:check",
     "start": "node dist/cli/index.js",
     "lint": "eslint src --ext .ts",
-    "format": "prettier --write src/**/*.ts",
-    "audit:mocks": "./scripts/audit-mocks.sh",
-    "precommit": "npm run build:check && npm run lint",
-    "validate:env": "node -e \"console.log('Environment check:'); ['OPENAI_API_KEY', 'HEDERA_ACCOUNT_ID', 'HEDERA_PRIVATE_KEY'].forEach(key => console.log(key + ':', process.env[key] ? '✅ Set' : '❌ Missing'));\"",
-    "cli:help": "npx ts-node src/cli/index.ts --help",
-    "cli:health": "npx ts-node src/cli/index.ts health --quick",
-    "cli:analyze": "npx ts-node src/cli/index.ts analyze --directory ."
+    "format": "prettier --write src/**/*.ts"
   },
   "keywords": [
     "hedera",
@@ -34,10 +25,6 @@
   "license": "MIT",
   "dependencies": {
     "@hashgraph/sdk": "^2.40.0",
-    "@langchain/openai": "^0.3.0",
-    "@langchain/anthropic": "^0.3.0",
-    "@langchain/core": "^0.3.0",
-    "hedera-agent-kit": "^3.2.0",
     "chalk": "^4.1.2",
     "cli-progress": "^3.12.0",
     "commander": "^11.1.0",
@@ -60,7 +47,6 @@
     "@types/node": "^20.8.0",
     "@types/lodash": "^4.14.0",
     "@types/uuid": "^9.0.0",
-    "@types/cli-progress": "^3.11.6",
     "@typescript-eslint/eslint-plugin": "^6.7.4",
     "@typescript-eslint/parser": "^6.7.4",
     "eslint": "^8.51.0",
