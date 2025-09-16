@@ -186,6 +186,11 @@ export class AICodeCompositionEngine {
     } catch (error: any) {
       logger.warn('Primary LLM failed for composition strategy, using fallback', { error: error?.message });
       
+      if (!this.secondaryLLM) {
+        logger.warn('No secondary LLM available, using mock composition strategy');
+        return this.getMockCompositionStrategy(request);
+      }
+
       const response = await this.secondaryLLM.invoke([
         { role: 'system', content: this.getCompositionSystemPrompt() },
         { role: 'user', content: analysisPrompt }
@@ -1155,7 +1160,7 @@ Improve the code addressing these quality issues while maintaining functionality
     let explanation = `AI code composition completed using ${strategy.approach} strategy. `;
 
     if (strategy.approach === 'template-based') {
-      explanation += `Generated ${strategy.templateIds?.length || 0} files from existing templates. `;
+      explanation += `Generated ${strategy.templateCombinations?.length || 0} files from existing templates. `;
     } else if (strategy.approach === 'ai-enhanced') {
       explanation += `Used AI to enhance and customize templates for your specific requirements. `;
     } else if (strategy.approach === 'novel-creation') {

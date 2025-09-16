@@ -11,7 +11,11 @@
       "Bash(npm link:*)",
       "Bash(apix analyze:*)",
       "Bash(apix add:*)",
-      "Bash(apix health:*)"
+      "Bash(apix health:*)",
+      "Bash(npm run audit:mocks:*)",
+      "Bash(cut:*)",
+      "Bash(npx ts-node:*)",
+      "Read(//Users/diop/**)"
     ],
     "deny": [],
     "ask": []
