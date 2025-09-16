@@ -60,6 +60,7 @@ export class SecurityManager {
         severity: 'info',
         description: 'Security framework initialized successfully',
         timestamp: new Date(),
+        outcome: 'success',
         metadata: {
           encryptionEnabled: this.config.encryptionConfig.enabled,
           auditingEnabled: this.config.auditConfig.enabled,
@@ -87,6 +88,7 @@ export class SecurityManager {
         severity: 'info',
         description: 'Starting code security validation',
         timestamp: new Date(),
+        outcome: 'success',
         metadata: { codeLength: code.length, context }
       });
 
@@ -119,6 +121,7 @@ export class SecurityManager {
         severity: result.passed ? 'info' : 'warn',
         description: `Code security validation ${result.passed ? 'passed' : 'failed'}`,
         timestamp: new Date(),
+        outcome: result.passed ? 'success' : 'failure',
         metadata: {
           securityScore: result.securityScore,
           vulnerabilityCount: vulnerabilities.length,
@@ -137,6 +140,7 @@ export class SecurityManager {
         severity: 'error',
         description: 'Code security validation failed',
         timestamp: new Date(),
+        outcome: 'error',
         metadata: { error: error.message }
       });
 

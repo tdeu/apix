@@ -288,6 +288,42 @@ program
     }
   });
 
+program
+  .command('create-token')
+  .description('Create a token directly on Hedera blockchain (live blockchain operation)')
+  .option('-n, --name <name>', 'Token name', 'Test Token')
+  .option('-s, --symbol <symbol>', 'Token symbol', 'TEST')
+  .option('-d, --decimals <decimals>', 'Token decimals', '8')
+  .option('--supply <supply>', 'Initial supply', '1000000')
+  .option('--admin-key', 'Enable admin key', false)
+  .option('--supply-key', 'Enable supply key', false)
+  .option('--freeze-key', 'Enable freeze key', false)
+  .option('--wipe-key', 'Enable wipe key', false)
+  .option('--testnet', 'Use testnet (default)')
+  .option('--mainnet', 'Use mainnet (production)')
+  .action(async (options) => {
+    try {
+      await ensureCliInitialized();
+
+      // Convert string options to numbers where needed
+      const tokenOptions = {
+        name: options.name,
+        symbol: options.symbol,
+        decimals: parseInt(options.decimals),
+        initialSupply: parseInt(options.supply),
+        adminKey: options.adminKey,
+        supplyKey: options.supplyKey,
+        freezeKey: options.freezeKey,
+        wipeKey: options.wipeKey
+      };
+
+      await cli.createTokenOnBlockchain(tokenOptions);
+    } catch (error) {
+      logger.error('Token creation failed:', error);
+      process.exit(1);
+    }
+  });
+
 program.showHelpAfterError();
 
 try {

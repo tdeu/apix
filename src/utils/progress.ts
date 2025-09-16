@@ -68,13 +68,15 @@ export class ProgressManager {
     }
   }
 
-  complete(success: boolean = true): void {
+  async complete(success: boolean = true): Promise<void> {
     if (this.spinner) {
       if (success) {
         this.spinner.succeed(chalk.green('✅ All steps completed successfully!'));
       } else {
         this.spinner.fail(chalk.red('❌ Process failed'));
       }
+      // Small delay to ensure spinner cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     if (this.progressBar) {
@@ -254,7 +256,7 @@ export function withProgress<T>(
     try {
       progress.start();
       const result = await operation();
-      progress.complete(true);
+      await progress.complete(true);
       resolve(result);
     } catch (error) {
       progress.fail(error instanceof Error ? error.message : 'Unknown error');
@@ -287,7 +289,7 @@ export function trackSteps<T>(
         }
       }
       
-      progress.complete(true);
+      await progress.complete(true);
       resolve(results);
     } catch (error) {
       progress.fail(error instanceof Error ? error.message : 'Unknown error');

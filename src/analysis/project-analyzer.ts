@@ -94,7 +94,19 @@ export class ProjectAnalyzer {
     const hasVue = !!deps.vue;
     const hasAngular = !!deps['@angular/core'];
     const hasExpress = !!deps.express;
-    
+    const isCLI = !!packageJson.bin;
+    const hasTypescript = !!deps.typescript || !!deps['@types/node'];
+
+    // Check for CLI/Library projects (basic support)
+    if (isCLI && hasTypescript) {
+      return {
+        supported: true,
+        framework: 'node',
+        message: 'CLI/Library project detected - basic analysis supported!',
+        suggestions: []
+      };
+    }
+
     // Check for React/Next.js (fully supported)
     if (hasNext) {
       return {

@@ -22,10 +22,10 @@ import {
  * offers fallback strategies, and guides users toward successful outcomes.
  */
 export class LimitationHandler {
-  private primaryLLM: ChatOpenAI;
-  private secondaryLLM: ChatAnthropic;
-  private assessmentPrompt: PromptTemplate;
-  private capabilityKnowledgeBase: Map<string, CapabilityAssessment>;
+  private primaryLLM!: ChatOpenAI;
+  private secondaryLLM!: ChatAnthropic;
+  private assessmentPrompt!: PromptTemplate;
+  private capabilityKnowledgeBase!: Map<string, CapabilityAssessment>;
 
   constructor() {
     this.initializeLLMs();

@@ -62,12 +62,12 @@ export class ChatInterface {
       // Main conversation loop
       await this.conversationLoop();
 
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Chat interface error:', error);
       console.log(chalk.red('\n❌ Chat session encountered an error. Please try again.'));
-      
+
       // Attempt error recovery
-      await this.handleChatError(error);
+      await this.handleChatError(error instanceof Error ? error : new Error(String(error)));
     } finally {
       this.isActive = false;
     }
@@ -100,13 +100,13 @@ export class ChatInterface {
           this.displayResponse(response);
 
           // Handle action items if present
-          if (response.requiresAction && response.cliCommands) {
+          if (response.requiresAction && response.cliCommands?.length) {
             await this.handleActionItems(response);
           }
 
-        } catch (processingError) {
+        } catch (processingError: any) {
           spinner.stop();
-          await this.handleProcessingError(processingError, userInput);
+          await this.handleProcessingError(processingError instanceof Error ? processingError : new Error(String(processingError)), userInput);
         }
 
       } catch (inputError) {
@@ -353,11 +353,11 @@ export class ChatInterface {
         console.log(chalk.gray(`Expected: ${command.expectedOutput}`));
       }
 
-    } catch (error) {
+    } catch (error: any) {
       spinner.fail(`Failed: ${command.command}`);
-      
+
       // Use error recovery system
-      await this.handleCommandError(error, command);
+      await this.handleCommandError(error instanceof Error ? error : new Error(String(error)), command);
     }
   }
 
