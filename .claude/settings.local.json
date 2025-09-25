@@ -15,7 +15,12 @@
       "Bash(npm run audit:mocks:*)",
       "Bash(cut:*)",
       "Bash(npx ts-node:*)",
-      "Read(//Users/diop/**)"
+      "Read(//Users/diop/**)",
+      "Bash(cd:*)",
+      "Read(//private/tmp/apix-test-project/**)",
+      "Bash(/Users/diop/Personal Experimental Projects/hedera_hackaton/apix/node_modules/.bin/ts-node /Users/diop/Personal Experimental Projects/hedera_hackaton/apix/src/cli/index.ts add hts --name \"TestToken\" --symbol \"TEST\")",
+      "Bash(timeout 30s npx ts-node src/cli/index.ts chat)",
+      "Bash(npm run apix:generate:*)"
     ],
     "deny": [],
     "ask": []

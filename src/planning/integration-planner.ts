@@ -32,17 +32,17 @@ import {
       const htsRecommendation = this.generateHTSRecommendation(context, projectType);
       if (htsRecommendation) recommendations.push(htsRecommendation);
       
-      // Wallet integration recommendations (temporarily disabled)
-      // const walletRecommendation = this.generateWalletRecommendation(context, projectType);
-      // if (walletRecommendation) recommendations.push(walletRecommendation);
+      // Wallet integration recommendations
+      const walletRecommendation = this.generateWalletRecommendation(context, projectType);
+      if (walletRecommendation) recommendations.push(walletRecommendation);
 
-      // Smart contract recommendations (temporarily disabled)
-      // const contractRecommendation = this.generateContractRecommendation(context, projectType);
-      // if (contractRecommendation) recommendations.push(contractRecommendation);
+      // Smart contract recommendations
+      const contractRecommendation = this.generateContractRecommendation(context, projectType);
+      if (contractRecommendation) recommendations.push(contractRecommendation);
 
-      // Consensus service recommendations (temporarily disabled)
-      // const consensusRecommendation = this.generateConsensusRecommendation(context, projectType);
-      // if (consensusRecommendation) recommendations.push(consensusRecommendation);
+      // Consensus service recommendations
+      const consensusRecommendation = this.generateConsensusRecommendation(context, projectType);
+      if (consensusRecommendation) recommendations.push(consensusRecommendation);
       
       // Sort by priority
       recommendations.sort((a, b) => {
@@ -82,37 +82,60 @@ import {
         configuration: []
       };
 
+      let resultPlan: IntegrationPlan;
+
       switch (type) {
         case 'hts':
-          return await this.createHTSPlan(plan);
+          resultPlan = await this.createHTSPlan(plan);
+          break;
         case 'wallet':
-          // Temporarily return basic plan (method disabled)
-          plan.type = 'wallet';
-          return plan;
+          resultPlan = await this.createWalletPlan(plan);
+          break;
         case 'smart-contract':
-          // Temporarily return basic plan (method disabled)
-          plan.type = 'smart-contract';
-          return plan;
+          resultPlan = await this.createSmartContractPlan(plan);
+          break;
         case 'consensus':
-          // Temporarily return basic plan (method disabled)
-          plan.type = 'consensus';
-          return plan;
+          resultPlan = await this.createConsensusPlan(plan);
+          break;
         case 'account':
-          // Temporarily return basic plan (method disabled)
-          plan.type = 'account';
-          return plan;
+          resultPlan = await this.createAccountPlan(plan);
+          break;
         default:
-          throw new Error(`Unsupported integration type: ${integrationType}`);
+          throw new Error(`❌ Unsupported integration type: ${integrationType}\n\n✅ Supported types: hts, wallet, smart-contract, consensus, account\n\n💡 Example: apix add hts --name "MyToken" --symbol "MTK"`);
       }
+
+      // Validate the plan has required templates
+      this.validateIntegrationPlan(resultPlan);
+
+      return resultPlan;
       } catch (error: any) {
         logger.error('Failed to create integration plan:', error.message);
         throw new Error(`Integration plan creation failed: ${error.message}`);
       }
     }
 
-    /*
-    // TODO: These methods are temporarily disabled due to syntax issues
-    // They will be re-enabled once the structural problems are resolved
+    private validateIntegrationPlan(plan: IntegrationPlan): void {
+      // Check if plan has templates
+      if (!plan.templates || plan.templates.length === 0) {
+        logger.warn(`⚠️  Integration plan for ${plan.type} has no templates`);
+        return;
+      }
+
+      // Validate template IDs exist (basic validation)
+      const missingTemplates: string[] = [];
+
+      for (const template of plan.templates) {
+        if (!template.templateId) {
+          missingTemplates.push('(empty template ID)');
+        }
+      }
+
+      if (missingTemplates.length > 0) {
+        logger.warn(`⚠️  Integration plan has invalid templates:`, missingTemplates);
+      }
+
+      logger.debug(`✅ Integration plan validated: ${plan.templates.length} templates, ${plan.dependencies.length} dependencies`);
+    }
 
     private generateWalletRecommendation(
       context: ProjectContext,
@@ -183,40 +206,6 @@ import {
       };
     }
 
-    // Missing plan creation methods
-    /*
-    private createWalletPlan(plan: IntegrationPlan): IntegrationPlan {
-      // TODO: Implement wallet plan creation
-      plan.type = 'wallet';
-      plan.templates = [];
-      plan.newFiles = [];
-      return plan;
-    }
-
-    private createSmartContractPlan(plan: IntegrationPlan): IntegrationPlan {
-      // TODO: Implement smart contract plan creation
-      plan.type = 'smart-contract';
-      plan.templates = [];
-      plan.newFiles = [];
-      return plan;
-    }
-
-    private createConsensusPlan(plan: IntegrationPlan): IntegrationPlan {
-      // TODO: Implement consensus plan creation
-      plan.type = 'consensus';
-      plan.templates = [];
-      plan.newFiles = [];
-      return plan;
-    }
-
-    private createAccountPlan(plan: IntegrationPlan): IntegrationPlan {
-      // TODO: Implement account plan creation
-      plan.type = 'account';
-      plan.templates = [];
-      plan.newFiles = [];
-      return plan;
-    }
-    */
 
     // Project Type Analysis
     private determineProjectType(context: ProjectContext): 'web-app' | 'api' | 'mobile' | 'desktop' | 'cli' {
@@ -309,9 +298,18 @@ import {
       // Add dependencies
       plan.dependencies = ['@hashgraph/sdk'];
       
-      // Simplified template generation for MVP
-      plan.templates = [];
-      plan.newFiles = [];
+      // Select templates based on framework
+      plan.templates = this.selectHTSTemplates(context.framework, htsConfig);
+
+      // Set output files based on templates
+      plan.newFiles = plan.templates.map(t => ({
+        path: t.outputPath,
+        content: '', // Will be filled by template engine
+        type: 'typescript',
+        overwrite: false
+      }));
+
+      // Configuration updates
       plan.configuration = [];
       
         logger.debug('HTS plan created', { templates: plan.templates.length, files: plan.newFiles.length });
@@ -322,7 +320,111 @@ import {
       }
     }
 
-    /*
+    private async createWalletPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
+      plan.type = 'wallet';
+      plan.templates = [
+        {
+          templateId: 'utils/common/wallet-service',
+          templateType: 'utility',
+          framework: plan.context.framework as any,
+          outputPath: 'lib/hedera/wallet-service.ts',
+          variables: {
+            network: 'testnet',
+            walletTypes: ['hashpack', 'blade', 'walletconnect']
+          }
+        }
+      ];
+
+      if (plan.context.framework === 'next.js') {
+        plan.templates.push({
+          templateId: 'hooks/react/useWallet',
+          templateType: 'hook',
+          framework: 'next.js',
+          outputPath: 'hooks/useWallet.ts',
+          variables: { network: 'testnet' }
+        });
+
+        plan.templates.push({
+          templateId: 'components/react/WalletConnect',
+          templateType: 'component',
+          framework: 'next.js',
+          outputPath: 'components/WalletConnect.tsx',
+          variables: { network: 'testnet' }
+        });
+      }
+
+      plan.newFiles = [
+        {
+          path: 'lib/hedera/wallet-service.ts',
+          content: '// Wallet service placeholder',
+          type: 'typescript',
+          overwrite: false
+        }
+      ];
+      return plan;
+    }
+
+    private async createSmartContractPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
+      plan.type = 'smart-contract';
+      plan.templates = [
+        {
+          templateId: 'utils/common/smart-contract-operations',
+          templateType: 'utility',
+          framework: plan.context.framework as any,
+          outputPath: 'lib/hedera/smart-contract-operations.ts',
+          variables: {
+            network: 'testnet',
+            contractLanguage: 'solidity'
+          }
+        }
+      ];
+
+      plan.dependencies.push('@hashgraph/sdk');
+      plan.newFiles = [
+        {
+          path: 'lib/hedera/smart-contract-operations.ts',
+          content: '// Smart contract operations placeholder',
+          type: 'typescript',
+          overwrite: false
+        }
+      ];
+      return plan;
+    }
+
+    private async createConsensusPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
+      plan.type = 'consensus';
+      plan.templates = [
+        {
+          templateId: 'utils/common/consensus-operations',
+          templateType: 'utility',
+          framework: plan.context.framework as any,
+          outputPath: 'lib/hedera/consensus-operations.ts',
+          variables: {
+            network: 'testnet',
+            topicId: null
+          }
+        }
+      ];
+
+      plan.dependencies.push('@hashgraph/sdk');
+      plan.newFiles = [
+        {
+          path: 'lib/hedera/consensus-operations.ts',
+          content: '// Consensus operations placeholder',
+          type: 'typescript',
+          overwrite: false
+        }
+      ];
+      return plan;
+    }
+
+    private async createAccountPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
+      plan.type = 'account';
+      plan.templates = [];
+      plan.newFiles = [];
+      return plan;
+    }
+
     // TODO: These methods are temporarily disabled due to syntax issues
     // They will be re-enabled once the structural problems are resolved
 
@@ -435,57 +537,7 @@ import {
       return updates;
     }
   
-    // Wallet Integration Planning
-    private generateWalletRecommendation(
-      context: ProjectContext, 
-      projectType: string
-    ): IntegrationRecommendation | null {
-      
-      if (context.existingIntegrations.some(int => int.type === 'wallet')) {
-        return null;
-      }
-      
-      // Only recommend for web applications
-      if (projectType !== 'web-app') {
-        return null;
-      }
-      
-      return {
-        name: 'Wallet Integration',
-        type: 'wallet',
-        description: 'Connect users with Hedera wallets (HashPack, Blade, etc.)',
-        command: 'wallet',
-        priority: 'high',
-        benefits: [
-          'Seamless user authentication',
-          'Transaction signing capabilities',
-          'Multi-wallet support',
-          'Responsive wallet detection'
-        ],
-        requirements: [
-          'HTTPS in production',
-          'Web3 wallet users'
-        ],
-        estimatedTime: '1-3 minutes'
-      };
-    }
   
-    private async createWalletPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
-      const { context, options } = plan;
-      
-      // Determine optimal wallet providers based on context
-      const walletConfig: WalletConfiguration = {
-        providers: this.selectOptimalWalletProviders(context),
-        defaultProvider: 'hashpack',
-        connectionFlow: 'modal'
-      };
-      
-      plan.dependencies = ['@hashgraph/sdk'];
-      plan.templates = this.selectWalletTemplates(context.framework, walletConfig);
-      plan.newFiles = await this.generateWalletFiles(context, walletConfig);
-      
-      return plan;
-    }
   
     private selectOptimalWalletProviders(context: ProjectContext): WalletProvider[] {
       const providers: WalletProvider[] = ['hashpack']; // Always include HashPack as primary
@@ -565,34 +617,6 @@ import {
       return files;
     }
   
-    // Smart Contract Integration Planning
-    private generateContractRecommendation(
-      context: ProjectContext, 
-      projectType: string
-    ): IntegrationRecommendation | null {
-      
-      const contractUseCase = this.detectContractUseCase(context);
-      if (!contractUseCase) return null;
-      
-      return {
-        name: `Smart Contract (${contractUseCase})`,
-        type: 'smart-contract',
-        description: `Deploy ${contractUseCase.toLowerCase()} smart contract`,
-        command: 'contract',
-        priority: 'medium',
-        benefits: [
-          'Automated business logic',
-          'Trustless operations',
-          'EVM compatibility option',
-          'Gas optimization'
-        ],
-        requirements: [
-          'Smart contract knowledge',
-          'Gas budget planning'
-        ],
-        estimatedTime: '5-15 minutes'
-      };
-    }
   
     private detectContractUseCase(context: ProjectContext): string | null {
       const allDeps = [...context.dependencies, ...context.devDependencies];
@@ -617,26 +641,6 @@ import {
       return null;
     }
   
-    private async createSmartContractPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
-      const { context, options } = plan;
-      
-      const contractConfig: SmartContractConfiguration = {
-        contractName: options.name || 'MyContract',
-        type: (options.type as any) || 'simple-token',
-        deploymentType: this.determineDeploymentType(context),
-        gas: 300000
-      };
-      
-      plan.dependencies = ['@hashgraph/sdk'];
-      if (contractConfig.deploymentType === 'evm') {
-        plan.dependencies.push('ethers');
-      }
-      
-      plan.templates = this.selectContractTemplates(context.framework, contractConfig);
-      plan.newFiles = await this.generateContractFiles(context, contractConfig);
-      
-      return plan;
-    }
   
     private determineDeploymentType(context: ProjectContext): 'native' | 'evm' {
       // Check for EVM libraries in dependencies
@@ -685,35 +689,6 @@ import {
       return files;
     }
   
-    // Consensus Service Integration Planning
-    private generateConsensusRecommendation(
-      context: ProjectContext, 
-      projectType: string
-    ): IntegrationRecommendation | null {
-      
-      // Detect if the project could benefit from consensus service
-      const needsAuditTrail = this.detectAuditTrailNeeds(context);
-      if (!needsAuditTrail) return null;
-      
-      return {
-        name: 'Consensus Service (HCS)',
-        type: 'consensus',
-        description: 'Add immutable logging and audit trails',
-        command: 'consensus',
-        priority: 'low',
-        benefits: [
-          'Immutable message ordering',
-          'Audit trail capabilities',
-          'Regulatory compliance',
-          'Data integrity verification'
-        ],
-        requirements: [
-          'Understanding of consensus mechanisms',
-          'Message structuring plan'
-        ],
-        estimatedTime: '3-8 minutes'
-      };
-    }
   
     private detectAuditTrailNeeds(context: ProjectContext): boolean {
       const allDeps = [...context.dependencies, ...context.devDependencies];
@@ -727,50 +702,7 @@ import {
       );
     }
   
-    private async createConsensusPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
-      const { context, options } = plan;
-      
-      plan.dependencies = ['@hashgraph/sdk'];
-      plan.templates = [{
-        templateId: 'consensus-service',
-        templateType: 'utility',
-        framework: context.framework,
-        outputPath: 'lib/hedera/consensus.ts',
-        variables: { topicName: options.name || 'AuditTopic' }
-      }];
-      
-      plan.newFiles = [{
-        path: 'lib/hedera/consensus.ts',
-        content: this.generateConsensusServiceContent(),
-        type: 'typescript',
-        overwrite: false
-      }];
-      
-      return plan;
-    }
   
-    // Account Management Planning
-    private async createAccountPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
-      const { context, options } = plan;
-      
-      plan.dependencies = ['@hashgraph/sdk'];
-      plan.templates = [{
-        templateId: 'account-management',
-        templateType: 'utility',
-        framework: context.framework,
-        outputPath: 'lib/hedera/accounts.ts',
-        variables: {}
-      }];
-      
-      plan.newFiles = [{
-        path: 'lib/hedera/accounts.ts',
-        content: this.generateAccountManagementContent(),
-        type: 'typescript',
-        overwrite: false
-      }];
-      
-      return plan;
-    }
   
     // Content generation methods (simplified for MVP)
     private generateHTSUtilityContent(config: HTSConfiguration): string {
@@ -927,5 +859,4 @@ import {
     }
   }`;
     }
-  }    */
 }

@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { SupportedFramework, ProjectContext, TemplateSelection, GeneratedFile } from '../types';
 import { logger } from '../utils/logger';
+import { debugLogger } from '../utils/debug-logger';
 
 export interface TemplateContext {
   projectName: string;
@@ -240,7 +241,19 @@ export class TemplateEngine {
     try {
       const templateFile = this.loadedTemplates.get(templateId);
       if (!templateFile) {
-        throw new Error(`Template not found: ${templateId}`);
+        // Enhanced error message with available templates
+        const availableTemplates = Array.from(this.loadedTemplates.keys()).filter(id =>
+          id.includes(templateId.split('/').pop() || '')
+        );
+
+        let errorMessage = `❌ Template not found: ${templateId}`;
+        if (availableTemplates.length > 0) {
+          errorMessage += `\n\n💡 Did you mean one of these?\n${availableTemplates.map(t => `   • ${t}`).join('\n')}`;
+        }
+        errorMessage += `\n\n📚 Available templates: ${this.loadedTemplates.size} loaded`;
+        errorMessage += `\n🔍 Searched for template at: templates/${templateId}.hbs`;
+
+        throw new Error(errorMessage);
       }
 
       // Compile template
@@ -262,8 +275,12 @@ export class TemplateEngine {
       logger.debug(`Generated file from template ${templateId}:`, outputPath);
       return generatedFile;
     } catch (error) {
-      logger.error(`Failed to generate file from template ${templateId}:`, error);
-      throw error;
+      if (error instanceof Error && error.message.includes('Template not found')) {
+        throw error; // Re-throw enhanced template not found errors
+      }
+
+      logger.error(`❌ Failed to generate file from template ${templateId}:`, error);
+      throw new Error(`Template generation failed: ${templateId} → ${outputPath}\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}\n\n🔧 Troubleshooting:\n   • Check template exists and syntax is valid\n   • Verify context variables match template requirements\n   • Ensure output path is writable`);
     }
   }
 

@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
 import { logger } from '../../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
+import { ConversationResponse, ConversationSession, ConversationContext } from '../../types/conversation';
 
 /**
  * Working ConversationEngine - Uses actual OpenAI package
@@ -22,17 +24,19 @@ export class ConversationEngine {
   private initializeOpenAI(): void {
     try {
       const apiKey = process.env.OPENAI_API_KEY;
-      
+
       if (!apiKey) {
-        logger.warn('OpenAI API key not found, using mock mode');
+        logger.info('OpenAI API key not found - conversation engine will use knowledge-based responses');
         return;
       }
 
       this.openai = new OpenAI({
-        apiKey: apiKey
+        apiKey: apiKey,
+        timeout: 30000, // 30 second timeout for conversations
+        maxRetries: 2
       });
 
-      logger.info('OpenAI client initialized successfully');
+      logger.info('OpenAI GPT-3.5-turbo initialized for conversational AI');
 
     } catch (error) {
       logger.error('Failed to initialize OpenAI client:', error);
@@ -45,7 +49,7 @@ export class ConversationEngine {
    */
   async startSession(
     sessionId: string,
-    context?: Partial<EnterpriseContext>
+    context?: Partial<any>
   ): Promise<ConversationResponse> {
     logger.info(`Starting conversation session: ${sessionId}`);
 
@@ -90,21 +94,13 @@ export class ConversationEngine {
       }
 
       // Add user message to session
-      session.messages.push({
-        role: 'user',
-        content: message,
-        timestamp: new Date()
-      });
+      session.messages.push(new HumanMessage(message));
 
       // Generate AI response
       const aiResponse = await this.generateAIResponse(message, session);
 
       // Add AI response to session
-      session.messages.push({
-        role: 'assistant',
-        content: aiResponse.content,
-        timestamp: new Date()
-      });
+      session.messages.push(new AIMessage(aiResponse.content));
 
       session.lastActivity = new Date();
 
@@ -137,8 +133,8 @@ export class ConversationEngine {
         messages: [
           { role: 'system', content: systemPrompt },
           ...conversationHistory.map(msg => ({
-            role: msg.role as 'user' | 'assistant',
-            content: msg.content
+            role: msg._getType() === 'human' ? 'user' as const : 'assistant' as const,
+            content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
           })),
           { role: 'user', content: message }
         ],
@@ -199,7 +195,7 @@ export class ConversationEngine {
   /**
    * Build system prompt for OpenAI
    */
-  private buildSystemPrompt(context: EnterpriseContext): string {
+  private buildSystemPrompt(context: any): string {
     return `You are APIX AI, an expert enterprise Hedera blockchain development assistant.
 
 Your expertise includes:
@@ -241,7 +237,7 @@ Keep responses concise but comprehensive.`;
   /**
    * Generate contextual suggestions
    */
-  private generateSuggestions(message: string, context: EnterpriseContext): string[] {
+  private generateSuggestions(message: string, context: any): string[] {
     const baseSuggestions = [
       'Generate code for this requirement',
       'Explain the implementation approach',
@@ -279,7 +275,7 @@ Keep responses concise but comprehensive.`;
   /**
    * Generate welcome message
    */
-  private generateWelcomeMessage(context?: Partial<EnterpriseContext>): string {
+  private generateWelcomeMessage(context?: Partial<any>): string {
     const industryContext = context?.industry ? ` specializing in ${context.industry}` : '';
     
     return `Hello! I'm APIX AI, your intelligent Hedera development assistant${industryContext}.
@@ -296,7 +292,7 @@ What blockchain challenge can I help you solve today?`;
   /**
    * Generate initial suggestions
    */
-  private generateInitialSuggestions(context?: Partial<EnterpriseContext>): string[] {
+  private generateInitialSuggestions(context?: Partial<any>): string[] {
     const baseSuggestions = [
       'I need to tokenize assets for my business',
       'Help me build an audit trail system',
@@ -352,7 +348,13 @@ I'm here to help once the issue is resolved!`,
       confidence: 0.0,
       requiresAction: false,
       sessionId: sessionId,
-      context: {}
+      context: {
+        industry: null,
+        companySize: 'unknown',
+        technicalStack: [],
+        currentProject: null,
+        urgency: 'medium'
+      }
     };
   }
 
@@ -387,36 +389,10 @@ I'm here to help once the issue is resolved!`,
 }
 
 // Supporting interfaces
-interface ConversationSession {
-  id: string;
-  messages: SessionMessage[];
-  context: EnterpriseContext;
-  createdAt: Date;
-  lastActivity: Date;
-}
-
 interface SessionMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-}
-
-interface EnterpriseContext {
-  industry: string | null;
-  companySize: string;
-  technicalStack: string[];
-  currentProject: string | null;
-  urgency: string;
-}
-
-interface ConversationResponse {
-  content: string;
-  intent: string;
-  suggestions: string[];
-  confidence: number;
-  requiresAction: boolean;
-  sessionId: string;
-  context: any;
 }
 
 export default ConversationEngine;

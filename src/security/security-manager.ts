@@ -1,13 +1,14 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import { logger } from '../utils/logger';
-import { 
-  SecurityFramework, 
-  SecurityConfiguration, 
+import {
+  SecurityFramework,
+  SecurityConfiguration,
   SecurityValidationResult,
   CodeSecurityScan,
   DataClassification,
-  AuditEvent 
+  AuditEvent,
+  SecurityVulnerability
 } from '../types/security';
 
 /**
@@ -156,10 +157,12 @@ export class SecurityManager {
       const encrypted = await this.encryptionManager.encrypt(data, classification);
 
       await this.auditLogger.logEvent({
-        type: 'data-encryption',
+        type: 'data-modification',
+        category: 'security',
         severity: 'info',
         description: 'Data encrypted successfully',
         timestamp: new Date(),
+        outcome: 'success',
         metadata: {
           dataClassification: classification.level,
           encryptionAlgorithm: this.config.encryptionConfig.algorithm
@@ -172,8 +175,10 @@ export class SecurityManager {
       logger.error('Data encryption failed:', error);
       
       await this.auditLogger.logEvent({
-        type: 'encryption-error',
+        type: 'error-occurred',
+        category: 'security',
         severity: 'error',
+        outcome: 'failure',
         description: 'Data encryption failed',
         timestamp: new Date(),
         metadata: { error: error.message }
@@ -191,8 +196,10 @@ export class SecurityManager {
       const decrypted = await this.encryptionManager.decrypt(encryptedData, classification);
 
       await this.auditLogger.logEvent({
-        type: 'data-decryption',
+        type: 'data-access',
+        category: 'security',
         severity: 'info',
+        outcome: 'success',
         description: 'Data decrypted successfully',
         timestamp: new Date(),
         metadata: {
@@ -206,8 +213,10 @@ export class SecurityManager {
       logger.error('Data decryption failed:', error);
       
       await this.auditLogger.logEvent({
-        type: 'decryption-error',
+        type: 'error-occurred',
+        category: 'security',
         severity: 'error',
+        outcome: 'failure',
         description: 'Data decryption failed',
         timestamp: new Date(),
         metadata: { error: error.message }
@@ -225,10 +234,12 @@ export class SecurityManager {
       const hasAccess = await this.accessController.validateAccess(userId, resource, action);
 
       await this.auditLogger.logEvent({
-        type: 'access-validation',
+        type: 'permission-granted',
+        category: 'authorization',
         severity: hasAccess ? 'info' : 'warn',
         description: `Access ${hasAccess ? 'granted' : 'denied'} for user ${userId}`,
         timestamp: new Date(),
+        outcome: hasAccess ? 'success' : 'failure',
         metadata: {
           userId,
           resource,
@@ -243,8 +254,10 @@ export class SecurityManager {
       logger.error('Access validation failed:', error);
       
       await this.auditLogger.logEvent({
-        type: 'access-validation-error',
+        type: 'error-occurred',
+        category: 'security',
         severity: 'error',
+        outcome: 'failure',
         description: 'Access validation failed',
         timestamp: new Date(),
         metadata: { userId, resource, action, error: error.message }
@@ -269,8 +282,10 @@ export class SecurityManager {
       };
 
       await this.auditLogger.logEvent({
-        type: 'compliance-report-generated',
+        type: 'compliance-check',
+        category: 'compliance',
         severity: 'info',
+        outcome: 'success',
         description: `Compliance report generated for ${framework}`,
         timestamp: new Date(),
         metadata: { framework, reportId: crypto.randomUUID() }
@@ -314,11 +329,14 @@ export class SecurityManager {
 
     return {
       level,
-      score: sensitivityScore,
-      detectedPatterns,
+      category: [],
+      sensitivity: sensitivityScore,
       requiresEncryption: level === 'restricted' || level === 'confidential',
-      retentionPeriod: this.getRetentionPeriod(level)
-    };
+      retentionPeriod: this.getRetentionPeriod(level),
+      accessRestrictions: [],
+      complianceRequirements: [],
+      dataElements: []
+    } as DataClassification;
   }
 
   private async checkVulnerabilities(code: string): Promise<SecurityVulnerability[]> {
@@ -361,13 +379,36 @@ export class SecurityManager {
     for (const check of checks) {
       const matches = code.match(new RegExp(check.pattern, 'gi'));
       if (matches) {
+        const lineNumber = this.findLineNumber(code, matches[0]);
         vulnerabilities.push({
           id: check.id,
+          type: 'code-vulnerability' as any, // Add required type field
           severity: check.severity,
+          title: check.description,
           description: check.description,
-          line: this.findLineNumber(code, matches[0]),
-          code: matches[0],
-          recommendation: this.getVulnerabilityRecommendation(check.id)
+          location: {
+            file: 'code',
+            line: lineNumber,
+            column: 0,
+            function: 'unknown'
+          },
+          impact: {
+            confidentiality: 'partial',
+            integrity: 'partial',
+            availability: 'none',
+            scope: 'unchanged',
+            dataAtRisk: [],
+            businessImpact: 'Medium risk to security'
+          },
+          remediation: {
+            effort: 'medium',
+            priority: check.severity === 'high' ? 'high' : 'medium',
+            steps: [this.getVulnerabilityRecommendation(check.id)],
+            references: [],
+            automated: false
+          },
+          discovered: new Date(),
+          status: 'open'
         });
       }
     }
@@ -436,11 +477,15 @@ export class SecurityManager {
       }
     }
 
-    if (scanResult.hasHardcodedSecrets) {
+    // Check for specific vulnerability types to make recommendations
+    const hasSecretsVuln = vulnerabilities.some(v => v.id === 'HARDCODED_SECRETS');
+    const hasInsecureVuln = vulnerabilities.some(v => v.severity === 'high');
+
+    if (hasSecretsVuln) {
       recommendations.push('Move hardcoded secrets to environment variables');
     }
 
-    if (scanResult.hasInsecurePatterns) {
+    if (hasInsecureVuln) {
       recommendations.push('Review and remediate insecure coding patterns');
     }
 
@@ -644,24 +689,35 @@ class CodeSecurityScanner {
   async scanCode(code: string, context: any): Promise<CodeSecurityScan> {
     return {
       passed: true,
-      codeQualityScore: 85,
-      hasHardcodedSecrets: false,
-      hasInsecurePatterns: false,
-      scanTimestamp: new Date()
-    };
+      scanId: `scan_${Date.now()}`,
+      scanType: 'static',
+      scanTimestamp: new Date(),
+      duration: 1000,
+      codeMetrics: {
+        linesOfCode: code.split('\n').length,
+        complexity: 5,
+        maintainabilityIndex: 85
+      },
+      vulnerabilities: [],
+      qualityGate: {
+        passed: true,
+        criteria: [],
+        score: 85
+      },
+      tools: [],
+      coverage: {
+        lines: 80,
+        functions: 75,
+        branches: 70
+      },
+      false_positives: [],
+      suppressed_issues: [],
+      codeQualityScore: 85
+    } as unknown as CodeSecurityScan;
   }
 }
 
-// Interfaces
-interface SecurityVulnerability {
-  id: string;
-  severity: 'high' | 'medium' | 'low';
-  description: string;
-  line: number;
-  code: string;
-  recommendation: string;
-}
-
+// Local interfaces for internal use
 interface ComplianceRule {
   id: string;
   description: string;

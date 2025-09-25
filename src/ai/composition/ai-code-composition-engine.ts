@@ -4,6 +4,7 @@ import { PromptTemplate } from '@langchain/core/prompts';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../../utils/logger';
+import { debugLogger } from '../../utils/debug-logger';
 import {
   EnterpriseRequirement,
   EnterpriseContext,
@@ -164,7 +165,18 @@ export class AICodeCompositionEngine {
    * Determine optimal composition strategy
    */
   private async determineCompositionStrategy(request: AICompositionRequest): Promise<CompositionStrategy> {
-    const analysisPrompt = await this.codeGenerationPrompt!.format({
+    // Check if we have AI capabilities and prompts available
+    if (!this.primaryLLM && !this.secondaryLLM) {
+      logger.info('No AI models available, using template-based composition strategy');
+      return await this.getAICompositionStrategy(request);
+    }
+
+    if (!this.codeGenerationPrompt) {
+      logger.warn('Code generation prompt not available, using fallback strategy');
+      return await this.getAICompositionStrategy(request);
+    }
+
+    const analysisPrompt = await this.codeGenerationPrompt.format({
       requirement: JSON.stringify(request.requirement, null, 2),
       context: JSON.stringify(request.context, null, 2),
       constraints: JSON.stringify(request.constraints, null, 2),
@@ -175,29 +187,42 @@ export class AICodeCompositionEngine {
     });
 
     try {
-      const response = await this.primaryLLM!.invoke([
-        { role: 'system', content: this.getCompositionSystemPrompt() },
-        { role: 'user', content: analysisPrompt }
-      ]);
+      // Try primary LLM first
+      if (this.primaryLLM) {
+        const response = await this.primaryLLM.invoke([
+          { role: 'system', content: this.getCompositionSystemPrompt() },
+          { role: 'user', content: analysisPrompt }
+        ]);
 
-      const strategy = this.parseCompositionStrategy(response.content as string);
-      return strategy;
-
-    } catch (error: any) {
-      logger.warn('Primary LLM failed for composition strategy, using fallback', { error: error?.message });
-      
-      if (!this.secondaryLLM) {
-        logger.warn('No secondary LLM available, using mock composition strategy');
-        return this.getMockCompositionStrategy(request);
+        const strategy = this.parseCompositionStrategy(response.content as string);
+        logger.info('Composition strategy determined using OpenAI GPT');
+        return strategy;
       }
 
-      const response = await this.secondaryLLM.invoke([
-        { role: 'system', content: this.getCompositionSystemPrompt() },
-        { role: 'user', content: analysisPrompt }
-      ]);
-
-      return this.parseCompositionStrategy(response.content as string);
+    } catch (error: any) {
+      logger.warn('Primary LLM failed for composition strategy, trying secondary', { error: error?.message });
     }
+
+    try {
+      // Fallback to secondary LLM
+      if (this.secondaryLLM) {
+        const response = await this.secondaryLLM.invoke([
+          { role: 'system', content: this.getCompositionSystemPrompt() },
+          { role: 'user', content: analysisPrompt }
+        ]);
+
+        const strategy = this.parseCompositionStrategy(response.content as string);
+        logger.info('Composition strategy determined using Anthropic Claude');
+        return strategy;
+      }
+
+    } catch (error: any) {
+      logger.warn('Secondary LLM also failed, using template-based strategy', { error: error?.message });
+    }
+
+    // Final fallback to template-based strategy
+    logger.info('Using template-based composition strategy as fallback');
+    return await this.getAICompositionStrategy(request);
   }
 
   /**
@@ -272,54 +297,60 @@ export class AICodeCompositionEngine {
     logicRequirements: string[],
     request: AICompositionRequest
   ): Promise<GeneratedCode[]> {
-    
+
+    debugLogger.debug('Generating custom business logic', {
+      requirementCount: logicRequirements.length,
+      enterprise: request.context.industry
+    });
+
     const generatedCode: GeneratedCode[] = [];
 
+    // Check if we have AI capabilities
+    if (!this.primaryLLM && !this.secondaryLLM) {
+      debugLogger.warn('No LLM available for custom business logic generation, falling back to template-based');
+      return this.generateFallbackBusinessLogic(logicRequirements, request);
+    }
+
     for (const logicRequirement of logicRequirements) {
+      debugLogger.step('generateCustomBusinessLogic', `Generating logic for: ${logicRequirement}`);
+
       const codeGenerationPrompt = `
 # Custom Business Logic Generation
 
-## Requirement
+## Business Requirement
 ${logicRequirement}
 
 ## Enterprise Context
-Industry: ${request.context.industry}
-Regulations: ${request.context.regulations.join(', ')}
-Business Model: ${request.context.businessModel}
+- Industry: ${request.context.industry}
+- Compliance Requirements: ${request.context.regulations?.join(', ') || 'None specified'}
+- Organization Size: ${request.context.size}
+- Technical Stack: ${request.context.technicalStack?.frameworks?.[0] || 'Not specified'}
 
 ## Technical Context
-Framework: ${request.requirement.technicalRequirements.map(r => r.description).join(', ')}
+- Framework: TypeScript + Hedera SDK
+- Target Architecture: Enterprise-grade, scalable, secure
+- Performance Requirements: High-throughput blockchain operations
+- Security Requirements: Enterprise security standards
 
-## Hedera Services Integration
-Generate TypeScript code that:
-
-1. **Implements the specific business logic requirement**
-2. **Uses appropriate Hedera services (HTS, HCS, Smart Contracts, File Service)**
-3. **Follows enterprise security and compliance patterns**
-4. **Includes comprehensive error handling and logging**
-5. **Provides clear interfaces and documentation**
-6. **Implements proper audit trails where required**
-
-## Code Requirements
-- Production-ready TypeScript code
-- Comprehensive error handling
-- Enterprise security patterns
-- Regulatory compliance considerations
-- Performance optimization
-- Scalability considerations
-- Proper abstraction and modularity
+## Code Generation Requirements
+Generate production-ready TypeScript code that:
+1. Implements the specific business logic requirement
+2. Integrates properly with Hedera services (HTS, HCS, Smart Contracts)
+3. Follows enterprise coding standards and patterns
+4. Includes proper error handling and logging
+5. Implements security best practices
+6. Includes comprehensive JSDoc documentation
+7. Includes input validation and type safety
 
 ## Output Format
-Provide complete, implementable code with:
-- Clear file structure recommendations
-- Interface definitions
-- Implementation classes
-- Error handling
-- Documentation
-- Unit test structure suggestions
+Provide complete, implementable TypeScript code with:
+- Clear file structure and exports
+- Proper imports and dependencies
+- Complete function implementations
+- Error handling and edge cases
+- Performance optimizations where applicable
 
-Generate the custom business logic implementation:
-      `;
+Generate the code now:`;
 
       try {
         if (this.primaryLLM) {
@@ -329,16 +360,36 @@ Generate the custom business logic implementation:
           ]);
 
           const parsedCode = this.parseGeneratedCode(response.content as string, logicRequirement);
+          debugLogger.debug('Generated custom business logic with AI', {
+            requirement: logicRequirement,
+            filesGenerated: parsedCode.length
+          });
+          generatedCode.push(...parsedCode);
+        } else if (this.secondaryLLM) {
+          // Try secondary LLM
+          const response = await this.secondaryLLM!.invoke([
+            { role: 'system', content: this.getCustomLogicSystemPrompt() },
+            { role: 'user', content: codeGenerationPrompt }
+          ]);
+
+          const parsedCode = this.parseGeneratedCode(response.content as string, logicRequirement);
+          debugLogger.debug('Generated custom business logic with secondary AI', {
+            requirement: logicRequirement,
+            filesGenerated: parsedCode.length
+          });
           generatedCode.push(...parsedCode);
         } else {
-          logger.warn('No LLM available for custom logic generation, using fallback');
+          debugLogger.warn('No LLM available for custom logic generation, using fallback');
           const fallbackCode = this.createFallbackImplementation(logicRequirement, request);
           generatedCode.push(fallbackCode);
         }
 
       } catch (error: any) {
-        logger.error('Custom logic generation failed', { logicRequirement, error: error?.message });
-        
+        debugLogger.error('Custom logic generation failed', error, {
+          logicRequirement,
+          errorType: error?.constructor?.name
+        });
+
         // Create fallback implementation
         const fallbackCode = this.createFallbackImplementation(logicRequirement, request);
         generatedCode.push(fallbackCode);
@@ -427,20 +478,50 @@ Design the novel architecture:
    * Initialize LLM instances with enterprise-optimized settings
    */
   private initializeLLMs(): void {
-    this.primaryLLM = new ChatOpenAI({
-      modelName: process.env.PRIMARY_MODEL || 'gpt-4o-mini',
-      temperature: 0.2, // Slightly higher for creative code generation
-      maxTokens: 4000,
-      timeout: 60000, // Longer timeout for complex code generation
-      apiKey: process.env.OPENAI_API_KEY
-    });
+    try {
+      // Initialize primary LLM (OpenAI) for code generation
+      if (process.env.OPENAI_API_KEY) {
+        this.primaryLLM = new ChatOpenAI({
+          modelName: process.env.PRIMARY_MODEL || 'gpt-4o-mini',
+          temperature: 0.2, // Slightly higher for creative code generation
+          maxTokens: 4000,
+          timeout: 60000, // Longer timeout for complex code generation
+          apiKey: process.env.OPENAI_API_KEY
+        });
+        logger.info('OpenAI GPT initialized for AI code composition');
+      } else {
+        logger.info('OpenAI API key not found - AI code composition will use template-based generation');
+      }
 
-    this.secondaryLLM = new ChatAnthropic({
-      modelName: process.env.SECONDARY_MODEL || 'claude-3-5-sonnet-20241022',
-      temperature: 0.2,
-      maxTokens: 4000,
-      apiKey: process.env.ANTHROPIC_API_KEY
-    });
+      // Initialize secondary LLM (Anthropic) for code generation
+      if (process.env.ANTHROPIC_API_KEY) {
+        this.secondaryLLM = new ChatAnthropic({
+          modelName: process.env.SECONDARY_MODEL || 'claude-3-5-sonnet-20241022',
+          temperature: 0.2,
+          maxTokens: 4000,
+          apiKey: process.env.ANTHROPIC_API_KEY
+        });
+        logger.info('Anthropic Claude initialized as secondary code composer');
+      } else {
+        logger.info('Anthropic API key not found - code composition will use single AI model or templates');
+      }
+
+      // Log AI code generation capabilities
+      const codeGenCapabilities = [];
+      if (this.primaryLLM) codeGenCapabilities.push('OpenAI GPT');
+      if (this.secondaryLLM) codeGenCapabilities.push('Anthropic Claude');
+
+      if (codeGenCapabilities.length > 0) {
+        logger.info(`AI code composition engine initialized with: ${codeGenCapabilities.join(', ')}`);
+      } else {
+        logger.info('AI code composition engine initialized with template-based generation only');
+      }
+
+    } catch (error) {
+      logger.error('Failed to initialize code composition LLMs:', error);
+      this.primaryLLM = null;
+      this.secondaryLLM = null;
+    }
   }
 
   /**
@@ -710,12 +791,19 @@ Design innovative, practical solutions that push the boundaries of what's possib
   }
   private parseCompositionStrategy(response: string): CompositionStrategy {
     try {
+      debugLogger.debug('Parsing AI composition strategy response', { responseLength: response.length });
+
       // Extract strategy from AI response - look for JSON block
       const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) ||
                        response.match(/\{[\s\S]*\}/);
 
       if (jsonMatch) {
         const strategyData = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+        debugLogger.debug('Successfully parsed strategy data', {
+          approach: strategyData.approach,
+          componentsCount: strategyData.componentsUsed?.length || 0
+        });
+
         return {
           approach: strategyData.approach || 'template-combination',
           componentsUsed: strategyData.componentsUsed || [],
@@ -872,15 +960,78 @@ Design innovative, practical solutions that push the boundaries of what's possib
     return Math.max(0, Math.min(100, confidence));
   }
   private createFallbackImplementation(requirement: string, request: AICompositionRequest): GeneratedCode {
+    const className = requirement.replace(/\s+/g, '') + 'Service';
+    const fileName = requirement.toLowerCase().replace(/\s+/g, '-');
+
+    const fallbackCode = `/**
+ * Fallback implementation for: ${requirement}
+ * Industry: ${request.context.industry}
+ * Generated when AI services are unavailable
+ */
+import { logger } from '../utils/logger';
+
+export interface ${className}Config {
+  // Configuration interface
+  [key: string]: any;
+}
+
+export class ${className} {
+  private config: ${className}Config;
+
+  constructor(config: ${className}Config = {}) {
+    this.config = config;
+    logger.info('${className} initialized in fallback mode');
+  }
+
+  /**
+   * ${requirement} implementation
+   * TODO: Implement specific business logic when AI services are available
+   */
+  async execute(params: any): Promise<any> {
+    logger.warn('Using fallback implementation for ${requirement}');
+
+    // Basic implementation framework
+    try {
+      // TODO: Add specific business logic
+      return {
+        success: true,
+        message: 'Fallback implementation executed',
+        data: params
+      };
+    } catch (error: any) {
+      logger.error('Fallback implementation failed:', error);
+      throw error;
+    }
+  }
+}
+
+export default ${className};`;
+
     return {
-      filePath: 'src/fallback/implementation.ts',
-      content: '// Fallback implementation',
+      filePath: `src/services/${fileName}-service.ts`,
+      content: fallbackCode,
       language: 'typescript',
       purpose: requirement,
       dependencies: [],
-      generationMethod: 'ai-composition',
+      generationMethod: 'template-based',
       confidence: 30
     };
+  }
+
+  /**
+   * Generate fallback business logic when AI is not available
+   */
+  private generateFallbackBusinessLogic(
+    logicRequirements: string[],
+    request: AICompositionRequest
+  ): GeneratedCode[] {
+    debugLogger.debug('Generating fallback business logic', {
+      requirementCount: logicRequirements.length
+    });
+
+    return logicRequirements.map(requirement =>
+      this.createFallbackImplementation(requirement, request)
+    );
   }
   private parseArchitectureDesign(response: string): any { return {}; }
   private async generateNovelPatternCode(patterns: string[], request: AICompositionRequest): Promise<GeneratedCode[]> {
@@ -1214,8 +1365,65 @@ Improve the code addressing these quality issues while maintaining functionality
 
     return validationResults;
   }
-  private getMockCompositionStrategy(request: AICompositionRequest): CompositionStrategy {
-    logger.info('Using mock composition strategy');
+  private async getAICompositionStrategy(request: AICompositionRequest): Promise<CompositionStrategy> {
+    try {
+      logger.info('Generating AI-powered composition strategy');
+
+      if (!this.primaryLLM || !this.codeGenerationPrompt) {
+        logger.warn('AI components not available, falling back to template strategy');
+        return this.getTemplateCompositionStrategy(request);
+      }
+
+      const analysisPrompt = await this.codeGenerationPrompt.format({
+        requirement: JSON.stringify(request.requirement, null, 2),
+        context: JSON.stringify(request.context, null, 2),
+        constraints: JSON.stringify(request.constraints, null, 2),
+        preferences: JSON.stringify(request.preferences, null, 2),
+        hederaServices: this.getHederaServiceCapabilities(),
+        templateInventory: this.getAvailableTemplates(),
+        industryPatterns: this.getIndustryPatterns(request.context.industry)
+      });
+
+      const response = await this.primaryLLM.invoke(analysisPrompt);
+      const aiAnalysis = this.parseAICompositionResponse(response.content as string);
+
+      // Enhance AI response with contextual analysis
+      const strategy: CompositionStrategy = {
+        approach: aiAnalysis.approach || 'ai-enhanced-template',
+        componentsUsed: [
+          'hedera-sdk',
+          'ai-generated-logic',
+          ...aiAnalysis.recommendedComponents
+        ],
+        novelPatterns: aiAnalysis.novelPatterns || [],
+        templateCombinations: aiAnalysis.templateCombinations || ['enhanced-base'],
+        customLogicGenerated: [
+          request.requirement.description,
+          ...aiAnalysis.customBusinessLogic
+        ],
+        integrationPatterns: [
+          ...aiAnalysis.integrationPatterns,
+          `${request.context.industry}-optimized`,
+          'enterprise-compliance'
+        ]
+      };
+
+      logger.info('AI composition strategy generated', {
+        approach: strategy.approach,
+        componentsCount: strategy.componentsUsed.length,
+        novelPatternsCount: strategy.novelPatterns.length
+      });
+
+      return strategy;
+
+    } catch (error: any) {
+      logger.error('AI composition strategy generation failed:', error);
+      return this.getTemplateCompositionStrategy(request);
+    }
+  }
+
+  private getTemplateCompositionStrategy(request: AICompositionRequest): CompositionStrategy {
+    logger.info('Using template-based composition strategy');
     return {
       approach: 'template-combination',
       componentsUsed: ['hedera-sdk', 'business-logic'],
@@ -1224,6 +1432,73 @@ Improve the code addressing these quality issues while maintaining functionality
       customLogicGenerated: [request.requirement.description],
       integrationPatterns: ['basic-hedera-integration']
     };
+  }
+
+  private parseAICompositionResponse(response: string): any {
+    try {
+      // Try to extract JSON from the AI response
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+
+      // Fallback: parse key information from text
+      return {
+        approach: 'ai-enhanced-template',
+        recommendedComponents: this.extractComponentsFromText(response),
+        novelPatterns: this.extractPatternsFromText(response),
+        templateCombinations: ['ai-suggested'],
+        customBusinessLogic: this.extractBusinessLogicFromText(response),
+        integrationPatterns: this.extractIntegrationPatternsFromText(response)
+      };
+    } catch (error) {
+      logger.warn('Failed to parse AI response, using defaults');
+      return {
+        approach: 'ai-enhanced-template',
+        recommendedComponents: [],
+        novelPatterns: [],
+        templateCombinations: ['fallback'],
+        customBusinessLogic: [],
+        integrationPatterns: ['basic']
+      };
+    }
+  }
+
+  private extractComponentsFromText(text: string): string[] {
+    const components = [];
+    if (text.includes('token') || text.includes('HTS')) components.push('hts-integration');
+    if (text.includes('smart contract')) components.push('smart-contract');
+    if (text.includes('consensus') || text.includes('HCS')) components.push('consensus-service');
+    if (text.includes('wallet')) components.push('wallet-integration');
+    if (text.includes('compliance')) components.push('compliance-framework');
+    return components;
+  }
+
+  private extractPatternsFromText(text: string): string[] {
+    const patterns = [];
+    if (text.includes('factory')) patterns.push('factory-pattern');
+    if (text.includes('observer')) patterns.push('observer-pattern');
+    if (text.includes('singleton')) patterns.push('singleton-pattern');
+    if (text.includes('audit')) patterns.push('audit-trail-pattern');
+    return patterns;
+  }
+
+  private extractBusinessLogicFromText(text: string): string[] {
+    const logic = [];
+    if (text.includes('validation')) logic.push('Custom validation rules');
+    if (text.includes('workflow')) logic.push('Business workflow automation');
+    if (text.includes('notification')) logic.push('Event notification system');
+    if (text.includes('reporting')) logic.push('Automated reporting');
+    return logic;
+  }
+
+  private extractIntegrationPatternsFromText(text: string): string[] {
+    const patterns = [];
+    if (text.includes('microservice')) patterns.push('microservice-integration');
+    if (text.includes('event-driven')) patterns.push('event-driven-architecture');
+    if (text.includes('api')) patterns.push('rest-api-integration');
+    if (text.includes('database')) patterns.push('database-integration');
+    return patterns;
   }
 
   private calculatePatternConfidence(design: any, implementation: any): number { return 70; }
@@ -1237,8 +1512,229 @@ Improve the code addressing these quality issues while maintaining functionality
  */
 class TemplateCombiner {
   async combineTemplates(combinations: string[], request: AICompositionRequest): Promise<GeneratedCode[]> {
-    // Implementation for intelligent template combination
-    return [];
+    debugLogger.debug('Combining templates intelligently', {
+      templateCount: combinations.length,
+      industry: request.context.industry
+    });
+
+    const combinedCode: GeneratedCode[] = [];
+
+    for (const combination of combinations) {
+      debugLogger.step('TemplateCombiner', `Processing template combination: ${combination}`);
+
+      // Parse combination specification (e.g., "hts-token + wallet-integration + audit-trail")
+      const templates = combination.split('+').map(t => t.trim());
+
+      // Generate combined implementation
+      const combinedImplementation = this.createCombinedImplementation(templates, request);
+      combinedCode.push(combinedImplementation);
+
+      // Generate integration bridge if multiple templates
+      if (templates.length > 1) {
+        const bridgeCode = this.createIntegrationBridge(templates, request);
+        combinedCode.push(bridgeCode);
+      }
+    }
+
+    return combinedCode;
+  }
+
+  private createCombinedImplementation(templates: string[], request: AICompositionRequest): GeneratedCode {
+    const serviceName = templates.join('') + 'CombinedService';
+    const fileName = templates.join('-').toLowerCase() + '-combined';
+
+    const combinedCode = `/**
+ * Combined Template Implementation
+ * Templates: ${templates.join(', ')}
+ * Industry: ${request.context.industry}
+ * Generated by AI Template Combiner
+ */
+import { logger } from '../utils/logger';
+${templates.includes('hts') ? "import { Client, TokenCreateTransaction, PrivateKey } from '@hashgraph/sdk';" : ''}
+${templates.includes('wallet') ? "import { HashConnect } from 'hashconnect';" : ''}
+
+export interface ${serviceName}Config {
+  ${templates.includes('hts') ? 'hederaAccountId?: string;' : ''}
+  ${templates.includes('hts') ? 'hederaPrivateKey?: string;' : ''}
+  ${templates.includes('wallet') ? 'walletProvider?: string;' : ''}
+  [key: string]: any;
+}
+
+export class ${serviceName} {
+  private config: ${serviceName}Config;
+  ${templates.includes('hts') ? 'private hederaClient?: Client;' : ''}
+  ${templates.includes('wallet') ? 'private hashConnect?: HashConnect;' : ''}
+
+  constructor(config: ${serviceName}Config) {
+    this.config = config;
+    logger.info('${serviceName} initialized with combined templates: ${templates.join(', ')}');
+  }
+
+  async initialize(): Promise<void> {
+    try {
+      ${templates.includes('hts') ? `
+      // Initialize Hedera client for HTS operations
+      if (this.config.hederaAccountId && this.config.hederaPrivateKey) {
+        this.hederaClient = Client.forTestnet();
+        this.hederaClient.setOperator(
+          this.config.hederaAccountId,
+          PrivateKey.fromString(this.config.hederaPrivateKey)
+        );
+      }` : ''}
+
+      ${templates.includes('wallet') ? `
+      // Initialize wallet connection
+      this.hashConnect = new HashConnect();` : ''}
+
+      logger.info('${serviceName} initialized successfully');
+    } catch (error: any) {
+      logger.error('${serviceName} initialization failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Combined operation leveraging all integrated templates
+   */
+  async executeCombinedOperation(params: any): Promise<any> {
+    logger.info('Executing combined template operation', { templates: ${JSON.stringify(templates)} });
+
+    try {
+      const results: any = {
+        success: true,
+        results: {},
+        templates: ${JSON.stringify(templates)}
+      };
+
+      ${templates.includes('hts') ? `
+      // HTS operations
+      if (params.tokenOperation && this.hederaClient) {
+        results.results.hts = await this.executeHTSOperation(params.tokenOperation);
+      }` : ''}
+
+      ${templates.includes('wallet') ? `
+      // Wallet operations
+      if (params.walletOperation && this.hashConnect) {
+        results.results.wallet = await this.executeWalletOperation(params.walletOperation);
+      }` : ''}
+
+      return results;
+    } catch (error: any) {
+      logger.error('Combined operation failed:', error);
+      throw error;
+    }
+  }
+
+  ${templates.includes('hts') ? `
+  private async executeHTSOperation(operation: any): Promise<any> {
+    // HTS-specific logic
+    logger.info('Executing HTS operation', operation);
+    return { success: true, operation: 'hts' };
+  }` : ''}
+
+  ${templates.includes('wallet') ? `
+  private async executeWalletOperation(operation: any): Promise<any> {
+    // Wallet-specific logic
+    logger.info('Executing wallet operation', operation);
+    return { success: true, operation: 'wallet' };
+  }` : ''}
+}
+
+export default ${serviceName};`;
+
+    return {
+      filePath: `src/services/${fileName}-service.ts`,
+      content: combinedCode,
+      language: 'typescript',
+      purpose: `Combined implementation of ${templates.join(', ')} templates`,
+      dependencies: this.getCombinedDependencies(templates),
+      generationMethod: 'hybrid',
+      confidence: 85
+    };
+  }
+
+  private createIntegrationBridge(templates: string[], request: AICompositionRequest): GeneratedCode {
+    const bridgeName = templates.join('') + 'Bridge';
+    const fileName = templates.join('-').toLowerCase() + '-bridge';
+
+    const bridgeCode = `/**
+ * Integration Bridge for ${templates.join(', ')}
+ * Handles cross-template communication and state synchronization
+ */
+import { logger } from '../utils/logger';
+
+export interface ${bridgeName}Config {
+  synchronizeState?: boolean;
+  errorHandling?: 'strict' | 'lenient';
+  [key: string]: any;
+}
+
+export class ${bridgeName} {
+  private config: ${bridgeName}Config;
+
+  constructor(config: ${bridgeName}Config = {}) {
+    this.config = { synchronizeState: true, errorHandling: 'strict', ...config };
+  }
+
+  /**
+   * Coordinate operations across ${templates.join(', ')} templates
+   */
+  async coordinateOperation(operation: string, params: any): Promise<any> {
+    logger.info('Coordinating cross-template operation', { operation, templates: ${JSON.stringify(templates)} });
+
+    try {
+      // Cross-template coordination logic
+      const results = await this.executeCoordinatedOperation(operation, params);
+
+      if (this.config.synchronizeState) {
+        await this.synchronizeState(results);
+      }
+
+      return results;
+    } catch (error: any) {
+      logger.error('Cross-template coordination failed:', error);
+      throw error;
+    }
+  }
+
+  private async executeCoordinatedOperation(operation: string, params: any): Promise<any> {
+    // Template coordination implementation
+    return { success: true, operation, results: {} };
+  }
+
+  private async synchronizeState(results: any): Promise<void> {
+    // State synchronization between templates
+    logger.debug('Synchronizing state across templates');
+  }
+}
+
+export default ${bridgeName};`;
+
+    return {
+      filePath: `src/bridges/${fileName}.ts`,
+      content: bridgeCode,
+      language: 'typescript',
+      purpose: `Integration bridge for ${templates.join(', ')} templates`,
+      dependencies: ['@hashgraph/sdk'],
+      generationMethod: 'hybrid',
+      confidence: 80
+    };
+  }
+
+  private getCombinedDependencies(templates: string[]): string[] {
+    const dependencies: string[] = [];
+
+    if (templates.includes('hts')) {
+      dependencies.push('@hashgraph/sdk');
+    }
+    if (templates.includes('wallet')) {
+      dependencies.push('hashconnect');
+    }
+    if (templates.includes('smart-contract')) {
+      dependencies.push('@hashgraph/sdk', 'ethers');
+    }
+
+    return [...new Set(dependencies)]; // Remove duplicates
   }
 }
 
@@ -1247,18 +1743,243 @@ class TemplateCombiner {
  */
 class CodeQualityAssessment {
   async assessGeneratedCode(code: GeneratedCode[], request: AICompositionRequest): Promise<QualityAssessment> {
-    // Implementation for comprehensive quality assessment
+    debugLogger.debug('Performing comprehensive code quality assessment', {
+      codeFiles: code.length,
+      industry: request.context.industry
+    });
+
+    const issues: any[] = [];
+    const recommendations: any[] = [];
+
+    // Analyze each generated file
+    const fileScores = code.map(file => this.analyzeCodeFile(file, issues, recommendations));
+
+    // Calculate overall scores
+    const codeQuality = this.calculateAverageScore(fileScores, 'codeQuality');
+    const businessLogicAccuracy = this.assessBusinessLogicAccuracy(code, request);
+    const securityCompliance = this.assessSecurityCompliance(code, request);
+    const performanceOptimization = this.assessPerformanceOptimization(code);
+    const maintainability = this.assessMaintainability(code);
+    const testability = this.assessTestability(code);
+
+    const overallScore = Math.round((
+      codeQuality +
+      businessLogicAccuracy +
+      securityCompliance +
+      performanceOptimization +
+      maintainability +
+      testability
+    ) / 6);
+
+    debugLogger.debug('Quality assessment completed', {
+      overallScore,
+      issueCount: issues.length,
+      recommendationCount: recommendations.length
+    });
+
     return {
-      overallScore: 85,
-      codeQuality: 90,
-      businessLogicAccuracy: 85,
-      securityCompliance: 80,
-      performanceOptimization: 85,
-      maintainability: 90,
-      testability: 85,
-      issues: [],
-      recommendations: []
+      overallScore,
+      codeQuality,
+      businessLogicAccuracy,
+      securityCompliance,
+      performanceOptimization,
+      maintainability,
+      testability,
+      issues,
+      recommendations
     };
+  }
+
+  private analyzeCodeFile(file: GeneratedCode, issues: any[], recommendations: any[]): any {
+    const content = file.content;
+    let score = 70; // Base score
+
+    // Check code structure and quality indicators
+    const hasExports = content.includes('export');
+    const hasImports = content.includes('import');
+    const hasInterfaces = content.includes('interface') || content.includes('type');
+    const hasErrorHandling = content.includes('try') && content.includes('catch');
+    const hasLogging = content.includes('logger');
+    const hasDocumentation = content.includes('/**') || content.includes('//');
+    const hasTypeScript = file.language === 'typescript';
+
+    // Positive indicators
+    if (hasExports) score += 5;
+    if (hasImports) score += 5;
+    if (hasInterfaces) score += 10;
+    if (hasErrorHandling) score += 15;
+    if (hasLogging) score += 10;
+    if (hasDocumentation) score += 10;
+    if (hasTypeScript) score += 10;
+
+    // Check for Hedera integration
+    if (content.includes('@hashgraph/sdk')) score += 15;
+    if (content.includes('Client')) score += 5;
+    if (content.includes('Transaction')) score += 5;
+
+    // Check for potential issues
+    if (content.includes('any') && !content.includes(': any')) {
+      issues.push({
+        file: file.filePath,
+        type: 'type-safety',
+        severity: 'medium',
+        message: 'Avoid using "any" type without explicit typing'
+      });
+      score -= 5;
+    }
+
+    if (!hasErrorHandling && content.includes('async')) {
+      issues.push({
+        file: file.filePath,
+        type: 'error-handling',
+        severity: 'high',
+        message: 'Async functions should include error handling'
+      });
+      score -= 10;
+    }
+
+    if (content.includes('TODO') || content.includes('FIXME')) {
+      issues.push({
+        file: file.filePath,
+        type: 'incomplete',
+        severity: 'medium',
+        message: 'Code contains TODO or FIXME comments'
+      });
+      score -= 5;
+    }
+
+    // Add recommendations
+    if (!hasLogging) {
+      recommendations.push({
+        file: file.filePath,
+        type: 'logging',
+        message: 'Consider adding logging for better observability'
+      });
+    }
+
+    if (!hasDocumentation) {
+      recommendations.push({
+        file: file.filePath,
+        type: 'documentation',
+        message: 'Add JSDoc comments for better maintainability'
+      });
+    }
+
+    return {
+      file: file.filePath,
+      codeQuality: Math.max(0, Math.min(100, score))
+    };
+  }
+
+  private calculateAverageScore(scores: any[], metric: string): number {
+    if (scores.length === 0) return 0;
+    const total = scores.reduce((sum, score) => sum + score[metric], 0);
+    return Math.round(total / scores.length);
+  }
+
+  private assessBusinessLogicAccuracy(code: GeneratedCode[], request: AICompositionRequest): number {
+    let score = 80; // Base score
+
+    // Check if code addresses the business requirements
+    const requirementKeywords = request.requirement.description.toLowerCase().split(' ');
+    const codeContent = code.map(f => f.content.toLowerCase()).join(' ');
+
+    const relevantKeywords = requirementKeywords.filter(keyword =>
+      keyword.length > 3 && codeContent.includes(keyword)
+    );
+
+    const relevanceRatio = relevantKeywords.length / Math.max(requirementKeywords.length, 1);
+    score += Math.round(relevanceRatio * 20);
+
+    // Industry-specific checks
+    if (request.context.industry === 'pharmaceutical') {
+      if (codeContent.includes('audit') || codeContent.includes('compliance')) score += 10;
+      if (codeContent.includes('batch') || codeContent.includes('serial')) score += 5;
+    }
+
+    if (request.context.industry === 'financial-services') {
+      if (codeContent.includes('kyc') || codeContent.includes('aml')) score += 10;
+      if (codeContent.includes('transaction') || codeContent.includes('payment')) score += 5;
+    }
+
+    return Math.max(0, Math.min(100, score));
+  }
+
+  private assessSecurityCompliance(code: GeneratedCode[], request: AICompositionRequest): number {
+    let score = 70; // Base score
+
+    const allContent = code.map(f => f.content).join('\n');
+
+    // Positive security indicators
+    if (allContent.includes('validateInput') || allContent.includes('sanitize')) score += 10;
+    if (allContent.includes('PrivateKey') && allContent.includes('fromString')) score += 10;
+    if (allContent.includes('try') && allContent.includes('catch')) score += 10;
+    if (allContent.includes('logger.error')) score += 5;
+
+    // Security anti-patterns
+    if (allContent.includes('console.log') && allContent.includes('privateKey')) score -= 20;
+    if (allContent.includes('hardcoded') || allContent.includes('password123')) score -= 30;
+    if (allContent.includes('eval(') || allContent.includes('Function(')) score -= 25;
+
+    return Math.max(0, Math.min(100, score));
+  }
+
+  private assessPerformanceOptimization(code: GeneratedCode[]): number {
+    let score = 75; // Base score
+
+    const allContent = code.map(f => f.content).join('\n');
+
+    // Performance indicators
+    if (allContent.includes('cache') || allContent.includes('memoize')) score += 10;
+    if (allContent.includes('Promise.all') || allContent.includes('parallel')) score += 10;
+    if (allContent.includes('async') && allContent.includes('await')) score += 10;
+    if (allContent.includes('batch') || allContent.includes('bulk')) score += 5;
+
+    // Performance anti-patterns
+    if (allContent.includes('sync') && allContent.includes('Sync(')) score -= 10;
+    if (allContent.match(/for.*in.*await/g)) score -= 15;
+
+    return Math.max(0, Math.min(100, score));
+  }
+
+  private assessMaintainability(code: GeneratedCode[]): number {
+    let score = 80; // Base score
+
+    for (const file of code) {
+      const content = file.content;
+      const lines = content.split('\n').length;
+
+      // Good maintainability indicators
+      if (content.includes('interface') || content.includes('type')) score += 5;
+      if (content.includes('/**')) score += 5;
+      if (content.includes('export')) score += 5;
+
+      // Maintainability concerns
+      if (lines > 300) score -= 10; // Very large files
+      if (content.match(/function.*\{[\s\S]*?\}/g)?.some(fn => fn.split('\n').length > 50)) {
+        score -= 10; // Very large functions
+      }
+    }
+
+    return Math.max(0, Math.min(100, score));
+  }
+
+  private assessTestability(code: GeneratedCode[]): number {
+    let score = 70; // Base score
+
+    const allContent = code.map(f => f.content).join('\n');
+
+    // Testability indicators
+    if (allContent.includes('inject') || allContent.includes('DI')) score += 10;
+    if (allContent.includes('interface') && allContent.includes('implements')) score += 10;
+    if (allContent.includes('export class')) score += 10;
+    if (allContent.includes('async') && allContent.includes('return')) score += 5;
+
+    // Testability concerns
+    if (allContent.includes('static') && allContent.includes('private')) score -= 10;
+    if (allContent.includes('singleton')) score -= 10;
+
+    return Math.max(0, Math.min(100, score));
   }
 }
 

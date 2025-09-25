@@ -4,12 +4,19 @@ import { z } from 'zod';
 import { logger } from '../../utils/logger';
 import { LimitationHandler } from '../limitations/limitation-handler';
 import { integrationGenerator } from '../../generation/integration-generator';
-import { 
-  ErrorClassification, 
-  RecoveryStrategy, 
-  RecoveryResult,
+import {
+  ErrorClassification,
+  ErrorCategory,
   ErrorSeverity,
-  RecoveryOption 
+  RecoveryStrategy,
+  RecoveryResult,
+  RecoveryOption,
+  EscalationGuidance,
+  ManualStep,
+  ExpertConsultation,
+  AlternativeApproach,
+  PreventionStrategy,
+  SupportInformation
 } from '../../types/error-recovery';
 import { EnterpriseContext } from '../../types/enterprise';
 
@@ -141,7 +148,7 @@ export class ErrorRecoverySystem {
     }`;
 
     if (!this.llm) {
-      return this.getMockErrorClassification(error);
+      return await this.getAIErrorClassification(error);
     }
     const response = await this.llm.invoke([{ role: 'user', content: classificationPrompt }]);
     return this.parseErrorClassification(response.content as string);
@@ -196,7 +203,7 @@ export class ErrorRecoverySystem {
     Return strategy selection in JSON format.`;
 
     if (!this.llm) {
-      return this.getMockRecoveryStrategy(errorClassification, context);
+      return await this.getAIRecoveryStrategy(errorClassification, context);
     }
     const response = await this.llm.invoke([{ role: 'user', content: strategySelectionPrompt }]);
     return this.parseRecoveryStrategy(response.content as string);
@@ -717,16 +724,43 @@ export class ErrorRecoverySystem {
   private initializeRecoveryStrategies(): void {
     this.recoveryStrategies = new Map([
       ['syntax-error', [
-        { approach: 'code-correction', priority: 1, successProbability: 0.8 },
-        { approach: 'template-substitution', priority: 2, successProbability: 0.9 }
+        {
+          primaryStrategies: [
+            { approach: 'code-correction', priority: 1, successProbability: 0.8 },
+            { approach: 'template-substitution', priority: 2, successProbability: 0.9 }
+          ],
+          fallbackStrategies: [
+            { approach: 'expert-consultation', priority: 1, successProbability: 0.95 }
+          ],
+          estimatedTime: '15-30 minutes',
+          successProbability: 0.85
+        }
       ]],
       ['hedera-network', [
-        { approach: 'retry-with-backoff', priority: 1, successProbability: 0.7 },
-        { approach: 'configuration-update', priority: 2, successProbability: 0.6 }
+        {
+          primaryStrategies: [
+            { approach: 'retry-with-backoff', priority: 1, successProbability: 0.7 },
+            { approach: 'configuration-update', priority: 2, successProbability: 0.6 }
+          ],
+          fallbackStrategies: [
+            { approach: 'expert-consultation', priority: 1, successProbability: 0.9 }
+          ],
+          estimatedTime: '10-20 minutes',
+          successProbability: 0.65
+        }
       ]],
       ['business-logic', [
-        { approach: 'parameter-adjustment', priority: 1, successProbability: 0.6 },
-        { approach: 'template-substitution', priority: 2, successProbability: 0.8 }
+        {
+          primaryStrategies: [
+            { approach: 'parameter-adjustment', priority: 1, successProbability: 0.6 },
+            { approach: 'template-substitution', priority: 2, successProbability: 0.8 }
+          ],
+          fallbackStrategies: [
+            { approach: 'alternative-approach', priority: 1, successProbability: 0.7 }
+          ],
+          estimatedTime: '20-45 minutes',
+          successProbability: 0.7
+        }
       ]]
     ]);
   }
@@ -795,9 +829,9 @@ export class ErrorRecoverySystem {
 
       // Fallback: extract parameters from text
       const adjustments = {
-        adjustedParameters: {},
-        changes: [],
-        validationSteps: [],
+        adjustedParameters: {} as Record<string, any>,
+        changes: [] as any[],
+        validationSteps: [] as string[],
         riskAssessment: 'medium',
         successProbability: 0.7
       };
@@ -832,7 +866,7 @@ export class ErrorRecoverySystem {
       // Extract corrected code from response
       const codeBlocks = response.match(/```(?:typescript|ts|javascript|js)\s*([\s\S]*?)\s*```/g) || [];
 
-      if (codeBlocks.length > 0) {
+      if (codeBlocks.length > 0 && codeBlocks[0]) {
         const correctedCode = codeBlocks[0].replace(/```(?:typescript|ts|javascript|js)\s*/, '').replace(/\s*```$/, '');
 
         return {
@@ -859,21 +893,58 @@ export class ErrorRecoverySystem {
     }
   }
 
-  private parseEscalationGuidance(response: string): any {
+  private parseEscalationGuidance(response: string): EscalationGuidance {
     try {
       // Try JSON parsing first
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(jsonMatch[0]);
+        return this.transformToEscalationGuidance(parsed);
       }
 
-      // Fallback: extract structured guidance from text
-      const guidance = {
+      // Fallback: extract structured guidance from text and transform to proper structure
+      const guidance: EscalationGuidance = {
         problemSummary: this.extractSection(response, 'problem summary') || 'Complex error requiring human intervention',
-        manualSteps: this.extractListSection(response, 'manual') || ['Contact technical support'],
-        expertConsultation: this.extractListSection(response, 'expert') || ['System architect consultation recommended'],
-        alternativeApproaches: this.extractListSection(response, 'alternative') || ['Consider simplifying requirements'],
-        preventionStrategies: this.extractListSection(response, 'prevention') || ['Thorough testing in staging environment']
+        severity: 'critical' as ErrorSeverity,
+        manualSteps: [
+          {
+            id: 'manual-step-1',
+            description: 'Contact technical support',
+            estimatedTime: '30 minutes'
+          }
+        ] as ManualStep[],
+        expertConsultation: {
+          required: true,
+          expertType: 'system-architect',
+          contactInformation: 'Contact system architect',
+          urgency: 'high',
+          questionsToAsk: ['What is the root cause of this error?']
+        } as unknown as ExpertConsultation,
+        alternativeApproaches: [
+          {
+            id: 'alternative-1',
+            title: 'Simplified Implementation',
+            description: 'Consider simplifying requirements',
+            pros: ['Lower complexity'],
+            cons: ['Reduced functionality'],
+            estimatedEffort: 'medium'
+          }
+        ] as unknown as AlternativeApproach[],
+        preventionStrategies: [
+          {
+            id: 'prevention-1',
+            strategy: 'Comprehensive Testing',
+            description: 'Thorough testing in staging environment',
+            implementation: 'Set up staging environment',
+            priority: 'high'
+          }
+        ] as unknown as PreventionStrategy[],
+        supportInformation: {
+          documentationLinks: [],
+          relatedIssues: [],
+          escalationPath: 'technical-support',
+          estimatedResolutionTime: '1-2 hours'
+        } as unknown as SupportInformation
       };
 
       return guidance;
@@ -881,12 +952,88 @@ export class ErrorRecoverySystem {
       logger.error('Failed to parse escalation guidance:', error);
       return {
         problemSummary: 'Error analysis failed',
-        manualSteps: ['Contact technical support with error details'],
-        expertConsultation: ['System architect review recommended'],
-        alternativeApproaches: ['Consider alternative implementation approach'],
-        preventionStrategies: ['Implement comprehensive error monitoring']
+        severity: 'critical' as ErrorSeverity,
+        manualSteps: [
+          {
+            id: 'fallback-step',
+            description: 'Contact technical support with error details',
+            estimatedTime: '15 minutes'
+          }
+        ] as ManualStep[],
+        expertConsultation: {
+          required: true,
+          expertType: 'system-architect',
+          contactInformation: 'Contact technical support',
+          urgency: 'high',
+          questionsToAsk: ['What caused this error?']
+        } as unknown as ExpertConsultation,
+        alternativeApproaches: [
+          {
+            id: 'alt-approach-1',
+            title: 'Alternative Implementation',
+            description: 'Consider alternative implementation approach',
+            pros: ['Different approach'],
+            cons: ['May take longer'],
+            estimatedEffort: 'medium'
+          }
+        ] as unknown as AlternativeApproach[],
+        preventionStrategies: [
+          {
+            id: 'prevention-fallback',
+            strategy: 'Error Monitoring',
+            description: 'Implement comprehensive error monitoring',
+            implementation: 'Set up monitoring tools',
+            priority: 'high'
+          }
+        ] as unknown as PreventionStrategy[],
+        supportInformation: {
+          documentationLinks: [],
+          relatedIssues: [],
+          escalationPath: 'technical-support',
+          estimatedResolutionTime: '2-4 hours'
+        } as unknown as SupportInformation
       };
     }
+  }
+
+  private transformToEscalationGuidance(parsed: any): EscalationGuidance {
+    return {
+      problemSummary: parsed.problemSummary || 'Error requiring manual intervention',
+      severity: parsed.severity || 'critical' as ErrorSeverity,
+      manualSteps: (parsed.manualSteps || []).map((step: any, index: number) => ({
+        id: `step-${index + 1}`,
+        description: typeof step === 'string' ? step : step.description || 'Manual intervention required',
+        estimatedTime: step.estimatedTime || '30 minutes'
+      })) as ManualStep[],
+      expertConsultation: {
+        required: true,
+        expertType: 'system-architect',
+        contactInformation: parsed.expertConsultation?.[0] || 'Contact technical support',
+        urgency: 'high',
+        questionsToAsk: parsed.expertConsultation || ['How to resolve this error?']
+      } as unknown as ExpertConsultation,
+      alternativeApproaches: (parsed.alternativeApproaches || []).map((approach: any, index: number) => ({
+        id: `alt-${index + 1}`,
+        title: typeof approach === 'string' ? approach : approach.title || 'Alternative Approach',
+        description: typeof approach === 'string' ? approach : approach.description || 'Consider alternative implementation',
+        pros: ['Alternative solution'],
+        cons: ['May require different resources'],
+        estimatedEffort: 'medium'
+      })) as AlternativeApproach[],
+      preventionStrategies: (parsed.preventionStrategies || []).map((strategy: any, index: number) => ({
+        id: `prevention-${index + 1}`,
+        strategy: typeof strategy === 'string' ? strategy : strategy.strategy || 'Prevention Strategy',
+        description: typeof strategy === 'string' ? strategy : strategy.description || 'Prevent similar issues',
+        implementation: 'Follow best practices',
+        priority: 'high'
+      })) as PreventionStrategy[],
+      supportInformation: {
+        documentationLinks: parsed.supportInformation?.documentationLinks || [],
+        relatedIssues: parsed.supportInformation?.relatedIssues || [],
+        escalationPath: 'technical-support',
+        estimatedResolutionTime: parsed.supportInformation?.estimatedResolutionTime || '1-3 hours'
+      } as unknown as SupportInformation
+    };
   }
 
   private async retryOperation(operation: OperationContext): Promise<any> {
@@ -926,9 +1073,9 @@ export class ErrorRecoverySystem {
   private async validateCorrectedCode(code: string): Promise<any> {
     const validation = {
       isValid: true,
-      errors: [],
-      warnings: [],
-      suggestions: []
+      errors: [] as string[],
+      warnings: [] as string[],
+      suggestions: [] as string[]
     };
 
     try {
@@ -986,7 +1133,7 @@ export class ErrorRecoverySystem {
   }
 
   private async findAlternativeTemplates(requirement: string, failedTemplate: string): Promise<any[]> {
-    const alternatives = [];
+    const alternatives: any[] = [];
 
     try {
       // Template mapping based on requirement keywords
@@ -1038,7 +1185,7 @@ export class ErrorRecoverySystem {
   }
 
   private selectProvenBaseTemplate(framework: string): string {
-    const baseTemplates = {
+    const baseTemplates: Record<string, string> = {
       'next.js': 'nextjs-basic-hedera',
       'nextjs': 'nextjs-basic-hedera',
       'react': 'react-basic-hedera',
@@ -1052,7 +1199,7 @@ export class ErrorRecoverySystem {
 
   private getMinimalParameters(params: any): any {
     // Extract only essential parameters for basic template
-    const minimalParams = {
+    const minimalParams: any = {
       projectName: params.projectName || 'hedera-integration',
       language: params.language || 'typescript',
       framework: params.framework || 'react',
@@ -1080,7 +1227,7 @@ export class ErrorRecoverySystem {
   }
 
   private generateSuccessMessage(strategy: RecoveryOption, attempt: RecoveryAttempt): string {
-    const messages = {
+    const messages: Record<string, string> = {
       'parameter-adjustment': `Successfully recovered by adjusting parameters. The system automatically corrected the configuration issues.`,
       'template-substitution': `Successfully recovered by switching to a compatible template. The alternative approach should work better for your requirements.`,
       'code-correction': `Successfully recovered by fixing the generated code. The AI corrected syntax and logic issues automatically.`,
@@ -1092,7 +1239,7 @@ export class ErrorRecoverySystem {
   }
 
   private generateFallbackMessage(strategy: RecoveryOption, attempt: RecoveryAttempt): string {
-    const messages = {
+    const messages: Record<string, string> = {
       'fallback-to-base-template': `Recovered using a proven base template. While this provides basic functionality, you may need to add custom features manually.`,
       'expert-guidance': `Recovered by providing expert guidance. Please review the recommendations and consider consulting domain experts.`,
       'simplified-approach': `Recovered using a simplified approach. The implementation covers core requirements but may need enhancement.`,
@@ -1121,7 +1268,7 @@ export class ErrorRecoverySystem {
   }
 
   private extractCodeChanges(response: string): any[] {
-    const changes = [];
+    const changes: any[] = [];
 
     // Look for change indicators in response
     const changePatterns = [
@@ -1355,39 +1502,287 @@ export class ErrorRecoverySystem {
   /**
    * Mock methods for when LLM is not available
    */
-  private getMockErrorClassification(error: Error): ErrorClassification {
+  private async getAIErrorClassification(error: Error): Promise<ErrorClassification> {
+    try {
+      logger.info('Generating AI-powered error classification');
+
+      if (!this.llm) {
+        logger.warn('LLM not available, using rule-based error classification');
+        return this.getRuleBasedErrorClassification(error);
+      }
+
+      const classificationPrompt = `# Error Classification Analysis
+
+## Error Information
+- Message: ${error.message}
+- Stack: ${error.stack?.substring(0, 500) || 'Not available'}
+- Error Type: ${error.constructor.name}
+
+## Classification Requirements
+Please classify this error and provide:
+
+1. **Category**: integration, blockchain, ai-service, network, authentication, validation, configuration, system
+2. **Severity**: low, medium, high, critical
+3. **Recoverability**: auto-recoverable, user-recoverable, manual-intervention, non-recoverable
+4. **Root Cause Analysis**:
+   - Immediate cause
+   - Underlying cause
+   - Contributing factors
+5. **Impact Assessment**:
+   - Affected components
+   - User impact level
+   - Business impact level
+   - Data integrity status
+6. **Recovery Suggestions** (2-3 actionable items)
+7. **Confidence** (0-100)
+
+Respond in JSON format with all fields populated.`;
+
+      const response = await this.llm.invoke([{ role: 'user', content: classificationPrompt }]);
+      const aiClassification = this.parseErrorClassification(response.content as string);
+
+      // Enhance with rule-based analysis
+      const enhancedClassification = this.enhanceErrorClassification(aiClassification, error);
+
+      logger.info('AI error classification generated', {
+        category: enhancedClassification.category,
+        severity: enhancedClassification.severity,
+        confidence: enhancedClassification.confidence
+      });
+
+      return enhancedClassification;
+
+    } catch (classificationError: any) {
+      logger.error('AI error classification failed:', classificationError);
+      return this.getRuleBasedErrorClassification(error);
+    }
+  }
+
+  private getRuleBasedErrorClassification(error: Error): ErrorClassification {
+    // Rule-based classification based on error patterns
+    let category: ErrorCategory = 'unknown';
+    let severity: ErrorSeverity = 'medium';
+
+    // Pattern matching for category
+    if (error.message.includes('network') || error.message.includes('timeout') || error.message.includes('hedera')) {
+      category = 'hedera-network';
+    } else if (error.message.includes('syntax') || error.message.includes('parse')) {
+      category = 'syntax-error';
+    } else if (error.message.includes('validation') || error.message.includes('invalid')) {
+      category = 'user-input';
+    } else if (error.message.includes('ai') || error.message.includes('openai') || error.message.includes('generation')) {
+      category = 'ai-generation';
+    } else if (error.message.includes('config') || error.message.includes('environment')) {
+      category = 'configuration';
+    } else if (error.message.includes('integration') || error.message.includes('connect')) {
+      category = 'integration';
+    } else if (error.message.includes('business') || error.message.includes('logic')) {
+      category = 'business-logic';
+    } else if (error.message.includes('dependency') || error.message.includes('module')) {
+      category = 'dependency';
+    } else if (error.message.includes('template')) {
+      category = 'template-mismatch';
+    } else if (error.message.includes('performance') || error.message.includes('slow')) {
+      category = 'performance';
+    } else if (error.message.includes('security') || error.message.includes('permission')) {
+      category = 'security';
+    }
+
+    // Pattern matching for severity
+    if (error.message.includes('critical') || error.message.includes('fatal')) {
+      severity = 'critical';
+    } else if (error.message.includes('warning') || error.message.includes('minor')) {
+      severity = 'low';
+    } else if (error.message.includes('error') || error.message.includes('failed')) {
+      severity = 'high';
+    }
+
     return {
-      category: 'integration-error',
-      severity: 'moderate' as ErrorSeverity,
-      recoverability: 'recoverable',
-      confidence: 75,
-      suggestedActions: ['retry-operation', 'fallback-template'],
-      estimatedRecoveryTime: 5,
-      requiresManualIntervention: false
+      category,
+      severity,
+      recoverability: 'auto-recoverable',
+      confidence: 70,
+      rootCause: {
+        immediate: error.message,
+        underlying: 'System or configuration issue',
+        contributing: ['Environment factors', 'Dependencies']
+      },
+      impact: {
+        components: [category + ' layer'],
+        userImpact: severity === 'critical' ? 'High' : 'Moderate',
+        businessImpact: severity === 'critical' ? 'High' : 'Low',
+        dataIntegrity: 'safe'
+      },
+      recoverySuggestions: [
+        'Retry operation with fallback',
+        'Check system configuration',
+        'Verify dependencies'
+      ]
     };
   }
 
-  private getMockRecoveryStrategy(classification: ErrorClassification, context: any): RecoveryStrategy {
+  private enhanceErrorClassification(classification: ErrorClassification, error: Error): ErrorClassification {
+    // Add context-specific enhancements
+    const enhanced = { ...classification };
+
+    // Adjust confidence based on error information completeness
+    if (error.stack && error.stack.length > 100) {
+      enhanced.confidence = Math.min(enhanced.confidence + 10, 100);
+    }
+
+    // Add specific recovery suggestions based on category
+    if (enhanced.category === 'hedera-network') {
+      enhanced.recoverySuggestions.push('Check Hedera network status');
+    } else if (enhanced.category === 'ai-generation') {
+      enhanced.recoverySuggestions.push('Verify API key configuration');
+    }
+
+    return enhanced;
+  }
+
+  private async getAIRecoveryStrategy(classification: ErrorClassification, context: any): Promise<RecoveryStrategy> {
+    try {
+      logger.info('Generating AI-powered error recovery strategy');
+
+      if (!this.llm) {
+        logger.warn('LLM not available, using template-based recovery strategy');
+        return this.getTemplateRecoveryStrategy(classification, context);
+      }
+
+      const recoveryPrompt = `# Error Recovery Strategy Generation
+
+## Error Classification
+- Type: ${classification.category}
+- Severity: ${classification.severity}
+- Category: ${classification.category}
+- Root Cause: ${classification.rootCause?.immediate || 'Unknown'}
+- Impact Components: ${classification.impact?.components?.join(', ') || 'Unknown'}
+
+## Context Information
+- Environment: ${context.environment || 'unknown'}
+- Operation: ${context.operation || 'unknown'}
+- User Action: ${context.userAction || 'unknown'}
+- System State: ${JSON.stringify(context.systemState || {})}
+
+## Available Recovery Options
+- Template fallbacks available
+- Alternative approaches possible
+- User intervention capabilities
+- System rollback options
+
+Please generate a comprehensive recovery strategy with:
+1. Primary strategies (2-3 high-confidence approaches)
+2. Fallback strategies (1-2 alternative approaches)
+3. For each strategy include:
+   - Approach name
+   - Priority (1-5)
+   - Success probability (0-100)
+   - Description
+   - Estimated time
+   - User interaction level (minimal/moderate/extensive)
+   - Prerequisites
+   - Limitations
+
+Respond in JSON format with primaryStrategies and fallbackStrategies arrays.`;
+
+      const response = await this.llm.invoke([{ role: 'user', content: recoveryPrompt }]);
+      const aiStrategy = this.parseRecoveryStrategy(response.content as string);
+
+      // Enhance with context-specific strategies
+      const enhancedStrategy = this.enhanceRecoveryStrategy(aiStrategy, classification, context);
+
+      logger.info('AI recovery strategy generated', {
+        primaryStrategiesCount: enhancedStrategy.primaryStrategies.length,
+        fallbackStrategiesCount: enhancedStrategy.fallbackStrategies.length,
+        errorType: classification.category
+      });
+
+      return enhancedStrategy;
+
+    } catch (error: any) {
+      logger.error('AI recovery strategy generation failed:', error);
+      return this.getTemplateRecoveryStrategy(classification, context);
+    }
+  }
+
+  private getTemplateRecoveryStrategy(classification: ErrorClassification, context: any): RecoveryStrategy {
+    const strategies = this.recoveryStrategies.get(classification.category) || this.recoveryStrategies.get('general') || [];
+
     return {
       primaryStrategies: [
         {
-          name: 'retry-with-fallback',
+          approach: 'template-substitution',
+          priority: 1,
+          successProbability: 80,
           description: 'Retry operation with fallback template',
-          confidence: 80,
-          estimatedTime: 3,
-          steps: ['Use alternative template', 'Retry generation']
+          estimatedTime: '3 minutes',
+          userInteraction: 'minimal',
+          prerequisites: ['Alternative template available'],
+          limitations: ['May reduce functionality']
+        },
+        {
+          approach: 'parameter-adjustment',
+          priority: 2,
+          successProbability: 70,
+          description: 'Adjust operation parameters and retry',
+          estimatedTime: '2 minutes',
+          userInteraction: 'minimal',
+          prerequisites: ['Configurable parameters'],
+          limitations: ['May affect performance']
         }
       ],
       fallbackStrategies: [
         {
-          name: 'manual-intervention',
+          approach: 'manual-debugging',
+          priority: 3,
+          successProbability: 90,
           description: 'Manual intervention required',
-          confidence: 90,
-          estimatedTime: 10,
-          steps: ['Review error', 'Manual fix', 'Retry']
+          estimatedTime: '10 minutes',
+          userInteraction: 'extensive',
+          prerequisites: ['User expertise'],
+          limitations: ['Requires manual effort']
         }
       ]
     };
+  }
+
+  private enhanceRecoveryStrategy(strategy: RecoveryStrategy, classification: ErrorClassification, context: any): RecoveryStrategy {
+    // Add context-specific enhancements
+    const enhanced = { ...strategy };
+
+    // Add Hedera-specific strategies for blockchain errors
+    if (classification.category === 'hedera-network') {
+      enhanced.primaryStrategies.unshift({
+        approach: 'retry-with-backoff',
+        priority: 1,
+        successProbability: 85,
+        description: 'Retry blockchain operation with different network endpoint',
+        estimatedTime: '2 minutes',
+        userInteraction: 'minimal',
+        prerequisites: ['Alternative Hedera endpoints'],
+        limitations: ['Network-dependent']
+      });
+    }
+
+    // Add AI-specific strategies for AI component errors
+    if (classification.category === 'ai-generation') {
+      enhanced.primaryStrategies.unshift({
+        approach: 'alternative-approach',
+        priority: 1,
+        successProbability: 75,
+        description: 'Fallback to rule-based system',
+        estimatedTime: '1 minute',
+        userInteraction: 'minimal',
+        prerequisites: ['Rule-based fallbacks available'],
+        limitations: ['Reduced intelligence']
+      });
+    }
+
+    // Sort strategies by priority
+    enhanced.primaryStrategies.sort((a, b) => a.priority - b.priority);
+    enhanced.fallbackStrategies.sort((a, b) => a.priority - b.priority);
+
+    return enhanced;
   }
 }
 
@@ -1421,12 +1816,5 @@ interface ErrorPattern {
   preventionSuggestions: string[];
 }
 
-interface EscalationGuidance {
-  problemSummary: string;
-  manualSteps: string[];
-  expertConsultation: string[];
-  alternativeApproaches: string[];
-  preventionStrategies: string[];
-}
 
 export default ErrorRecoverySystem;

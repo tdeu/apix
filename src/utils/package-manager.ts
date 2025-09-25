@@ -147,14 +147,30 @@ export class PackageManager {
   async installDependencies(): Promise<void> {
     try {
       logger.debug(`Installing dependencies with ${this.manager}...`);
-      
+
       const command = this.getInstallCommand();
       await this.runCommand(command);
-      
+
       logger.debug('Dependencies installed successfully');
     } catch (error) {
-      logger.error('Failed to install dependencies:', error);
-      throw error;
+      logger.error('❌ Failed to install dependencies:', error);
+
+      let enhancedError = `Dependency installation failed with ${this.manager}\n\n`;
+      enhancedError += `Command: ${this.getInstallCommand()}\n`;
+      enhancedError += `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\n`;
+      enhancedError += `🔧 Troubleshooting steps:\n`;
+      enhancedError += `   • Check your internet connection\n`;
+      enhancedError += `   • Verify package.json exists and is valid\n`;
+      enhancedError += `   • Try running: ${this.getInstallCommand()}\n`;
+      enhancedError += `   • Clear npm cache: npm cache clean --force\n`;
+
+      if (this.manager === 'npm') {
+        enhancedError += `   • Try deleting node_modules and package-lock.json\n`;
+      } else if (this.manager === 'yarn') {
+        enhancedError += `   • Try deleting node_modules and yarn.lock\n`;
+      }
+
+      throw new Error(enhancedError);
     }
   }
 

@@ -18,11 +18,11 @@ import {
  * - Performance monitoring and metrics
  */
 export class PerformanceOptimizer {
-  private aiResponseCache: LRUCache<string, any>;
-  private templateCache: LRUCache<string, any>;
-  private parameterCache: LRUCache<string, any>;
-  private batchQueue: Map<string, BatchQueueItem[]>;
-  private metrics: PerformanceMetrics;
+  private aiResponseCache!: LRUCache<string, any>;
+  private templateCache!: LRUCache<string, any>;
+  private parameterCache!: LRUCache<string, any>;
+  private batchQueue!: Map<string, BatchQueueItem[]>;
+  private metrics!: PerformanceMetrics;
   private config: PerformanceConfiguration;
 
   constructor(config: PerformanceConfiguration) {
@@ -305,7 +305,14 @@ export class PerformanceOptimizer {
       templateLoadErrors: 0,
       responseTimes: new Map(),
       batchOperations: 0,
-      resourceOptimizations: 0
+      resourceOptimizations: 0,
+      memoryUsage: {
+        heapUsed: 0,
+        heapTotal: 0,
+        external: 0,
+        rss: 0,
+        arrayBuffers: 0
+      }
     };
   }
 
@@ -317,7 +324,7 @@ export class PerformanceOptimizer {
       // Log performance summary
       logger.info('Performance metrics:', {
         requestsPerSecond: metrics.requestsPerSecond?.toFixed(2),
-        cacheHitRatio: (metrics.cacheHitRatio * 100)?.toFixed(1) + '%',
+        cacheHitRatio: ((metrics.cacheHitRatio || 0) * 100)?.toFixed(1) + '%',
         averageResponseTime: metrics.averageResponseTime?.toFixed(0) + 'ms',
         memoryUsage: `${Math.round(metrics.memoryUsage.heapUsed / 1024 / 1024)}MB`
       });

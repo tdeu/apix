@@ -421,19 +421,23 @@ export class LimitationHandler {
    * Initialize LLM instances
    */
   private initializeLLMs(): void {
-    this.primaryLLM = new ChatOpenAI({
-      modelName: process.env.DEFAULT_LLM || 'gpt-4o-mini',
-      temperature: 0.3, // Lower temperature for more consistent assessments
-      maxTokens: 2000,
-      apiKey: process.env.OPENAI_API_KEY
-    });
+    if (process.env.OPENAI_API_KEY) {
+      this.primaryLLM = new ChatOpenAI({
+        modelName: process.env.DEFAULT_LLM || 'gpt-4o-mini',
+        temperature: 0.3, // Lower temperature for more consistent assessments
+        maxTokens: 2000,
+        apiKey: process.env.OPENAI_API_KEY
+      });
+    }
 
-    this.secondaryLLM = new ChatAnthropic({
-      modelName: 'claude-3-sonnet-20240229',
-      temperature: 0.3,
-      maxTokens: 2000,
-      apiKey: process.env.ANTHROPIC_API_KEY
-    });
+    if (process.env.ANTHROPIC_API_KEY) {
+      this.secondaryLLM = new ChatAnthropic({
+        modelName: 'claude-3-sonnet-20240229',
+        temperature: 0.3,
+        maxTokens: 2000,
+        apiKey: process.env.ANTHROPIC_API_KEY
+      });
+    }
   }
 
   /**

@@ -1,0 +1,186 @@
+import {
+  Client,
+  ContractCreateTransaction,
+  ContractCallQuery,
+  ContractExecuteTransaction,
+  ContractFunctionParameters,
+  ContractId,
+  AccountId,
+  PrivateKey,
+  Hbar,
+  FileCreateTransaction,
+  FileAppendTransaction
+} from '@hashgraph/sdk';
+import { createDefaultClient } from './client';
+
+export interface ContractDeployParams {
+  bytecode: string;
+  constructorParams?: ContractFunctionParameters;
+  gas?: number;
+  initialBalance?: number;
+}
+
+export interface ContractCallParams {
+  contractId: string;
+  functionName: string;
+  parameters?: ContractFunctionParameters;
+  gas?: number;
+  amount?: number;
+}
+
+export interface ContractInfo {
+  contractId: string;
+  bytecodeFileId: string;
+  adminKey?: string;
+  autoRenewPeriod: number;
+  contractAccountId: string;
+  storage: number;
+  memo: string;
+  balance: string;
+}
+
+export class SmartContractManager {
+  private client: Client;
+
+  constructor(client?: Client) {
+    this.client = client || createDefaultClient().getClient();
+  }
+
+  /**
+   * Deploy a smart contract to Hedera
+   */
+  async deployContract(params: ContractDeployParams): Promise<{ contractId: string; transactionId: string }> {
+    try {
+      const {
+        bytecode,
+        constructorParams,
+        gas = 100000,
+        initialBalance = 0
+      } = params;
+
+      // Create file with bytecode
+      const fileCreateTx = new FileCreateTransaction()
+        .setContents(bytecode)
+        .setKeys([this.client.operatorPublicKey!]);
+
+      const fileResponse = await fileCreateTx.execute(this.client);
+      const fileReceipt = await fileResponse.getReceipt(this.client);
+      const bytecodeFileId = fileReceipt.fileId!;
+
+      // Create contract
+      const contractCreateTx = new ContractCreateTransaction()
+        .setBytecodeFileId(bytecodeFileId)
+        .setGas(gas)
+        .setInitialBalance(Hbar.fromTinybars(initialBalance));
+
+      if (constructorParams) {
+        contractCreateTx.setConstructorParameters(constructorParams);
+      }
+
+      const contractResponse = await contractCreateTx.execute(this.client);
+      const contractReceipt = await contractResponse.getReceipt(this.client);
+
+      if (!contractReceipt.contractId) {
+        throw new Error('Contract deployment failed - no contract ID in receipt');
+      }
+
+      return {
+        contractId: contractReceipt.contractId.toString(),
+        transactionId: contractResponse.transactionId.toString()
+      };
+    } catch (error) {
+      console.error('Error deploying contract:', error);
+      throw new Error(`Failed to deploy contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Call a contract function (read-only)
+   */
+  async callContract(params: ContractCallParams): Promise<any> {
+    try {
+      const {
+        contractId,
+        functionName,
+        parameters,
+        gas = 100000
+      } = params;
+
+      const query = new ContractCallQuery()
+        .setContractId(ContractId.fromString(contractId))
+        .setGas(gas)
+        .setFunction(functionName, parameters);
+
+      const result = await query.execute(this.client);
+      return result;
+    } catch (error) {
+      console.error('Error calling contract:', error);
+      throw new Error(`Failed to call contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Execute a contract function (state-changing)
+   */
+  async executeContract(params: ContractCallParams): Promise<{ transactionId: string; result?: any }> {
+    try {
+      const {
+        contractId,
+        functionName,
+        parameters,
+        gas = 100000,
+        amount = 0
+      } = params;
+
+      const transaction = new ContractExecuteTransaction()
+        .setContractId(ContractId.fromString(contractId))
+        .setGas(gas)
+        .setFunction(functionName, parameters);
+
+      if (amount > 0) {
+        transaction.setPayableAmount(Hbar.fromTinybars(amount));
+      }
+
+      const response = await transaction.execute(this.client);
+      const receipt = await response.getReceipt(this.client);
+
+      return {
+        transactionId: response.transactionId.toString(),
+        result: receipt.contractFunctionResult
+      };
+    } catch (error) {
+      console.error('Error executing contract:', error);
+      throw new Error(`Failed to execute contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Deploy an ERC-20 token contract
+   */
+  async deployERC20Token(
+    name: string,
+    symbol: string,
+    decimals: number = 18,
+    totalSupply: number = 1000000
+  ): Promise<{ contractId: string; transactionId: string }> {
+    // This is a simplified ERC-20 bytecode - in production, you'd use a proper compiler
+    const erc20Bytecode = "0x608060405234801561001057600080fd5b50"; // Placeholder bytecode
+
+    const constructorParams = new ContractFunctionParameters()
+      .addString(name)
+      .addString(symbol)
+      .addUint256(decimals)
+      .addUint256(totalSupply);
+
+    return this.deployContract({
+      bytecode: erc20Bytecode,
+      constructorParams,
+      gas: 200000
+    });
+  }
+}
+
+// Default instance
+export const smartContractManager = new SmartContractManager();
+
+export default SmartContractManager;

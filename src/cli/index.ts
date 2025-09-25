@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 
+// Load environment variables from .env file
+require('dotenv').config();
+
 import { program } from 'commander';
 import chalk from 'chalk';
 import { APIxCLI } from './cli-core';
 import { logger } from '../utils/logger';
+import { debugLogger, LogLevel } from '../utils/debug-logger';
 
 const packageJson = require('../../package.json');
 const cli = new APIxCLI();
@@ -17,11 +21,50 @@ async function ensureCliInitialized() {
   }
 }
 
+// Setup debug logging based on CLI options
+function setupDebugLogging(options: any) {
+  // Set log level based on flags
+  if (options.trace) {
+    debugLogger.setLevel(LogLevel.TRACE);
+    debugLogger.setTrace(true);
+  } else if (options.debug) {
+    debugLogger.setLevel(LogLevel.DEBUG);
+  } else if (options.verbose) {
+    debugLogger.setLevel(LogLevel.INFO);
+  }
+
+  // Handle file logging options
+  if (options.noFileLogging) {
+    debugLogger.setFileLogging(false);
+  }
+
+  // Handle custom log file path
+  if (options.logFile) {
+    // TODO: Add custom log file path support to debugLogger
+    debugLogger.info('Custom log file path specified', { path: options.logFile });
+  }
+
+  debugLogger.debug('Debug logging configured', {
+    level: options.trace ? 'TRACE' : options.debug ? 'DEBUG' : options.verbose ? 'INFO' : 'default',
+    fileLogging: !options.noFileLogging,
+    customLogFile: options.logFile || null
+  });
+}
+
 program
   .name('apix')
   .description('Enterprise AI-powered Hedera development assistant with code composition and live blockchain validation')
   .version(packageJson.version)
-  .hook('preAction', () => {
+  .option('--debug', 'Enable debug logging')
+  .option('--verbose', 'Enable verbose output')
+  .option('--trace', 'Enable trace logging with stack traces')
+  .option('--log-file <path>', 'Custom log file path')
+  .option('--no-file-logging', 'Disable file logging')
+  .hook('preAction', (thisCommand, actionCommand) => {
+    // Setup debug logging based on global options
+    const options = program.opts();
+    setupDebugLogging(options);
+
     console.log(chalk.cyan.bold('🚀 APIX AI - Enterprise Hedera Development Assistant'));
     console.log(chalk.gray(`Version ${packageJson.version} - AI Code Composition & Live Blockchain Validation\n`));
   });
@@ -32,11 +75,25 @@ program
   .option('-d, --directory <path>', 'Project directory to analyze', '.')
   .option('-v, --verbose', 'Show detailed analysis')
   .action(async (options) => {
+    const globalOptions = program.opts();
+    const allOptions = { ...options, ...globalOptions };
+
+    debugLogger.startCommand('analyze', [options.directory || '.']);
+    debugLogger.debug('Starting project analysis', { options: allOptions });
+
     try {
       await ensureCliInitialized();
-      await cli.analyze(options);
-    } catch (error) {
-      logger.error('Analysis failed:', error);
+      const result = await cli.analyze(options);
+      debugLogger.endCommand(true, result);
+      debugLogger.success('Project analysis completed successfully');
+    } catch (error: any) {
+      debugLogger.endCommand(false);
+      debugLogger.error('Analysis failed', error, {
+        command: 'analyze',
+        options: allOptions,
+        stack: error?.stack
+      });
+      console.error(chalk.red('❌ Analysis failed. Use --debug for detailed error information.'));
       process.exit(1);
     }
   });
@@ -50,11 +107,29 @@ program
   .option('-t, --type <type>', 'Contract type')
   .option('-f, --force', 'Force overwrite existing files')
   .action(async (integration, options) => {
+    const globalOptions = program.opts();
+    const allOptions = { ...options, ...globalOptions };
+
+    debugLogger.startCommand('add', [integration, JSON.stringify(options)]);
+    debugLogger.debug('Starting integration addition', {
+      integration,
+      options: allOptions
+    });
+
     try {
       await ensureCliInitialized();
-      await cli.addIntegration(integration, options);
-    } catch (error) {
-      logger.error('Integration failed:', error);
+      const result = await cli.addIntegration(integration, options);
+      debugLogger.endCommand(true, result);
+      debugLogger.success(`Integration '${integration}' added successfully`);
+    } catch (error: any) {
+      debugLogger.endCommand(false);
+      debugLogger.error('Integration failed', error, {
+        command: 'add',
+        integration,
+        options: allOptions,
+        stack: error?.stack
+      });
+      console.error(chalk.red(`❌ Integration '${integration}' failed. Use --debug for detailed error information.`));
       process.exit(1);
     }
   });
@@ -90,10 +165,24 @@ program
   .option('-q, --quick', 'Run quick health check')
   .option('--fix', 'Show auto-fix suggestions')
   .action(async (options) => {
+    const globalOptions = program.opts();
+    const allOptions = { ...options, ...globalOptions };
+
+    debugLogger.startCommand('health', [options.quick ? '--quick' : '']);
+    debugLogger.debug('Starting health check', { options: allOptions });
+
     try {
-      await cli.health(options);
-    } catch (error) {
-      logger.error('Health check failed:', error);
+      const result = await cli.health(options);
+      debugLogger.endCommand(true, result);
+      debugLogger.success('Health check completed successfully');
+    } catch (error: any) {
+      debugLogger.endCommand(false);
+      debugLogger.error('Health check failed', error, {
+        command: 'health',
+        options: allOptions,
+        stack: error?.stack
+      });
+      console.error(chalk.red('❌ Health check failed. Use --debug for detailed error information.'));
       process.exit(1);
     }
   });
@@ -115,11 +204,29 @@ program
   .option('--validate-live', 'Perform live Hedera blockchain validation')
   .option('-f, --force', 'Force overwrite existing files')
   .action(async (integration, options) => {
+    const globalOptions = program.opts();
+    const allOptions = { ...options, ...globalOptions };
+
+    debugLogger.startCommand('generate', [integration, JSON.stringify(options)]);
+    debugLogger.debug('Starting enterprise generation', {
+      integration,
+      options: allOptions
+    });
+
     try {
       await ensureCliInitialized();
-      await cli.generateEnterpriseIntegration(integration, options);
-    } catch (error) {
-      logger.error('Enterprise generation failed:', error);
+      const result = await cli.generateEnterpriseIntegration(integration, options);
+      debugLogger.endCommand(true, result);
+      debugLogger.success(`Enterprise integration '${integration}' generated successfully`);
+    } catch (error: any) {
+      debugLogger.endCommand(false);
+      debugLogger.error('Enterprise generation failed', error, {
+        command: 'generate',
+        integration,
+        options: allOptions,
+        stack: error?.stack
+      });
+      console.error(chalk.red(`❌ Enterprise generation '${integration}' failed. Use --debug for detailed error information.`));
       process.exit(1);
     }
   });
@@ -302,6 +409,12 @@ program
   .option('--testnet', 'Use testnet (default)')
   .option('--mainnet', 'Use mainnet (production)')
   .action(async (options) => {
+    const globalOptions = program.opts();
+    const allOptions = { ...options, ...globalOptions };
+
+    debugLogger.startCommand('create-token', [options.name, options.symbol]);
+    debugLogger.debug('Starting token creation', { options: allOptions });
+
     try {
       await ensureCliInitialized();
 
@@ -317,9 +430,183 @@ program
         wipeKey: options.wipeKey
       };
 
-      await cli.createTokenOnBlockchain(tokenOptions);
-    } catch (error) {
-      logger.error('Token creation failed:', error);
+      const result = await cli.createTokenOnBlockchain(tokenOptions);
+      debugLogger.endCommand(true, result);
+      debugLogger.success(`Token '${options.name}' created successfully`);
+    } catch (error: any) {
+      debugLogger.endCommand(false);
+      debugLogger.error('Token creation failed', error, {
+        command: 'create-token',
+        options: allOptions,
+        stack: error?.stack
+      });
+      console.error(chalk.red('❌ Token creation failed. Use --debug for detailed error information.'));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// DEBUG DASHBOARD COMMANDS
+// =============================================================================
+
+program
+  .command('logs')
+  .description('View recent APIX command logs')
+  .option('-n, --count <count>', 'Number of log entries to show', '50')
+  .option('-l, --level <level>', 'Filter by log level (error, warn, info, debug, trace)')
+  .option('-c, --command <command>', 'Filter by command name')
+  .action(async (options) => {
+    try {
+      const count = parseInt(options.count);
+      const logs = await debugLogger.getRecentLogs(count);
+
+      const filteredLogs = logs.filter(log => {
+        if (options.level && log.level !== LogLevel[options.level.toUpperCase() as keyof typeof LogLevel]) {
+          return false;
+        }
+        if (options.command && log.command !== options.command) {
+          return false;
+        }
+        return true;
+      });
+
+      console.log(chalk.cyan.bold(`📊 Recent APIX Logs (${filteredLogs.length} entries)`));
+      console.log(chalk.gray(`Log directory: ${debugLogger.getLogDirectory()}\n`));
+
+      if (filteredLogs.length === 0) {
+        console.log(chalk.yellow('No logs found matching the criteria.'));
+        return;
+      }
+
+      for (const log of filteredLogs) {
+        const timestamp = new Date(log.timestamp).toLocaleString();
+        const levelColors: Record<number, any> = {
+          [LogLevel.ERROR]: chalk.red,
+          [LogLevel.WARN]: chalk.yellow,
+          [LogLevel.INFO]: chalk.blue,
+          [LogLevel.DEBUG]: chalk.gray,
+          [LogLevel.TRACE]: chalk.magenta
+        };
+
+        const levelColor = levelColors[log.level] || chalk.white;
+        const levelName = LogLevel[log.level];
+
+        console.log(`${chalk.dim(timestamp)} ${levelColor(levelName.padEnd(5))} ${log.message}`);
+
+        if (log.command) {
+          console.log(`  ${chalk.cyan('Command:')} ${log.command}`);
+        }
+
+        if (log.context) {
+          console.log(`  ${chalk.gray(JSON.stringify(log.context, null, 2))}`);
+        }
+
+        if (log.error) {
+          console.log(`  ${chalk.red('Error:')} ${log.error.message}`);
+          if (log.error.stack && options.trace) {
+            console.log(`  ${chalk.red('Stack:')} ${log.error.stack}`);
+          }
+        }
+
+        console.log('');
+      }
+    } catch (error: any) {
+      console.error(chalk.red('❌ Failed to retrieve logs:'), error.message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('last-error')
+  .description('Show details of the last error that occurred')
+  .action(async () => {
+    try {
+      const lastError = await debugLogger.getLastError();
+
+      if (!lastError) {
+        console.log(chalk.green('✅ No recent errors found!'));
+        return;
+      }
+
+      console.log(chalk.red.bold('❌ Last Error Details'));
+      console.log(chalk.gray(`Occurred: ${new Date(lastError.timestamp).toLocaleString()}\n`));
+
+      console.log(chalk.cyan('Message:'), lastError.message);
+
+      if (lastError.command) {
+        console.log(chalk.cyan('Command:'), lastError.command);
+      }
+
+      if (lastError.context) {
+        console.log(chalk.cyan('Context:'));
+        console.log(JSON.stringify(lastError.context, null, 2));
+      }
+
+      if (lastError.error) {
+        console.log(chalk.cyan('Error Details:'));
+        console.log(`  Message: ${lastError.error.message}`);
+        if (lastError.error.code) {
+          console.log(`  Code: ${lastError.error.code}`);
+        }
+        if (lastError.error.stack) {
+          console.log(`  Stack: ${lastError.error.stack}`);
+        }
+      }
+
+      console.log(chalk.yellow('\n💡 Tip: Use --debug flag with commands for detailed logging.'));
+    } catch (error: any) {
+      console.error(chalk.red('❌ Failed to retrieve last error:'), error.message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('debug-info')
+  .description('Show debug configuration and log file information')
+  .action(async () => {
+    try {
+      console.log(chalk.cyan.bold('🔍 APIX Debug Configuration'));
+      console.log('');
+
+      console.log(chalk.cyan('Log Directory:'), debugLogger.getLogDirectory());
+      console.log(chalk.cyan('Current Log File:'), debugLogger.getCurrentLogFile() || 'None');
+
+      // Check log directory size
+      const fs = require('fs-extra');
+      const path = require('path');
+      const logDir = debugLogger.getLogDirectory();
+
+      if (await fs.pathExists(logDir)) {
+        const files = await fs.readdir(logDir);
+        const logFiles = files.filter((f: string) => f.endsWith('.log'));
+        console.log(chalk.cyan('Total Log Files:'), logFiles.length);
+
+        if (logFiles.length > 0) {
+          let totalSize = 0;
+          for (const file of logFiles) {
+            const stats = await fs.stat(path.join(logDir, file));
+            totalSize += stats.size;
+          }
+          console.log(chalk.cyan('Total Log Size:'), `${(totalSize / 1024 / 1024).toFixed(2)} MB`);
+        }
+      } else {
+        console.log(chalk.yellow('Log directory does not exist yet.'));
+      }
+
+      console.log('');
+      console.log(chalk.cyan.bold('Available Debug Commands:'));
+      console.log('  apix logs                 - View recent logs');
+      console.log('  apix last-error          - Show last error details');
+      console.log('  apix debug-info          - Show this information');
+      console.log('');
+      console.log(chalk.cyan.bold('Debug Flags:'));
+      console.log('  --debug                  - Enable debug logging');
+      console.log('  --verbose               - Enable verbose output');
+      console.log('  --trace                 - Enable trace logging with stack traces');
+      console.log('  --log-file <path>       - Custom log file path');
+      console.log('  --no-file-logging       - Disable file logging');
+    } catch (error: any) {
+      console.error(chalk.red('❌ Failed to retrieve debug information:'), error.message);
       process.exit(1);
     }
   });

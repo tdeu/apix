@@ -285,3 +285,171 @@ npm run apix:health
 | `npm run audit:mocks` | Mock implementation count | 📊 Monitoring |
 
 The codebase follows a progressive enhancement model where core functionality works without credentials, with optional real blockchain operations when properly configured.
+
+## 🚀 APIX AI - Complete Command Reference
+
+### **Core Analysis & Planning Commands**
+
+```bash
+# Project Analysis
+apix analyze                           # Analyze project and suggest Hedera integrations
+apix analyze --directory <path>        # Analyze specific directory
+apix analyze --verbose                 # Show detailed analysis
+
+# Integration Planning
+apix recommend                         # Get integration recommendations
+apix recommend --industry <industry>   # Industry-specific recommendations
+
+# Project Initialization
+apix init                             # Initialize new Hedera project
+apix status                           # Show current project status
+```
+
+### **Integration & Code Generation**
+
+```bash
+# Add Integrations
+apix add hts                          # Add Hedera Token Service integration
+apix add hts --name "MyToken"         # Add HTS with specific token name
+apix add wallet --provider hashpack  # Add wallet integration
+apix add consensus                    # Add Hedera Consensus Service
+
+# Code Generation
+apix generate smart-contract          # Generate smart contract integration
+apix generate <integration>          # Generate specific integration type
+apix compose                         # AI-powered code composition
+```
+
+### **🆕 AI-Powered Commands**
+
+```bash
+# AI Confidence Assessment
+apix confidence "Create NFT marketplace"              # Assess implementation confidence
+apix confidence "DeFi protocol" --industry finance   # Industry-specific assessment
+apix confidence "Supply chain" --detailed            # Detailed confidence breakdown
+
+# AI Debug Assistance
+apix debug "Token creation fails"                    # AI-powered debugging
+apix debug "Network timeout" --suggest-fixes        # Get fix suggestions
+apix debug "Account error" --files src/token.ts     # Analyze specific files
+apix debug "Build failure" --logs build.log         # Analyze log files
+
+# Enterprise Deployment
+apix deploy --environment production                 # Production deployment analysis
+apix deploy --compliance-check                      # Include compliance validation
+apix deploy --audit-trail                          # Enable audit logging
+apix deploy --rollback-plan                        # Generate rollback procedures
+apix deploy --monitoring                            # Setup monitoring
+apix deploy --dry-run                              # Simulate deployment
+```
+
+### **Blockchain Operations**
+
+```bash
+# Token Operations
+apix create-token                                   # Create token on Hedera
+apix create-token --name "MyToken" --symbol "MTK"  # Create with specific details
+apix create-token --supply 1000000                 # Set initial supply
+
+# Wallet Management
+apix wallet connect hashpack                       # Connect HashPack wallet
+apix wallet connect blade                          # Connect Blade wallet
+apix wallet connect walletconnect                  # Connect WalletConnect wallet
+apix wallet connect metamask-snap                  # Connect MetaMask Hedera Snap
+apix wallet disconnect                             # Disconnect current wallet
+apix wallet list                                   # List available wallets
+```
+
+### **Validation & Health**
+
+```bash
+# System Health
+apix health                           # Comprehensive system health check
+apix health --quick                   # Quick health verification
+
+# Validation
+apix validate                         # Validate integrations
+apix validate --testnet               # Validate on testnet
+apix validate --enterprise            # Enterprise validation
+apix validate --performance           # Performance validation
+```
+
+### **Interactive & Help**
+
+```bash
+# Interactive Mode
+apix chat                            # Start interactive AI chat mode
+
+# Information & Help
+apix --help                          # Show all available commands
+apix <command> --help                # Get help for specific command
+apix explain <integration>           # Explain integration details
+apix compare <integration1> <integration2>  # Compare integrations
+```
+
+### **Development & Debugging**
+
+```bash
+# Logging & Debug
+apix logs                            # View recent logs
+apix logs --follow                   # Follow logs in real-time
+apix last-error                      # Show last error details
+apix debug-info                      # System debug information
+
+# Global Options (can be used with any command)
+--debug                              # Enable debug logging
+--verbose                            # Enable verbose output
+--trace                              # Enable trace logging with stack traces
+--log-file <path>                    # Custom log file path
+--no-file-logging                   # Disable file logging
+```
+
+### **🆕 Quick Start Examples**
+
+```bash
+# Complete workflow example
+apix init                                           # Initialize project
+apix analyze                                        # Analyze current setup
+apix confidence "Build DeFi lending platform"      # Assess confidence
+apix add hts --name "LendingToken"                 # Add token integration
+apix create-token --name "LendingToken" --symbol "LEND"  # Create on blockchain
+apix deploy --environment staging --dry-run        # Test deployment plan
+apix health --quick                                 # Verify everything works
+```
+
+### **Package.json Script Shortcuts**
+
+```bash
+# Pre-configured npm scripts
+npm run apix:help                    # Quick help
+npm run apix:health                  # System health check
+npm run apix:analyze                 # Project analysis
+npm run apix:chat                    # Start chat mode
+npm run apix:create-token            # Create demo token
+npm run apix:validate                # Full validation
+```
+
+## 🔧 **Environment Setup**
+
+```bash
+# Required for live blockchain operations
+export HEDERA_ACCOUNT_ID=0.0.xxxxx
+export HEDERA_PRIVATE_KEY=302e...
+export HEDERA_NETWORK=testnet
+
+# Optional for enhanced AI features
+export OPENAI_API_KEY=sk-...
+export ANTHROPIC_API_KEY=sk-ant-...
+export WALLETCONNECT_PROJECT_ID=your-project-id
+```
+
+## 📊 **Feature Status**
+
+- ✅ **All commands fully implemented**
+- ✅ **Real blockchain operations**
+- ✅ **AI-powered analysis and debugging**
+- ✅ **Production wallet integrations**
+- ✅ **Enterprise deployment features**
+- ✅ **Zero mock implementations remaining**
+
+The CLI provides both development mode (works without credentials) and production mode (full blockchain integration) with intelligent fallbacks throughout.

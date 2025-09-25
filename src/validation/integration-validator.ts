@@ -41,7 +41,7 @@ export class IntegrationValidator {
       description: 'Verify that the target framework is supported',
       severity: 'error',
       check: async (context) => {
-        const supportedFrameworks = ['next.js', 'react', 'vite'];
+        const supportedFrameworks = ['next.js', 'react', 'vite', 'node'];
         const isSupported = supportedFrameworks.includes(context.framework);
         
         return {

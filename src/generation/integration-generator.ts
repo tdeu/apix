@@ -259,6 +259,38 @@ export class IntegrationGenerator {
     return steps;
   }
 
+  async generateFromTemplate(
+    templateId: string,
+    parameters: Record<string, any>,
+    context: ProjectContext
+  ): Promise<GenerationResult> {
+    try {
+      // Initialize if not already done
+      await this.initialize();
+
+      // Create template context from parameters and project context
+      const templateContext = this.templateEngine.createContextFromProject(context, parameters);
+
+      // Generate the file using the template engine
+      const generatedFile = await this.templateEngine.generateFile(
+        templateId,
+        templateContext,
+        `generated-${templateId}.ts` // Default output path
+      );
+
+      // Return a basic generation result
+      return {
+        generatedFiles: [generatedFile],
+        installedDependencies: [],
+        modifiedFiles: [],
+        nextSteps: [`Generated file from template: ${templateId}`]
+      };
+    } catch (error) {
+      logger.error(`Failed to generate from template ${templateId}:`, error);
+      throw error;
+    }
+  }
+
   async validateIntegration(
     plan: IntegrationPlan,
     context: ProjectContext
@@ -282,7 +314,7 @@ export class IntegrationGenerator {
 
     // Validate dependencies are available
     // This could be enhanced to check npm registry
-    
+
     return true;
   }
 }

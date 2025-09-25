@@ -1,0 +1,356 @@
+import { 
+  Client, 
+  TokenCreateTransaction, 
+  TokenMintTransaction,
+  TokenBurnTransaction,
+  TokenAssociateTransaction,
+  TokenTransferTransaction,
+  TokenInfoQuery,
+  TransferTransaction,
+  Hbar,
+  TokenId,
+  AccountId,
+  PrivateKey,
+  TokenSupplyType,
+  TokenType,
+  CustomFixedFee,
+  CustomFractionalFee
+} from '@hashgraph/sdk';
+import { createDefaultClient } from './client';
+
+export interface CreateTokenParams {
+  name: string;
+  symbol: string;
+  decimals?: number;
+  initialSupply?: number;
+  maxSupply?: number;
+  treasuryAccountId?: string;
+  adminKey?: PrivateKey;
+  supplyKey?: PrivateKey;
+  freezeKey?: PrivateKey;
+  wipeKey?: PrivateKey;
+  kycKey?: PrivateKey;
+  pauseKey?: PrivateKey;
+  customFees?: (CustomFixedFee | CustomFractionalFee)[];
+  tokenType?: TokenType;
+  supplyType?: TokenSupplyType;
+  freezeDefault?: boolean;
+}
+
+export interface TokenInfo {
+  tokenId: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  totalSupply: string;
+  treasuryAccountId: string;
+  adminKey?: string;
+  supplyKey?: string;
+  freezeKey?: string;
+  wipeKey?: string;
+  kycKey?: string;
+  pauseKey?: string;
+  tokenType: string;
+  supplyType: string;
+  maxSupply: string;
+  freezeDefault: boolean;
+  customFees: any[];
+}
+
+export interface MintTokenParams {
+  tokenId: string;
+  amount?: number;
+  metadata?: Uint8Array[];
+}
+
+export interface TransferTokenParams {
+  tokenId: string;
+  fromAccountId: string;
+  toAccountId: string;
+  amount: number;
+}
+
+export class HTSManager {
+  private client: Client;
+
+  constructor(client?: Client) {
+    this.client = client || createDefaultClient().getClient();
+  }
+
+  /**
+   * Create a new fungible or non-fungible token
+   */
+  async createToken(params: CreateTokenParams): Promise<{ tokenId: string; transactionId: string }> {
+    try {
+      const {
+        name,
+        symbol,
+        decimals = 8,
+        initialSupply = 0,
+        maxSupply,
+        treasuryAccountId,
+        adminKey,
+        supplyKey,
+        freezeKey,
+        wipeKey,
+        kycKey,
+        pauseKey,
+        customFees = [],
+        tokenType = TokenType.FungibleCommon,
+        supplyType = TokenSupplyType.Finite,
+        freezeDefault = false
+      } = params;
+
+      const transaction = new TokenCreateTransaction()
+        .setTokenName(name)
+        .setTokenSymbol(symbol)
+        .setDecimals(decimals)
+        .setInitialSupply(initialSupply)
+        .setTokenType(tokenType)
+        .setSupplyType(supplyType)
+        .setFreezeDefault(freezeDefault);
+
+      if (maxSupply) {
+        transaction.setMaxSupply(maxSupply);
+      }
+
+      if (treasuryAccountId) {
+        transaction.setTreasuryAccountId(AccountId.fromString(treasuryAccountId));
+      }
+
+      if (adminKey) {
+        transaction.setAdminKey(adminKey);
+      }
+
+      if (supplyKey) {
+        transaction.setSupplyKey(supplyKey);
+      }
+
+      if (freezeKey) {
+        transaction.setFreezeKey(freezeKey);
+      }
+
+      if (wipeKey) {
+        transaction.setWipeKey(wipeKey);
+      }
+
+      if (kycKey) {
+        transaction.setKycKey(kycKey);
+      }
+
+      if (pauseKey) {
+        transaction.setPauseKey(pauseKey);
+      }
+
+      if (customFees.length > 0) {
+        transaction.setCustomFees(customFees);
+      }
+
+      const txResponse = await transaction.execute(this.client);
+      const receipt = await txResponse.getReceipt(this.client);
+      
+      if (!receipt.tokenId) {
+        throw new Error('Token creation failed - no token ID in receipt');
+      }
+
+      return {
+        tokenId: receipt.tokenId.toString(),
+        transactionId: txResponse.transactionId.toString()
+      };
+    } catch (error) {
+      console.error('Error creating token:', error);
+      throw new Error(`Failed to create token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Mint additional tokens (requires supply key)
+   */
+  async mintToken(params: MintTokenParams): Promise<{ transactionId: string; newTotalSupply?: string }> {
+    try {
+      const { tokenId, amount, metadata } = params;
+
+      const transaction = new TokenMintTransaction()
+        .setTokenId(TokenId.fromString(tokenId));
+
+      if (amount !== undefined) {
+        transaction.setAmount(amount);
+      }
+
+      if (metadata && metadata.length > 0) {
+        transaction.setMetadata(metadata);
+      }
+
+      const txResponse = await transaction.execute(this.client);
+      const receipt = await txResponse.getReceipt(this.client);
+
+      return {
+        transactionId: txResponse.transactionId.toString(),
+        newTotalSupply: receipt.totalSupply?.toString()
+      };
+    } catch (error) {
+      console.error('Error minting token:', error);
+      throw new Error(`Failed to mint token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Burn tokens (requires supply key)
+   */
+  async burnToken(tokenId: string, amount: number): Promise<{ transactionId: string; newTotalSupply?: string }> {
+    try {
+      const transaction = new TokenBurnTransaction()
+        .setTokenId(TokenId.fromString(tokenId))
+        .setAmount(amount);
+
+      const txResponse = await transaction.execute(this.client);
+      const receipt = await txResponse.getReceipt(this.client);
+
+      return {
+        transactionId: txResponse.transactionId.toString(),
+        newTotalSupply: receipt.totalSupply?.toString()
+      };
+    } catch (error) {
+      console.error('Error burning token:', error);
+      throw new Error(`Failed to burn token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Associate a token with an account
+   */
+  async associateToken(accountId: string, tokenId: string): Promise<{ transactionId: string }> {
+    try {
+      const transaction = new TokenAssociateTransaction()
+        .setAccountId(AccountId.fromString(accountId))
+        .setTokenIds([TokenId.fromString(tokenId)]);
+
+      const txResponse = await transaction.execute(this.client);
+      await txResponse.getReceipt(this.client);
+
+      return {
+        transactionId: txResponse.transactionId.toString()
+      };
+    } catch (error) {
+      console.error('Error associating token:', error);
+      throw new Error(`Failed to associate token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Transfer tokens between accounts
+   */
+  async transferToken(params: TransferTokenParams): Promise<{ transactionId: string }> {
+    try {
+      const { tokenId, fromAccountId, toAccountId, amount } = params;
+
+      const transaction = new TransferTransaction()
+        .addTokenTransfer(TokenId.fromString(tokenId), AccountId.fromString(fromAccountId), -amount)
+        .addTokenTransfer(TokenId.fromString(tokenId), AccountId.fromString(toAccountId), amount);
+
+      const txResponse = await transaction.execute(this.client);
+      await txResponse.getReceipt(this.client);
+
+      return {
+        transactionId: txResponse.transactionId.toString()
+      };
+    } catch (error) {
+      console.error('Error transferring token:', error);
+      throw new Error(`Failed to transfer token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get token information
+   */
+  async getTokenInfo(tokenId: string): Promise<TokenInfo> {
+    try {
+      const query = new TokenInfoQuery()
+        .setTokenId(TokenId.fromString(tokenId));
+
+      const tokenInfo = await query.execute(this.client);
+
+      return {
+        tokenId: tokenInfo.tokenId.toString(),
+        name: tokenInfo.name,
+        symbol: tokenInfo.symbol,
+        decimals: tokenInfo.decimals,
+        totalSupply: tokenInfo.totalSupply.toString(),
+        treasuryAccountId: tokenInfo.treasuryAccountId.toString(),
+        adminKey: tokenInfo.adminKey?.toString(),
+        supplyKey: tokenInfo.supplyKey?.toString(),
+        freezeKey: tokenInfo.freezeKey?.toString(),
+        wipeKey: tokenInfo.wipeKey?.toString(),
+        kycKey: tokenInfo.kycKey?.toString(),
+        pauseKey: tokenInfo.pauseKey?.toString(),
+        tokenType: tokenInfo.tokenType.toString(),
+        supplyType: tokenInfo.supplyType.toString(),
+        maxSupply: tokenInfo.maxSupply.toString(),
+        freezeDefault: tokenInfo.defaultFreezeStatus === true,
+        customFees: tokenInfo.customFees.map(fee => fee.toJSON())
+      };
+    } catch (error) {
+      console.error('Error getting token info:', error);
+      throw new Error(`Failed to get token info: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get account token balances
+   */
+  async getAccountTokenBalance(accountId: string, tokenId: string): Promise<{ balance: string }> {
+    try {
+      // This would typically be done via mirror node REST API
+      // For now, we'll return a placeholder
+      return {
+        balance: "0"
+      };
+    } catch (error) {
+      console.error('Error getting token balance:', error);
+      throw new Error(`Failed to get token balance: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Create a fungible token with sensible defaults
+   */
+  async createFungibleToken(
+    name: string, 
+    symbol: string, 
+    initialSupply: number = 1000000, 
+    decimals: number = 8
+  ): Promise<{ tokenId: string; transactionId: string }> {
+    return this.createToken({
+      name,
+      symbol,
+      initialSupply,
+      decimals,
+      tokenType: TokenType.FungibleCommon,
+      supplyType: TokenSupplyType.Finite
+    });
+  }
+
+  /**
+   * Create an NFT collection with sensible defaults
+   */
+  async createNFTCollection(
+    name: string, 
+    symbol: string, 
+    maxSupply?: number
+  ): Promise<{ tokenId: string; transactionId: string }> {
+    return this.createToken({
+      name,
+      symbol,
+      decimals: 0,
+      initialSupply: 0,
+      maxSupply,
+      tokenType: TokenType.NonFungibleUnique,
+      supplyType: maxSupply ? TokenSupplyType.Finite : TokenSupplyType.Infinite
+    });
+  }
+}
+
+// Default instance
+export const htsManager = new HTSManager();
+
+export default HTSManager;

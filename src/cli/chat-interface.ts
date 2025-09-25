@@ -100,7 +100,7 @@ export class ChatInterface {
           this.displayResponse(response);
 
           // Handle action items if present
-          if (response.requiresAction && response.cliCommands?.length) {
+          if (response.requiresAction && response.cliCommands && response.cliCommands.length > 0) {
             await this.handleActionItems(response);
           }
 
@@ -439,7 +439,7 @@ export class ChatInterface {
     // Return provided context if available
     if (options.industry || options.context) {
       return {
-        industry: options.industry,
+        industry: options.industry as any, // Cast to allow string to EnterpriseIndustry assignment
         ...options.context
       };
     }
@@ -501,10 +501,23 @@ export class ChatInterface {
 
     const answers = await inquirer.prompt(contextQuestions);
     
-    // Filter out null values
-    return Object.fromEntries(
+    // Filter out null values and ensure proper typing
+    const filteredAnswers = Object.fromEntries(
       Object.entries(answers).filter(([_, value]) => value !== null && value !== '')
     );
+
+    // Convert answers to proper EnterpriseContext format
+    const context: Partial<EnterpriseContext> = {};
+
+    if (filteredAnswers.industry) {
+      context.industry = filteredAnswers.industry as any;
+    }
+
+    if (filteredAnswers.companySize) {
+      context.size = filteredAnswers.companySize as any;
+    }
+
+    return context;
   }
 
   /**
@@ -728,7 +741,7 @@ export class ChatInterface {
       verbosityLevel: 'detailed',
       technicalLevel: 'intermediate',
       focusAreas: [],
-      communicationStyle: 'professional'
+      communicationStyle: 'formal'
     };
   }
 }

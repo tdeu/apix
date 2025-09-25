@@ -273,6 +273,7 @@ export class EnterpriseClassifier {
    */
   private initializeLLMs(): void {
     try {
+      // Initialize primary LLM (OpenAI)
       if (process.env.OPENAI_API_KEY) {
         this.primaryLLM = new ChatOpenAI({
           modelName: process.env.PRIMARY_MODEL || 'gpt-4o-mini',
@@ -280,10 +281,12 @@ export class EnterpriseClassifier {
           maxTokens: 2000,
           apiKey: process.env.OPENAI_API_KEY
         });
+        logger.info('OpenAI ChatGPT initialized for enterprise classification');
       } else {
-        logger.warn('OpenAI API key not found, using mock mode');
+        logger.info('OpenAI API key not found - will use rule-based classification with Anthropic fallback');
       }
 
+      // Initialize secondary LLM (Anthropic)
       if (process.env.ANTHROPIC_API_KEY) {
         this.secondaryLLM = new ChatAnthropic({
           modelName: process.env.SECONDARY_MODEL || 'claude-3-5-sonnet-20241022',
@@ -291,9 +294,22 @@ export class EnterpriseClassifier {
           maxTokens: 2000,
           apiKey: process.env.ANTHROPIC_API_KEY
         });
+        logger.info('Anthropic Claude initialized as secondary classifier');
       } else {
-        logger.warn('Anthropic API key not found, fallback mode enabled');
+        logger.info('Anthropic API key not found - will use rule-based classification if OpenAI unavailable');
       }
+
+      // Log AI capabilities status
+      const aiCapabilities = [];
+      if (this.primaryLLM) aiCapabilities.push('OpenAI GPT');
+      if (this.secondaryLLM) aiCapabilities.push('Anthropic Claude');
+
+      if (aiCapabilities.length > 0) {
+        logger.info(`Enterprise classifier initialized with AI models: ${aiCapabilities.join(', ')}`);
+      } else {
+        logger.info('Enterprise classifier initialized with rule-based analysis (no AI models available)');
+      }
+
     } catch (error) {
       logger.error('Failed to initialize LLMs:', error);
       this.primaryLLM = null;
