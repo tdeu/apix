@@ -1,5 +1,16 @@
 import { logger } from '../utils/logger';
 
+// Import HederaAgentKit at module level to avoid dynamic import issues
+let HederaLangchainToolkit: any;
+let AgentMode: any;
+let coreTokenPlugin: any;
+let coreAccountQueryPlugin: any;
+let coreTokenQueryPlugin: any;
+
+// Import Hedera SDK at module level
+let Client: any;
+let PrivateKey: any;
+
 /**
  * Hedera Agent Kit Service
  * 
@@ -41,34 +52,46 @@ export class HederaAgentKitService {
   }
 
   /**
+   * Load required modules using require() for better compatibility
+   */
+  private async loadModules(): Promise<void> {
+    try {
+      // Load HederaAgentKit using require() instead of dynamic import
+      const agentKitModule = require('hedera-agent-kit');
+      HederaLangchainToolkit = agentKitModule.HederaLangchainToolkit;
+      AgentMode = agentKitModule.AgentMode;
+      coreTokenPlugin = agentKitModule.coreTokenPlugin;
+      coreAccountQueryPlugin = agentKitModule.coreAccountQueryPlugin;
+      coreTokenQueryPlugin = agentKitModule.coreTokenQueryPlugin;
+      
+      // Load Hedera SDK
+      const hederaSdk = require('@hashgraph/sdk');
+      Client = hederaSdk.Client;
+      PrivateKey = hederaSdk.PrivateKey;
+      
+      logger.internal('debug', 'Modules loaded successfully', {
+        hederaToolkitAvailable: !!HederaLangchainToolkit,
+        agentModeAvailable: !!AgentMode,
+        pluginsLoaded: !!(coreTokenPlugin && coreAccountQueryPlugin && coreTokenQueryPlugin)
+      });
+      
+    } catch (error: any) {
+      logger.error('Failed to load required modules:', error);
+      throw new Error(`Module loading failed: ${error.message}`);
+    }
+  }
+
+  /**
    * Initialize HederaAgentKit with proper configuration
    */
   async initialize(): Promise<void> {
     try {
-      // Import HederaAgentKit v3 with correct API
-      let HederaLangchainToolkit: any;
-      let AgentMode: any;
-      let coreTokenPlugin: any;
-      let coreAccountQueryPlugin: any;
-      let coreTokenQueryPlugin: any;
+      // Load modules using require() for better compatibility
+      await this.loadModules();
       
-      try {
-        const agentKit = await import('hedera-agent-kit' as any);
-        HederaLangchainToolkit = agentKit.HederaLangchainToolkit;
-        AgentMode = agentKit.AgentMode;
-        coreTokenPlugin = agentKit.coreTokenPlugin;
-        coreAccountQueryPlugin = agentKit.coreAccountQueryPlugin;
-        coreTokenQueryPlugin = agentKit.coreTokenQueryPlugin;
-        
-        if (!HederaLangchainToolkit) {
-          throw new Error('HederaLangchainToolkit class not found in module exports');
-        }
-      } catch (importError: any) {
-        throw new Error(`HederaAgentKit import failed: ${importError.message}`);
+      if (!HederaLangchainToolkit) {
+        throw new Error('HederaLangchainToolkit class not found in module exports');
       }
-      
-      // Import Hedera SDK
-      const { Client, PrivateKey } = await import('@hashgraph/sdk');
       
       // Create Hedera client
       const client = this.config.network === 'mainnet' 
