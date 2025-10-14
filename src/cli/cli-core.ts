@@ -5,7 +5,7 @@ import { ProjectAnalyzer } from '../analysis/project-analyzer';
 import { IntegrationPlanner } from '../planning/integration-planner';
 import { IntegrationGenerator } from '../generation/integration-generator';
 import { ConfigurationManager } from '../utils/config-manager';
-import { logger } from '../utils/logger';
+import { logger, LogLevel } from '../utils/logger';
 import { debugLogger } from '../utils/debug-logger';
 import { createProgressManager, INTEGRATION_STEPS, trackSteps } from '../utils/progress';
 import { HealthChecker } from '../validation/health-checker';
@@ -39,7 +39,16 @@ export class APIxCLI {
   }
 
   async initialize(): Promise<void> {
-    await this.generator.initialize();
+    // Initialize quietly - suppress system logs for clean UX
+    const currentLevel = logger.getLevel();
+    logger.setInternalLevel(LogLevel.SILENT);
+    
+    try {
+      await this.generator.initialize();
+    } finally {
+      // Restore previous level
+      logger.setInternalLevel(LogLevel.DEBUG);
+    }
   }
 
   async analyze(options: AnalysisOptions): Promise<ProjectContext> {
@@ -83,7 +92,12 @@ export class APIxCLI {
       const results = await trackSteps(
         INTEGRATION_STEPS.ANALYSIS,
         operations,
-        { showTimer: true, showSteps: !options.verbose, compact: false }
+        { 
+          showTimer: options.verbose, 
+          showSteps: options.verbose, 
+          compact: !options.verbose,
+          silent: logger.getLevel() <= LogLevel.INFO
+        }
       );
 
       const context = results[0] as ProjectContext;
@@ -96,7 +110,21 @@ export class APIxCLI {
 
       this.displayAnalysisResults(context, options.verbose || false);
       this.displayRecommendations(recommendations);
-      await this.promptNextSteps(recommendations);
+      
+      // Only show interactive prompt in non-quiet mode
+      if (options.quiet) {
+        // In quiet mode, just show clean next steps without interactive prompt
+        if (recommendations.length > 0) {
+          const { formatter } = require('../utils/output-formatter');
+          const nextSteps = recommendations.map((rec: any) => 
+            `apix add ${rec.command || rec.name.toLowerCase()}`
+          );
+          formatter.nextSteps(nextSteps.slice(0, 3));
+        }
+      } else {
+        // In normal mode, show interactive prompt
+        await this.promptNextSteps(recommendations);
+      }
 
       return context;
 
@@ -351,42 +379,35 @@ export class APIxCLI {
       const generationResult = results[4]; // Generation result is at index 4
 
       // Show generation results with enhanced formatting
-      console.log(chalk.green.bold('\n🎉 Integration Complete!\n'));
+      const { formatter } = require('../utils/output-formatter');
+      
+      formatter.success('Integration completed successfully!');
       
       // Type guard to ensure we have the right result structure
       if (generationResult && typeof generationResult === 'object' && 'generatedFiles' in generationResult) {
         const result = generationResult as any;
         
         if (result.generatedFiles?.length > 0) {
-          console.log(chalk.blue.bold('📁 Generated Files:'));
-          result.generatedFiles.forEach((file: any) => {
-            console.log(chalk.green(`   ✅ ${file.path}`));
-          });
-          console.log();
+          formatter.subheader('Generated Files');
+          const fileList = result.generatedFiles.map((file: any) => file.path);
+          formatter.list(fileList);
+          formatter.blank();
         }
         
         if (result.installedDependencies?.length > 0) {
-          console.log(chalk.blue.bold('📦 Installed Dependencies:'));
-          result.installedDependencies.forEach((dep: string) => {
-            console.log(chalk.green(`   ✅ ${dep}`));
-          });
-          console.log();
+          formatter.subheader('Installed Dependencies');
+          formatter.list(result.installedDependencies);
+          formatter.blank();
         }
         
         if (result.modifiedFiles?.length > 0) {
-          console.log(chalk.blue.bold('⚙️  Updated Configuration:'));
-          result.modifiedFiles.forEach((file: string) => {
-            console.log(chalk.yellow(`   🔧 ${file}`));
-          });
-          console.log();
+          formatter.subheader('Updated Configuration');
+          formatter.list(result.modifiedFiles);
+          formatter.blank();
         }
         
         if (result.nextSteps?.length > 0) {
-          console.log(chalk.yellow.bold('🚀 Next Steps:'));
-          result.nextSteps.forEach((step: string) => {
-            console.log(chalk.cyan(`   ${step}`));
-          });
-          console.log();
+          formatter.nextSteps(result.nextSteps);
         }
       }
 
@@ -526,35 +547,40 @@ export class APIxCLI {
 
   // Helper methods
   private displayAnalysisResults(context: ProjectContext, verbose: boolean): void {
-    console.log(chalk.cyan.bold('\n📋 Project Analysis Results:'));
-    console.log(chalk.green(`  Framework: ${context.framework}`));
-    console.log(chalk.green(`  Language: ${context.language}`));
-    console.log(chalk.green(`  Package Manager: ${context.packageManager}`));
+    const { formatter } = require('../utils/output-formatter');
     
-    if (verbose) {
-      console.log(chalk.gray('\n📦 Dependencies:'));
-      context.dependencies.forEach(dep => {
-        console.log(chalk.gray(`  • ${dep.name}@${dep.version}`));
-      });
+    formatter.section('Project Analysis');
+    
+    formatter.keyValue('Framework', context.framework, { color: 'green' });
+    formatter.keyValue('Language', context.language, { color: 'cyan' });
+    formatter.keyValue('Package Manager', context.packageManager, { color: 'cyan' });
+    
+    if (verbose && context.dependencies && context.dependencies.length > 0) {
+      formatter.subheader('Dependencies');
+      const depList = context.dependencies.map(dep => `${dep.name}@${dep.version}`);
+      formatter.list(depList, { indent: 2 });
     }
   }
 
   private displayRecommendations(recommendations: any[]): void {
+    const { formatter } = require('../utils/output-formatter');
+    
     if (!recommendations || recommendations.length === 0) {
-      console.log('\n💡 No specific recommendations at this time.');
+      formatter.info('No specific recommendations at this time.');
       return;
     }
 
-    console.log('\n💡 Recommended Integrations:');
-    recommendations.forEach((rec, index) => {
-      if (rec && rec.name) {
-        console.log(`  ${index + 1}. ${rec.name}`);
-        console.log(`     ${rec.description || 'No description available'}`);
-        console.log(`     Command: apix add ${rec.command || 'unknown'}`);
-      } else {
-        console.log(`  ${index + 1}. Invalid recommendation data`);
-      }
-    });
+    formatter.subheader('Recommended Integrations');
+    
+    const actionableItems = recommendations
+      .filter(rec => rec && rec.name)
+      .map(rec => ({
+        label: rec.name,
+        command: `apix add ${rec.command || rec.name.toLowerCase()}`,
+        description: rec.description
+      }));
+    
+    formatter.actionableList(actionableItems);
   }
 
   private async promptNextSteps(recommendations: any[]): Promise<void> {
@@ -575,6 +601,47 @@ export class APIxCLI {
 
     if (nextAction !== 'exit') {
       console.log(chalk.cyan(`\nRun: apix add ${nextAction}`));
+    }
+  }
+
+  private async promptRecommendationActions(recommendedServices: any[]): Promise<void> {
+    if (recommendedServices.length === 0) return;
+
+    const choices = recommendedServices.map(service => {
+      const serviceNames = {
+        'HTS': 'Token Service Integration',
+        'HCS': 'Consensus Service (Audit Trails)',
+        'Smart Contract': 'Smart Contract Integration',
+        'Account Service': 'Account Management'
+      };
+      
+      const serviceName = serviceNames[service as keyof typeof serviceNames] || `${service} Integration`;
+      const command = service.toLowerCase().replace(/\s+/g, '-');
+      
+      return {
+        name: `Add ${serviceName}`,
+        value: command
+      };
+    });
+
+    const { selectedAction } = await inquirer.prompt([{
+      type: 'list',
+      name: 'selectedAction',
+      message: 'Which integration would you like to add first?',
+      choices: [
+        ...choices,
+        { name: 'Nothing right now', value: 'exit' }
+      ]
+    }]);
+
+    if (selectedAction !== 'exit') {
+      const command = selectedAction === 'token' ? 'hts' : 
+                     selectedAction === 'consensus' ? 'hcs' :
+                     selectedAction === 'smart-contract' ? 'smart-contract' :
+                     selectedAction === 'account' ? 'account' : selectedAction;
+      
+      console.log(chalk.cyan(`\n🚀 Run: apix add ${command}`));
+      console.log(chalk.gray('   This will generate the integration files and setup code for your project.'));
     }
   }
 
@@ -657,12 +724,25 @@ export class APIxCLI {
         industry: options.industry,
         context: options.context,
         verbose: options.verbose,
-        debug: options.debug
+        debug: options.debug,
+        cleanMode: options.clean
       });
     } catch (error: any) {
       logger.error('Failed to start conversational interface:', error);
       console.error('❌ ERROR: Failed to start conversational interface:');
       console.error('❌ ERROR:', error.message || error);
+      
+      // Show stack trace for debugging when in debug mode
+      if (error.stack) {
+        console.error('❌ STACK TRACE:', error.stack);
+      }
+      
+      // Provide helpful suggestions
+      console.error('\n💡 Suggestions:');
+      console.error('   • Try using clean mode: apix chat --clean');
+      console.error('   • Check your API keys are set correctly');
+      console.error('   • Run with debug mode: apix chat --debug');
+      
       throw error;
     }
   }
@@ -933,11 +1013,13 @@ export class APIxCLI {
           console.log(chalk.green(`   ✅ Account: ${hederaOperations.getCurrentAccountId()}`));
           console.log(chalk.green('   ✅ SDK Integration: Working'));
 
-          if (hederaOperations.isMockMode()) {
+          if (hederaOperations.isFallbackMode()) {
             console.log(chalk.yellow('   ⚠️  Mode: Development (using test accounts)'));
             console.log(chalk.gray('   💡 Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY for live validation'));
+          } else if (hederaOperations.isUsingAgentKit()) {
+            console.log(chalk.green('   ✅ Mode: Live blockchain operations (AgentKit)'));
           } else {
-            console.log(chalk.green('   ✅ Mode: Live blockchain operations'));
+            console.log(chalk.green('   ✅ Mode: Live blockchain operations (Direct SDK)'));
           }
 
           // Additional validations based on options
@@ -1084,6 +1166,11 @@ export class APIxCLI {
           });
         }
 
+        // Interactive prompts for next actions
+        if (!options.quiet && classification.recommendedServices.length > 0) {
+          await this.promptRecommendationActions(classification.recommendedServices);
+        }
+
       } catch (error: any) {
         spinner.fail(chalk.red('❌ AI analysis failed'));
         logger.warn('AI recommendation generation failed, using fallback:', error?.message);
@@ -1097,6 +1184,11 @@ export class APIxCLI {
         console.log(chalk.gray('   • Configure API keys for AI-powered recommendations'));
         console.log(chalk.gray('   • Start with: apix add hts --name YourToken'));
         console.log(chalk.gray('   • Visit https://docs.hedera.com for detailed guidance'));
+
+        // Interactive prompts for fallback recommendations
+        if (!options.quiet) {
+          await this.promptRecommendationActions(['HTS', 'HCS', 'Smart Contract']);
+        }
       }
 
     } catch (error: any) {
@@ -1784,8 +1876,8 @@ export class APIxCLI {
         return false;
       }
 
-      // If we're not in mock mode, we have a real connection
-      if (!hederaOperations.isMockMode()) {
+      // If we're not in fallback mode, we have a real connection
+      if (!hederaOperations.isFallbackMode()) {
         // TODO: Could add more comprehensive connection tests here
         return true;
       }
@@ -1820,7 +1912,7 @@ export class APIxCLI {
         console.log(chalk.yellow('\n⚠️  Simulation Mode'));
         console.log(chalk.gray('   Using test accounts - will simulate token creation'));
         console.log(chalk.gray('   Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY for live blockchain operations\n'));
-      } else if (hederaOperations.isMockMode()) {
+      } else if (hederaOperations.isFallbackMode()) {
         console.log(chalk.yellow('\n⚠️  Development Mode'));
         console.log(chalk.gray('   Client initialization failed - using fallback mode\n'));
       } else {
@@ -1909,8 +2001,8 @@ export class APIxCLI {
         console.log(chalk.white('   • Ensure account has sufficient HBAR balance'));
         console.log(chalk.white('   • Try running: apix health --quick'));
 
-        if (!hederaOperations.isMockMode()) {
-          console.log(chalk.gray('\n   For testing, you can also run without credentials to use mock mode.'));
+        if (!hederaOperations.isFallbackMode()) {
+          console.log(chalk.gray('\n   For testing, you can also run without credentials to use fallback mode.'));
         }
       }
 

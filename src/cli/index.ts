@@ -6,31 +6,79 @@ require('dotenv').config();
 import { program } from 'commander';
 import chalk from 'chalk';
 import { APIxCLI } from './cli-core';
-import { logger } from '../utils/logger';
-import { debugLogger, LogLevel } from '../utils/debug-logger';
+import { logger, LogLevel } from '../utils/logger';
+import { debugLogger, LogLevel as DebugLogLevel } from '../utils/debug-logger';
+import { formatter, createFormatter } from '../utils/output-formatter';
 
 const packageJson = require('../../package.json');
-const cli = new APIxCLI();
+let cli: APIxCLI;
 
 // Initialize CLI asynchronously
 let cliInitialized = false;
-async function ensureCliInitialized() {
+async function ensureCliInitialized(options: any = {}) {
   if (!cliInitialized) {
-    await cli.initialize();
+    // Set logging level before initialization to suppress startup logs
+    setupLogging(options);
+    
+    // Temporarily suppress console output during initialization unless in debug mode
+    const originalConsoleLog = console.log;
+    const originalConsoleInfo = console.info;
+    const originalConsoleWarn = console.warn;
+    
+    if (!options.debug && !options.verbose) {
+      console.log = () => {};
+      console.info = () => {};
+      console.warn = () => {};
+    }
+    
+    try {
+      // Import and create CLI instance with suppressed output
+      const { APIxCLI } = await import('./cli-core');
+      cli = new APIxCLI();
+      await cli.initialize();
+    } finally {
+      // Restore console output
+      console.log = originalConsoleLog;
+      console.info = originalConsoleInfo; 
+      console.warn = originalConsoleWarn;
+    }
+    
     cliInitialized = true;
   }
 }
 
-// Setup debug logging based on CLI options
-function setupDebugLogging(options: any) {
-  // Set log level based on flags
+// Setup logging and formatting based on CLI options
+function setupLogging(options: any) {
+  // Configure main logger based on flags
+  if (options.quiet) {
+    logger.setLevel(LogLevel.ERROR); // Only show errors
+    logger.setInternalLevel(LogLevel.SILENT); // Suppress internal logs
+  } else if (options.debug) {
+    logger.setLevel(LogLevel.DEBUG);
+    logger.setInternalLevel(LogLevel.DEBUG);
+  } else if (options.verbose) {
+    logger.setLevel(LogLevel.VERBOSE);
+    logger.setInternalLevel(LogLevel.INFO);
+  } else {
+    logger.setLevel(LogLevel.INFO); // Default level
+    logger.setInternalLevel(LogLevel.WARN);
+  }
+
+  // Configure output formatter
+  formatter.configure({
+    quiet: options.quiet,
+    jsonMode: options.json,
+    maxWidth: process.stdout.columns || 80
+  });
+
+  // Setup debug logging for development
   if (options.trace) {
-    debugLogger.setLevel(LogLevel.TRACE);
+    debugLogger.setLevel(DebugLogLevel.TRACE);
     debugLogger.setTrace(true);
   } else if (options.debug) {
-    debugLogger.setLevel(LogLevel.DEBUG);
+    debugLogger.setLevel(DebugLogLevel.DEBUG);
   } else if (options.verbose) {
-    debugLogger.setLevel(LogLevel.INFO);
+    debugLogger.setLevel(DebugLogLevel.INFO);
   }
 
   // Handle file logging options
@@ -40,33 +88,43 @@ function setupDebugLogging(options: any) {
 
   // Handle custom log file path
   if (options.logFile) {
-    // TODO: Add custom log file path support to debugLogger
     debugLogger.info('Custom log file path specified', { path: options.logFile });
   }
 
-  debugLogger.debug('Debug logging configured', {
-    level: options.trace ? 'TRACE' : options.debug ? 'DEBUG' : options.verbose ? 'INFO' : 'default',
-    fileLogging: !options.noFileLogging,
-    customLogFile: options.logFile || null
-  });
+  // Internal debug logging only in debug mode
+  if (options.debug) {
+    debugLogger.debug('Logging configured', {
+      level: options.quiet ? 'QUIET' : options.debug ? 'DEBUG' : options.verbose ? 'VERBOSE' : 'INFO',
+      jsonMode: options.json,
+      fileLogging: !options.noFileLogging,
+      customLogFile: options.logFile || null
+    });
+  }
 }
 
 program
   .name('apix')
-  .description('Enterprise AI-powered Hedera development assistant with code composition and live blockchain validation')
+  .description('Enterprise AI-powered Hedera development assistant')
   .version(packageJson.version)
-  .option('--debug', 'Enable debug logging')
-  .option('--verbose', 'Enable verbose output')
-  .option('--trace', 'Enable trace logging with stack traces')
+  .option('-q, --quiet', 'Minimal output (errors only)')
+  .option('-v, --verbose', 'Detailed output')
+  .option('--debug', 'Debug output with internal details')
+  .option('--json', 'JSON output format')
+  .option('--trace', 'Trace logging with stack traces')
   .option('--log-file <path>', 'Custom log file path')
   .option('--no-file-logging', 'Disable file logging')
   .hook('preAction', (thisCommand, actionCommand) => {
-    // Setup debug logging based on global options
+    // Setup logging and formatting based on global options
     const options = program.opts();
-    setupDebugLogging(options);
+    setupLogging(options);
 
-    console.log(chalk.cyan.bold('🚀 APIX AI - Enterprise Hedera Development Assistant'));
-    console.log(chalk.gray(`Version ${packageJson.version} - AI Code Composition & Live Blockchain Validation\n`));
+    // Show minimal header unless in quiet mode
+    if (!options.quiet && !options.json) {
+      console.log(chalk.bold('APIX AI'), chalk.gray(`v${packageJson.version}`));
+      if (options.verbose) {
+        console.log(chalk.gray('Enterprise Hedera Development Assistant\n'));
+      }
+    }
   });
 
 program
@@ -82,8 +140,8 @@ program
     debugLogger.debug('Starting project analysis', { options: allOptions });
 
     try {
-      await ensureCliInitialized();
-      const result = await cli.analyze(options);
+      await ensureCliInitialized(allOptions);
+      const result = await cli.analyze(allOptions);
       debugLogger.endCommand(true, result);
       debugLogger.success('Project analysis completed successfully');
     } catch (error: any) {
@@ -93,7 +151,7 @@ program
         options: allOptions,
         stack: error?.stack
       });
-      console.error(chalk.red('❌ Analysis failed. Use --debug for detailed error information.'));
+      formatter.error('Analysis failed. Use --debug for detailed error information.');
       process.exit(1);
     }
   });
@@ -139,7 +197,11 @@ program
   .description('Initialize APIx configuration in your project')
   .option('-f, --force', 'Force reinitialize')
   .action(async (options) => {
+    const globalOptions = program.opts();
+    const allOptions = { ...options, ...globalOptions };
+
     try {
+      await ensureCliInitialized(allOptions);
       await cli.init(options);
     } catch (error) {
       logger.error('Initialization failed:', error);
@@ -150,8 +212,12 @@ program
 program
   .command('status')
   .description('Check status of Hedera integrations')
-  .action(async () => {
+  .action(async (options) => {
+    const globalOptions = program.opts();
+    const allOptions = { ...options, ...globalOptions };
+
     try {
+      await ensureCliInitialized(allOptions);
       await cli.status();
     } catch (error) {
       logger.error('Status check failed:', error);
@@ -172,6 +238,7 @@ program
     debugLogger.debug('Starting health check', { options: allOptions });
 
     try {
+      await ensureCliInitialized(allOptions);
       const result = await cli.health(options);
       debugLogger.endCommand(true, result);
       debugLogger.success('Health check completed successfully');
@@ -256,9 +323,13 @@ program
   .option('--context <context>', 'Initial business context')
   .option('--industry <industry>', 'Industry context')
   .option('--session-file <file>', 'Load previous conversation session')
+  .option('--clean', 'Start in clean mode without enhanced UI features')
   .action(async (options) => {
+    const globalOptions = program.opts();
+    const allOptions = { ...options, ...globalOptions };
+
     try {
-      await ensureCliInitialized();
+      await ensureCliInitialized(allOptions);
       await cli.startConversationalInterface(options);
     } catch (error) {
       logger.error('Conversational interface failed:', error);
@@ -297,9 +368,12 @@ program
   .option('--timeline <timeline>', 'Implementation timeline')
   .option('--interactive', 'Interactive recommendation wizard')
   .action(async (options) => {
+    const globalOptions = program.opts();
+    const allOptions = { ...options, ...globalOptions };
+
     try {
-      await ensureCliInitialized();
-      await cli.generateRecommendations(options);
+      await ensureCliInitialized(allOptions);
+      await cli.generateRecommendations(allOptions);
     } catch (error) {
       logger.error('Recommendation generation failed:', error);
       process.exit(1);
@@ -461,7 +535,7 @@ program
       const logs = await debugLogger.getRecentLogs(count);
 
       const filteredLogs = logs.filter(log => {
-        if (options.level && log.level !== LogLevel[options.level.toUpperCase() as keyof typeof LogLevel]) {
+        if (options.level && log.level !== DebugLogLevel[options.level.toUpperCase() as keyof typeof DebugLogLevel]) {
           return false;
         }
         if (options.command && log.command !== options.command) {
@@ -481,15 +555,15 @@ program
       for (const log of filteredLogs) {
         const timestamp = new Date(log.timestamp).toLocaleString();
         const levelColors: Record<number, any> = {
-          [LogLevel.ERROR]: chalk.red,
-          [LogLevel.WARN]: chalk.yellow,
-          [LogLevel.INFO]: chalk.blue,
-          [LogLevel.DEBUG]: chalk.gray,
-          [LogLevel.TRACE]: chalk.magenta
+          [DebugLogLevel.ERROR]: chalk.red,
+          [DebugLogLevel.WARN]: chalk.yellow,
+          [DebugLogLevel.INFO]: chalk.blue,
+          [DebugLogLevel.DEBUG]: chalk.gray,
+          [DebugLogLevel.TRACE]: chalk.magenta
         };
 
         const levelColor = levelColors[log.level] || chalk.white;
-        const levelName = LogLevel[log.level];
+        const levelName = DebugLogLevel[log.level];
 
         console.log(`${chalk.dim(timestamp)} ${levelColor(levelName.padEnd(5))} ${log.message}`);
 

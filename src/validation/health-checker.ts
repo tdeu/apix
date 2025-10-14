@@ -775,11 +775,12 @@ export class HealthChecker {
     try {
       const { hederaOperations } = await import('../services/hedera-operations');
 
-      // Check if service is in mock mode
-      const isMockMode = hederaOperations.isMockMode();
+      // Check if service is in fallback mode
+      const isFallbackMode = hederaOperations.isFallbackMode();
       const network = hederaOperations.getNetwork();
+      const capabilities = hederaOperations.getCapabilities();
 
-      if (isMockMode) {
+      if (isFallbackMode) {
         return {
           status: 'warning',
           message: 'Live blockchain validation running in mock mode',

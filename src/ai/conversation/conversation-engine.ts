@@ -26,7 +26,7 @@ export class ConversationEngine {
       const apiKey = process.env.OPENAI_API_KEY;
 
       if (!apiKey) {
-        logger.info('OpenAI API key not found - conversation engine will use knowledge-based responses');
+        logger.internal('info', 'OpenAI API key not found - conversation engine will use knowledge-based responses');
         return;
       }
 
@@ -36,10 +36,10 @@ export class ConversationEngine {
         maxRetries: 2
       });
 
-      logger.info('OpenAI GPT-3.5-turbo initialized for conversational AI');
+      logger.internal('info', 'OpenAI GPT-3.5-turbo initialized for conversational AI');
 
     } catch (error) {
-      logger.error('Failed to initialize OpenAI client:', error);
+      logger.internal('error', 'Failed to initialize OpenAI client', error);
       this.openai = null;
     }
   }
@@ -276,15 +276,22 @@ Keep responses concise but comprehensive.`;
    * Generate welcome message
    */
   private generateWelcomeMessage(context?: Partial<any>): string {
-    const industryContext = context?.industry ? ` specializing in ${context.industry}` : '';
+    const { logger, LogLevel } = require('../../utils/logger');
+    const industryContext = context?.industry ? ` (${context.industry})` : '';
     
+    // Minimal welcome message by default
+    if (!logger.isLevelEnabled(LogLevel.VERBOSE)) {
+      return `Hello! I'm APIX AI, your Hedera development assistant${industryContext}.\n\nHow can I help you with blockchain development today?`;
+    }
+    
+    // Detailed welcome only in verbose mode
     return `Hello! I'm APIX AI, your intelligent Hedera development assistant${industryContext}.
 
 I can help you with:
-🏢 **Enterprise Integration** - Analyze your business needs and recommend optimal Hedera services
-🔧 **Code Generation** - Create production-ready implementations with AI-powered customization  
-🧪 **Live Validation** - Test your integrations on the Hedera network in real-time
-💡 **Solution Architecture** - Design scalable, compliant blockchain solutions
+• Enterprise Integration - Analyze your business needs and recommend optimal Hedera services
+• Code Generation - Create production-ready implementations with AI-powered customization  
+• Live Validation - Test your integrations on the Hedera network in real-time
+• Solution Architecture - Design scalable, compliant blockchain solutions
 
 What blockchain challenge can I help you solve today?`;
   }

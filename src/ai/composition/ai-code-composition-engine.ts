@@ -488,7 +488,7 @@ Design the novel architecture:
           timeout: 60000, // Longer timeout for complex code generation
           apiKey: process.env.OPENAI_API_KEY
         });
-        logger.info('OpenAI GPT initialized for AI code composition');
+        logger.internal('info', 'OpenAI GPT initialized for AI code composition');
       } else {
         logger.info('OpenAI API key not found - AI code composition will use template-based generation');
       }
@@ -503,7 +503,7 @@ Design the novel architecture:
         });
         logger.info('Anthropic Claude initialized as secondary code composer');
       } else {
-        logger.info('Anthropic API key not found - code composition will use single AI model or templates');
+        logger.internal('info', 'Anthropic API key not found - code composition will use single AI model or templates');
       }
 
       // Log AI code generation capabilities
@@ -512,7 +512,7 @@ Design the novel architecture:
       if (this.secondaryLLM) codeGenCapabilities.push('Anthropic Claude');
 
       if (codeGenCapabilities.length > 0) {
-        logger.info(`AI code composition engine initialized with: ${codeGenCapabilities.join(', ')}`);
+        logger.internal('info', `AI code composition engine initialized with: ${codeGenCapabilities.join(', ')}`);
       } else {
         logger.info('AI code composition engine initialized with template-based generation only');
       }
