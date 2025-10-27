@@ -1,46 +1,46 @@
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
 import { ConversationResponse, ConversationSession, ConversationContext } from '../../types/conversation';
 
 /**
- * Working ConversationEngine - Uses actual OpenAI package
- * 
- * Provides functional conversational interface that actually works
- * with real dependencies and can be tested immediately.
+ * Working ConversationEngine - Uses Anthropic Claude
+ *
+ * Provides functional conversational interface with Claude AI
+ * for superior reasoning and enterprise knowledge.
  */
 export class ConversationEngine {
-  private openai: OpenAI | null = null;
+  private anthropic: Anthropic | null = null;
   private sessions: Map<string, ConversationSession> = new Map();
 
   constructor() {
-    this.initializeOpenAI();
+    this.initializeAnthropic();
   }
 
   /**
-   * Initialize OpenAI client
+   * Initialize Anthropic client
    */
-  private initializeOpenAI(): void {
+  private initializeAnthropic(): void {
     try {
-      const apiKey = process.env.OPENAI_API_KEY;
+      const apiKey = process.env.ANTHROPIC_API_KEY;
 
       if (!apiKey) {
-        logger.internal('info', 'OpenAI API key not found - conversation engine will use knowledge-based responses');
+        logger.internal('info', 'Anthropic API key not found - conversation engine will use knowledge-based responses');
         return;
       }
 
-      this.openai = new OpenAI({
+      this.anthropic = new Anthropic({
         apiKey: apiKey,
         timeout: 30000, // 30 second timeout for conversations
         maxRetries: 2
       });
 
-      logger.internal('info', 'OpenAI GPT-3.5-turbo initialized for conversational AI');
+      logger.internal('info', 'Anthropic Claude initialized for conversational AI');
 
     } catch (error) {
-      logger.internal('error', 'Failed to initialize OpenAI client', error);
-      this.openai = null;
+      logger.internal('error', 'Failed to initialize Anthropic client', error);
+      this.anthropic = null;
     }
   }
 
@@ -119,8 +119,8 @@ export class ConversationEngine {
     message: string,
     session: ConversationSession
   ): Promise<ConversationResponse> {
-    // If no OpenAI client, use mock response
-    if (!this.openai) {
+    // If no Anthropic client, use mock response
+    if (!this.anthropic) {
       return this.generateMockResponse(message, session);
     }
 
@@ -128,21 +128,23 @@ export class ConversationEngine {
       const systemPrompt = this.buildSystemPrompt(session.context);
       const conversationHistory = session.messages.slice(-5); // Last 5 messages
 
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+      const completion = await this.anthropic.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        system: systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
           ...conversationHistory.map(msg => ({
             role: msg._getType() === 'human' ? 'user' as const : 'assistant' as const,
             content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
           })),
           { role: 'user', content: message }
         ],
-        max_tokens: 1000,
+        max_tokens: 2048,
         temperature: 0.7
       });
 
-      const aiContent = completion.choices[0]?.message?.content || 'I apologize, but I couldn\'t generate a response.';
+      const aiContent = completion.content[0]?.type === 'text'
+        ? completion.content[0].text
+        : 'I apologize, but I couldn\'t generate a response.';
 
       return {
         content: aiContent,
@@ -155,13 +157,13 @@ export class ConversationEngine {
       };
 
     } catch (error) {
-      logger.error('OpenAI API error:', error);
+      logger.error('Anthropic API error:', error);
       return this.generateMockResponse(message, session);
     }
   }
 
   /**
-   * Generate mock response when OpenAI is not available
+   * Generate mock response when Claude is not available
    */
   private generateMockResponse(
     message: string,
@@ -193,7 +195,7 @@ export class ConversationEngine {
   }
 
   /**
-   * Build system prompt for OpenAI
+   * Build system prompt for Claude
    */
   private buildSystemPrompt(context: any): string {
     return `You are APIX AI, an expert enterprise Hedera blockchain development assistant.

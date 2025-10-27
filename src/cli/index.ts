@@ -144,6 +144,7 @@ program
       const result = await cli.analyze(allOptions);
       debugLogger.endCommand(true, result);
       debugLogger.success('Project analysis completed successfully');
+      process.exit(0);
     } catch (error: any) {
       debugLogger.endCommand(false);
       debugLogger.error('Analysis failed', error, {
@@ -179,6 +180,7 @@ program
       const result = await cli.addIntegration(integration, options);
       debugLogger.endCommand(true, result);
       debugLogger.success(`Integration '${integration}' added successfully`);
+      process.exit(0);
     } catch (error: any) {
       debugLogger.endCommand(false);
       debugLogger.error('Integration failed', error, {
@@ -203,6 +205,7 @@ program
     try {
       await ensureCliInitialized(allOptions);
       await cli.init(options);
+      process.exit(0);
     } catch (error) {
       logger.error('Initialization failed:', error);
       process.exit(1);
@@ -219,6 +222,7 @@ program
     try {
       await ensureCliInitialized(allOptions);
       await cli.status();
+      process.exit(0);
     } catch (error) {
       logger.error('Status check failed:', error);
       process.exit(1);
@@ -242,6 +246,7 @@ program
       const result = await cli.health(options);
       debugLogger.endCommand(true, result);
       debugLogger.success('Health check completed successfully');
+      process.exit(0);
     } catch (error: any) {
       debugLogger.endCommand(false);
       debugLogger.error('Health check failed', error, {
@@ -285,6 +290,7 @@ program
       const result = await cli.generateEnterpriseIntegration(integration, options);
       debugLogger.endCommand(true, result);
       debugLogger.success(`Enterprise integration '${integration}' generated successfully`);
+      process.exit(0);
     } catch (error: any) {
       debugLogger.endCommand(false);
       debugLogger.error('Enterprise generation failed', error, {
@@ -311,6 +317,7 @@ program
     try {
       await ensureCliInitialized();
       await cli.composeCustomCode(options);
+      process.exit(0);
     } catch (error) {
       logger.error('AI composition failed:', error);
       process.exit(1);
@@ -351,6 +358,7 @@ program
     try {
       await ensureCliInitialized();
       await cli.comprehensiveValidation(options);
+      process.exit(0);
     } catch (error) {
       logger.error('Comprehensive validation failed:', error);
       process.exit(1);
@@ -374,6 +382,7 @@ program
     try {
       await ensureCliInitialized(allOptions);
       await cli.generateRecommendations(allOptions);
+      process.exit(0);
     } catch (error) {
       logger.error('Recommendation generation failed:', error);
       process.exit(1);
@@ -392,6 +401,7 @@ program
     try {
       await ensureCliInitialized();
       await cli.explainConcept(concept, options);
+      process.exit(0);
     } catch (error) {
       logger.error('Concept explanation failed:', error);
       process.exit(1);
@@ -409,6 +419,7 @@ program
     try {
       await ensureCliInitialized();
       await cli.compareApproaches(approaches, options);
+      process.exit(0);
     } catch (error) {
       logger.error('Approach comparison failed:', error);
       process.exit(1);
@@ -426,6 +437,7 @@ program
     try {
       await ensureCliInitialized();
       await cli.assessConfidence(requirement, options);
+      process.exit(0);
     } catch (error) {
       logger.error('Confidence assessment failed:', error);
       process.exit(1);
@@ -444,6 +456,7 @@ program
     try {
       await ensureCliInitialized();
       await cli.debugIssue(issue, options);
+      process.exit(0);
     } catch (error) {
       logger.error('Debug assistance failed:', error);
       process.exit(1);
@@ -463,6 +476,7 @@ program
     try {
       await ensureCliInitialized();
       await cli.enterpriseDeployment(options);
+      process.exit(0);
     } catch (error) {
       logger.error('Enterprise deployment failed:', error);
       process.exit(1);
@@ -507,6 +521,7 @@ program
       const result = await cli.createTokenOnBlockchain(tokenOptions);
       debugLogger.endCommand(true, result);
       debugLogger.success(`Token '${options.name}' created successfully`);
+      process.exit(0);
     } catch (error: any) {
       debugLogger.endCommand(false);
       debugLogger.error('Token creation failed', error, {
@@ -584,6 +599,7 @@ program
 
         console.log('');
       }
+      process.exit(0);
     } catch (error: any) {
       console.error(chalk.red('❌ Failed to retrieve logs:'), error.message);
       process.exit(1);
@@ -628,6 +644,7 @@ program
       }
 
       console.log(chalk.yellow('\n💡 Tip: Use --debug flag with commands for detailed logging.'));
+      process.exit(0);
     } catch (error: any) {
       console.error(chalk.red('❌ Failed to retrieve last error:'), error.message);
       process.exit(1);
@@ -679,6 +696,7 @@ program
       console.log('  --trace                 - Enable trace logging with stack traces');
       console.log('  --log-file <path>       - Custom log file path');
       console.log('  --no-file-logging       - Disable file logging');
+      process.exit(0);
     } catch (error: any) {
       console.error(chalk.red('❌ Failed to retrieve debug information:'), error.message);
       process.exit(1);

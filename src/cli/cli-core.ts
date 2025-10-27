@@ -1390,8 +1390,8 @@ export class APIxCLI {
 
         // Display structured results
         console.log(chalk.cyan('📊 Assessment Summary:'));
-        console.log(`${chalk.bold('Confidence Level:')} ${this.getConfidenceColor(confidence)}${confidence}%${chalk.reset()}`);
-        console.log(`${chalk.bold('Complexity:')} ${this.getComplexityColor(complexity)}${complexity.toUpperCase()}${chalk.reset()}`);
+        console.log(`${chalk.bold('Confidence Level:')} ${this.getConfidenceColor(confidence)(`${confidence}%`)}`);
+        console.log(`${chalk.bold('Complexity:')} ${this.getComplexityColor(complexity)(complexity.toUpperCase())}`);
         console.log(`${chalk.bold('Estimated Time:')} ${chalk.yellow(timeEstimate)}`);
 
         if (options.detailed) {
@@ -1463,7 +1463,7 @@ export class APIxCLI {
       console.log(chalk.yellow('🎯 Fallback Confidence Assessment\n'));
 
       const fallbackConfidence = this.calculateFallbackConfidence(requirement, options);
-      console.log(`${chalk.bold('Estimated Confidence:')} ${this.getConfidenceColor(fallbackConfidence)}${fallbackConfidence}%${chalk.reset()}`);
+      console.log(`${chalk.bold('Estimated Confidence:')} ${this.getConfidenceColor(fallbackConfidence)(`${fallbackConfidence}%`)}`);
       console.log(`${chalk.bold('Assessment:')} Rule-based analysis (AI assessment unavailable)`);
 
       // Basic rule-based recommendations
@@ -1555,7 +1555,7 @@ export class APIxCLI {
       if (recoveryResult.escalationGuidance) {
         console.log(chalk.red('\n🚨 Escalation Guidance:'));
         console.log(`${chalk.bold('Problem:')} ${recoveryResult.escalationGuidance.problemSummary}`);
-        console.log(`${chalk.bold('Severity:')} ${this.getSeverityColor(recoveryResult.escalationGuidance.severity)}${recoveryResult.escalationGuidance.severity}${chalk.reset()}`);
+        console.log(`${chalk.bold('Severity:')} ${this.getSeverityColor(recoveryResult.escalationGuidance.severity)(recoveryResult.escalationGuidance.severity)}`);
       }
 
       // Generate fixes if requested or if recovery wasn't fully successful
@@ -1691,9 +1691,9 @@ export class APIxCLI {
 
       // Display environment assessment
       console.log(chalk.cyan('🏗️  Environment Assessment:'));
-      console.log(`${chalk.bold('Target Environment:')} ${this.getEnvironmentColor(envAssessment.environment)}${envAssessment.environment.toUpperCase()}${chalk.reset()}`);
-      console.log(`${chalk.bold('Readiness Score:')} ${this.getReadinessColor(envAssessment.readinessScore)}${envAssessment.readinessScore}/100${chalk.reset()}`);
-      console.log(`${chalk.bold('Risk Level:')} ${this.getRiskColor(envAssessment.riskLevel)}${envAssessment.riskLevel.toUpperCase()}${chalk.reset()}`);
+      console.log(`${chalk.bold('Target Environment:')} ${this.getEnvironmentColor(envAssessment.environment)(envAssessment.environment.toUpperCase())}`);
+      console.log(`${chalk.bold('Readiness Score:')} ${this.getReadinessColor(envAssessment.readinessScore)(`${envAssessment.readinessScore}/100`)}`);
+      console.log(`${chalk.bold('Risk Level:')} ${this.getRiskColor(envAssessment.riskLevel)(envAssessment.riskLevel.toUpperCase())}`);
 
       if (envAssessment.prerequisites?.length > 0) {
         console.log(chalk.yellow('\n📋 Prerequisites:'));
@@ -1705,7 +1705,7 @@ export class APIxCLI {
       // Display compliance results
       if (complianceResults) {
         console.log(chalk.cyan('\n🛡️  Compliance Analysis:'));
-        console.log(`${chalk.bold('Compliance Score:')} ${this.getComplianceColor(complianceResults.score)}${complianceResults.score}/100${chalk.reset()}`);
+        console.log(`${chalk.bold('Compliance Score:')} ${this.getComplianceColor(complianceResults.score)(`${complianceResults.score}/100`)}`);
         console.log(`${chalk.bold('Standards Met:')} ${complianceResults.standardsMet}/${complianceResults.totalStandards}`);
 
         if (complianceResults.violations?.length > 0) {
@@ -1746,7 +1746,7 @@ export class APIxCLI {
       console.log(chalk.cyan('\n📋 AI-Generated Deployment Plan:'));
       console.log(`${chalk.bold('Strategy:')} ${deploymentPlan.strategy}`);
       console.log(`${chalk.bold('Estimated Duration:')} ${deploymentPlan.estimatedDuration}`);
-      console.log(`${chalk.bold('Success Probability:')} ${this.getSuccessColor(deploymentPlan.successProbability)}${deploymentPlan.successProbability}%${chalk.reset()}`);
+      console.log(`${chalk.bold('Success Probability:')} ${this.getSuccessColor(deploymentPlan.successProbability)(`${deploymentPlan.successProbability}%`)}`);
 
       if (deploymentPlan.phases?.length > 0) {
         console.log(chalk.cyan('\n🔄 Deployment Phases:'));
