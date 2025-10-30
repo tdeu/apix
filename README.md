@@ -156,36 +156,11 @@ npm run dev
 
 # 🎉 Open http://localhost:3000 and connect wallet!
 ```
-
----
-
-## 🔐 Security & Judge Credentials
-
-### ⚠️ CRITICAL: Never commit private keys or `.env` files
-
-**Security Best Practices:**
-1. Add `.env`, `.env.local`, `.env.*.local` to `.gitignore`
-2. Use `.env.example` as template with placeholder values
-3. Rotate credentials regularly
-4. Use testnet accounts for development
-5. Separate accounts for different environments
-
-### For Judges: Test Credentials
-
-**Funded Testnet Account:**
-```
-Network: Hedera Testnet
-Account ID: 0.0.YOUR_TEST_ACCOUNT_ID
-Private Key: [See DoraHacks submission notes]
-Balance: ~10 ℏ (sufficient for 10,000+ operations)
-```
-
 **Usage Instructions:**
 1. Clone repository
-2. Create `.env` file with credentials from DoraHacks
-3. Run `apix health` to verify connectivity
-4. Execute `apix create-token --name "JudgeTest" --symbol "TEST"`
-5. View transaction on [HashScan Testnet](https://hashscan.io/testnet)
+2. Run `apix health` to verify connectivity
+3. Execute `apix create-token --name "JudgeTest" --symbol "TEST"`
+4. View transaction on [HashScan Testnet](https://hashscan.io/testnet)
 
 **Alternative:** Run `apix create-test-account` to generate new test account automatically.
 
@@ -213,37 +188,6 @@ Balance: ~10 ℏ (sufficient for 10,000+ operations)
 - **Primary:** `https://testnet.mirrornode.hedera.com`
 - **Account API:** `/api/v1/accounts/0.0.4912345`
 - **Token API:** `/api/v1/tokens/0.0.4923456`
-
----
-
-## 🎬 Demo Video
-
-**3-Minute Demo:** [Watch on YouTube](https://youtube.com/watch?v=YOUR_VIDEO_ID)
-
-**Timeline:**
-- 0:00-0:15: Introduction (Team, Problem, Track)
-- 0:15-0:45: Product Overview
-- 0:45-2:45: **Live Hedera Demo** (Token creation + HashScan verification)
-- 2:45-3:00: Conclusion (Impact, roadmap)
-
-### Testing
-
-```bash
-# Automated tests
-npm test
-npm run test:integration  # Requires testnet credentials
-
-# Health checks
-npm run apix:health
-npm run audit:mocks
-
-# Manual testing
-apix --help
-apix analyze --directory ./test-projects/nextjs-app
-apix add hts --name "TestToken" --force
-apix create-token --name "LiveTest" --symbol "LIVE"
-```
-
 ---
 
 ## 📁 Documentation
@@ -306,19 +250,12 @@ Comprehensive documentation in `/docs`:
 
 ## 🤝 Team & Contact
 
-**Team:** [Your Team Name]
-**Hedera Certified:** [Number] / [Total Members]
+**Team:** Moustapha Diop & Thomas De Rouck
+**Hedera Certified:**1/2 members
 
-**Lead Developer:** [Name] - CLI architecture, Hedera SDK integration
-**GitHub:** [@username](https://github.com/username) | **Certification:** [ID]
-
-**Full team details:** [TEAM.md](./docs/TEAM.md)
-
-**Contact:**
-- **GitHub:** [github.com/your-username/apix](https://github.com/your-username/apix)
-- **Email:** team@apixai.dev
-- **Issues:** [Report bugs/features](https://github.com/your-username/apix/issues)
-
+**Lead Developer:** Thomas - CLI architecture, Hedera SDK integration
+**GitHub:** https://github.com/tdeu
+**Telegram** @tderouck - Discord thomas898487 
 ---
 
 ## 📈 Roadmap & Ask
@@ -350,26 +287,6 @@ Comprehensive documentation in `/docs`:
 - $50K MRR
 
 **Full roadmap & business model:** [ROADMAP.md](./docs/ROADMAP.md)
-
----
-
-## 📜 License
-
-MIT License - See [LICENSE](./LICENSE)
-
----
-
-## 🙏 Acknowledgments
-
-**Built With:** [Hedera Hashgraph](https://hedera.com) | [@hashgraph/sdk](https://github.com/hashgraph/hedera-sdk-js) | [Hedera Agent Kit](https://github.com/hashgraph/hedera-agent-kit) | [Commander.js](https://github.com/tj/commander.js) | [LangChain](https://langchain.com)
-
-**Thanks:** Hedera community, Developer Advocacy team, HashPack/Blade/WalletConnect teams, all contributors
-
----
-
-**APIX AI: Transforming Hedera integration from hours to seconds.**
-
-*Built with ❤️ for the Hedera developer community*
 
 ---
 
