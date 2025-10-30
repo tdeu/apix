@@ -4,6 +4,9 @@
 export interface AnalysisOptions {
   directory: string;
   verbose?: boolean;
+  quiet?: boolean;
+  debug?: boolean;
+  json?: boolean;
 }
 
 export interface IntegrationOptions {

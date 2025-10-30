@@ -1,15 +1,7 @@
-// Import Hedera Agent Kit with fallback handling
-let HederaAgentAPI: any = null;
-try {
-  const agentKit = require('hedera-agent-kit');
-  HederaAgentAPI = agentKit.HederaAgentAPI;
-} catch (error) {
-  // Agent Kit not available, will use fallback mode
-}
-
 import { Client, AccountId, PrivateKey, TokenCreateTransaction, TokenType, TokenSupplyType, Hbar, TransactionResponse, TransactionReceipt, TokenAssociateTransaction, TransferTransaction, TokenId, ContractCreateTransaction, ContractExecuteTransaction, FileCreateTransaction, FileAppendTransaction, TopicCreateTransaction, TopicMessageSubmitTransaction, TopicId } from '@hashgraph/sdk';
 import { logger } from '../utils/logger';
 import { getTestAccount, validateTestAccount, getTestClient, TestAccount } from '../utils/test-accounts';
+import { HederaAgentKitService } from './hedera-agent-kit-service';
 
 /**
  * Hedera Operations Service
@@ -78,7 +70,7 @@ export interface TopicMessageOptions {
 
 export class HederaOperationsService {
   private client: Client | null = null;
-  private agentKit: any | null = null;
+  private agentKitService: HederaAgentKitService | null = null;
   private network: 'testnet' | 'mainnet';
   private testAccount: TestAccount | null = null;
   private initialized: boolean = false;
@@ -100,16 +92,47 @@ export class HederaOperationsService {
 
       if (accountId && privateKey) {
         await this.initializeWithCredentials(accountId, privateKey);
-        logger.info('Hedera Operations initialized with environment credentials');
+        await this.initializeAgentKit(accountId, privateKey);
+        logger.internal('info', 'Hedera Operations initialized with environment credentials', {
+          network: this.network,
+          agentKitAvailable: this.agentKitService?.isAvailable() || false
+        });
       } else {
         await this.initializeWithTestAccount();
-        logger.info('Hedera Operations initialized with test account');
+        logger.internal('info', 'Hedera Operations initialized with test account', {
+          network: this.network
+        });
       }
 
       this.initialized = true;
     } catch (error: any) {
       logger.error('Failed to initialize Hedera Operations:', error);
       throw new Error(`Hedera Operations initialization failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Initialize HederaAgentKit service
+   */
+  private async initializeAgentKit(accountId: string, privateKey: string): Promise<void> {
+    try {
+      this.agentKitService = new HederaAgentKitService({
+        accountId,
+        privateKey,
+        network: this.network
+      });
+
+      await this.agentKitService.initialize();
+
+      if (this.agentKitService.isAvailable()) {
+        logger.internal('info', 'HederaAgentKit service initialized successfully');
+      } else {
+        logger.warn('HederaAgentKit not available, using direct SDK operations');
+      }
+
+    } catch (error) {
+      logger.warn('Failed to initialize HederaAgentKit service', error);
+      this.agentKitService = null;
     }
   }
 
@@ -129,18 +152,8 @@ export class HederaOperationsService {
       PrivateKey.fromString(privateKey)
     );
 
-    // Initialize Agent Kit if available
-    if (HederaAgentAPI) {
-      const context = {
-        accountId,
-        mode: 'EXECUTE' as const
-      };
-
-      this.agentKit = new HederaAgentAPI(this.client, context);
-    } else {
-      logger.warn('HederaAgentAPI not available, using direct SDK operations');
-      this.agentKit = null;
-    }
+    // AgentKit is now handled separately in the initialization phase
+    logger.internal('info', 'Direct SDK client configured successfully');
 
     logger.info('Initialized with user credentials', {
       network: this.network,
@@ -165,18 +178,8 @@ export class HederaOperationsService {
       // Get client configured with test account
       this.client = getTestClient(this.testAccount);
 
-      // Initialize Agent Kit with test account if available
-      if (HederaAgentAPI) {
-        const context = {
-          accountId: this.testAccount.accountId,
-          mode: 'EXECUTE' as const
-        };
-
-        this.agentKit = new HederaAgentAPI(this.client, context);
-      } else {
-        logger.warn('HederaAgentAPI not available, using direct SDK operations');
-        this.agentKit = null;
-      }
+      // AgentKit is now handled separately in the initialization phase
+      logger.internal('info', 'Test account client configured successfully');
 
       logger.info('Initialized with test account', {
         network: this.network,
@@ -200,10 +203,53 @@ export class HederaOperationsService {
     // Check if we have real credentials vs test accounts
     const hasRealCredentials = process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY;
 
+    // Try AgentKit first if available
+    if (this.agentKitService && this.agentKitService.isAvailable()) {
+      try {
+        const agentKitResult = await this.agentKitService.createToken({
+          name: options.name,
+          symbol: options.symbol,
+          decimals: options.decimals,
+          initialSupply: options.initialSupply,
+          adminKey: options.adminKey,
+          supplyKey: options.supplyKey,
+          freezeKey: options.freezeKey,
+          wipeKey: options.wipeKey
+        });
+
+        if (agentKitResult.success) {
+          logger.internal('info', 'Token created successfully via HederaAgentKit', {
+            tokenId: agentKitResult.data?.tokenId,
+            name: options.name
+          });
+
+          return {
+            success: true,
+            tokenId: agentKitResult.data?.tokenId,
+            transactionId: agentKitResult.transactionId,
+            explorerUrl: agentKitResult.explorerUrl,
+            details: {
+              name: options.name,
+              symbol: options.symbol,
+              decimals: options.decimals || 8,
+              initialSupply: options.initialSupply || 1000000,
+              network: this.network,
+              method: 'HederaAgentKit'
+            }
+          };
+        } else {
+          logger.warn('HederaAgentKit token creation failed, falling back to direct SDK', agentKitResult.error);
+        }
+      } catch (error: any) {
+        logger.warn('HederaAgentKit token creation error, falling back to direct SDK', error);
+      }
+    }
+
+    // Fallback to direct SDK operations
     if (!this.client) {
       return {
         success: false,
-        error: 'Hedera client not initialized - running in mock mode'
+        error: 'No Hedera client available - unable to create token'
       };
     }
 
@@ -899,10 +945,35 @@ export class HederaOperationsService {
   }
 
   /**
-   * Check if service is running in mock mode
+   * Check if service is running with full capabilities (AgentKit + SDK)
    */
-  isMockMode(): boolean {
-    return !this.client || !this.agentKit;
+  isFullyEnabled(): boolean {
+    return this.agentKitService?.isAvailable() || false;
+  }
+
+  /**
+   * Check if service is using AgentKit
+   */
+  isUsingAgentKit(): boolean {
+    return this.agentKitService?.isAvailable() || false;
+  }
+
+  /**
+   * Check if service is running in fallback mode (SDK only or limited capabilities)
+   */
+  isFallbackMode(): boolean {
+    return !this.agentKitService?.isAvailable() && this.client === null;
+  }
+
+  /**
+   * Get available capabilities
+   */
+  getCapabilities(): { agentKit: boolean; directSDK: boolean; testAccounts: boolean } {
+    return {
+      agentKit: this.agentKitService?.isAvailable() || false,
+      directSDK: this.client !== null,
+      testAccounts: this.testAccount !== null
+    };
   }
 
   /**
@@ -929,9 +1000,11 @@ export class HederaOperationsService {
     if (this.client) {
       this.client.close();
       this.client = null;
-      this.agentKit = null;
-      this.initialized = false;
     }
+    
+    // Clean up AgentKit service
+    this.agentKitService = null;
+    this.initialized = false;
   }
 }
 

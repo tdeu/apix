@@ -1,6 +1,7 @@
 import ora, { Ora } from 'ora';
 import chalk from 'chalk';
 import cliProgress from 'cli-progress';
+import { logger, LogLevel } from './logger';
 
 export interface ProgressStep {
   id: string;
@@ -12,8 +13,14 @@ export interface ProgressOptions {
   showTimer?: boolean;
   showSteps?: boolean;
   compact?: boolean;
+  minDuration?: number; // Only show progress for operations longer than this (ms)
+  silent?: boolean;
 }
 
+/**
+ * Smart Progress Manager with timing-based display rules
+ * Only shows progress indicators for operations that take longer than threshold
+ */
 export class ProgressManager {
   private steps: ProgressStep[] = [];
   private currentStep: number = 0;
@@ -22,13 +29,18 @@ export class ProgressManager {
   private startTime: number = Date.now();
   private stepStartTime: number = Date.now();
   private options: ProgressOptions;
+  private shouldShowProgress: boolean = false;
+  private progressCheckTimer: NodeJS.Timeout | null = null;
+  private completed: boolean = false;
 
   constructor(steps: ProgressStep[], options: ProgressOptions = {}) {
     this.steps = steps;
     this.options = {
-      showTimer: true,
-      showSteps: true,
-      compact: false,
+      showTimer: false,
+      showSteps: false,
+      compact: true,
+      minDuration: 2000, // Only show progress for operations >2 seconds
+      silent: logger.getLevel() === LogLevel.SILENT,
       ...options
     };
   }
@@ -36,25 +48,39 @@ export class ProgressManager {
   start(): void {
     this.startTime = Date.now();
     this.stepStartTime = Date.now();
+    this.completed = false;
     
-    // Display steps only once at the beginning
-    if (this.options.showSteps) {
-      this.displaySteps();
+    // Set up delayed progress indication
+    if (!this.options.silent) {
+      this.progressCheckTimer = setTimeout(() => {
+        if (!this.completed) {
+          this.shouldShowProgress = true;
+          this.initializeProgressDisplay();
+        }
+      }, this.options.minDuration);
     }
+  }
 
-    // Use either progress bar OR spinner, not both
-    if (!this.options.compact) {
+  private initializeProgressDisplay(): void {
+    if (this.options.silent || this.completed) return;
+
+    // Use minimal single-line progress for long operations
+    if (this.steps.length > 1 && !this.options.compact) {
       this.progressBar = new cliProgress.SingleBar({
-        format: chalk.cyan('{bar}') + ' {percentage}% | ETA: {eta}s | {value}/{total} steps',
+        format: chalk.cyan('{bar}') + ' {percentage}% | {value}/{total}',
         barCompleteChar: '█',
         barIncompleteChar: '░',
         hideCursor: true
       });
       
       this.progressBar.start(this.getTotalWeight(), 0);
+    } else {
+      // Use minimal spinner for long single operations
+      this.spinner = ora({
+        text: chalk.cyan('Processing...'),
+        spinner: 'dots2'
+      }).start();
     }
-
-    this.startCurrentStep();
   }
 
   nextStep(success: boolean = true): void {
@@ -69,96 +95,115 @@ export class ProgressManager {
   }
 
   async complete(success: boolean = true): Promise<void> {
-    if (this.spinner) {
-      if (success) {
-        this.spinner.succeed(chalk.green('✅ All steps completed successfully!'));
-      } else {
-        this.spinner.fail(chalk.red('❌ Process failed'));
+    this.completed = true;
+    
+    // Clean up timer
+    if (this.progressCheckTimer) {
+      clearTimeout(this.progressCheckTimer);
+      this.progressCheckTimer = null;
+    }
+
+    // Show minimal completion message only if progress was displayed
+    if (this.shouldShowProgress && !this.options.silent) {
+      if (this.spinner) {
+        if (success) {
+          this.spinner.succeed();
+        } else {
+          this.spinner.fail();
+        }
+        // Small delay to ensure spinner cleanup completes
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
-      // Small delay to ensure spinner cleanup completes
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
 
-    if (this.progressBar) {
-      this.progressBar.update(this.getTotalWeight());
-      this.progressBar.stop();
-    }
+      if (this.progressBar) {
+        this.progressBar.update(this.getTotalWeight());
+        this.progressBar.stop();
+      }
 
-    if (this.options.showTimer) {
-      const totalTime = ((Date.now() - this.startTime) / 1000).toFixed(1);
-      console.log(chalk.gray(`⏱️  Total time: ${totalTime}s`));
+      // Show timing only in verbose mode
+      if (this.options.showTimer && logger.isLevelEnabled(LogLevel.VERBOSE)) {
+        const totalTime = ((Date.now() - this.startTime) / 1000).toFixed(1);
+        console.log(chalk.gray(`Completed in ${totalTime}s`));
+      }
     }
   }
 
   fail(error: string): void {
-    if (this.spinner) {
-      this.spinner.fail(chalk.red(`❌ ${error}`));
-    }
+    this.completed = true;
     
-    if (this.progressBar) {
-      this.progressBar.stop();
+    // Clean up timer
+    if (this.progressCheckTimer) {
+      clearTimeout(this.progressCheckTimer);
+      this.progressCheckTimer = null;
     }
-    
-    this.showFailureContext();
+
+    if (this.shouldShowProgress && !this.options.silent) {
+      if (this.spinner) {
+        this.spinner.fail();
+      }
+      
+      if (this.progressBar) {
+        this.progressBar.stop();
+      }
+      
+      // Show failure context only in verbose mode
+      if (logger.isLevelEnabled(LogLevel.VERBOSE)) {
+        this.showFailureContext();
+      }
+    }
   }
 
-  updateSpinner(text: string): void {
-    if (this.spinner) {
-      this.spinner.text = text;
+  updateStep(text: string): void {
+    if (this.shouldShowProgress && this.spinner && !this.options.silent) {
+      this.spinner.text = chalk.cyan(text);
     }
   }
 
   private startCurrentStep(): void {
-    if (this.currentStep >= this.steps.length) return;
+    if (this.currentStep >= this.steps.length || !this.shouldShowProgress) return;
 
     const step = this.steps[this.currentStep];
     this.stepStartTime = Date.now();
 
-    // Only use spinner when no progress bar is active
-    if (this.options.compact || !this.progressBar) {
-      this.spinner = ora({
-        text: `${step.label} (${this.currentStep + 1}/${this.steps.length})`,
-        spinner: 'dots2'
-      }).start();
-    } else {
-      // For progress bar mode, just print the current step without spinner
-      console.log(chalk.cyan(`⣾ ${step.label} (${this.currentStep + 1}/${this.steps.length})`));
+    // Minimal progress indication
+    if (this.progressBar) {
+      // For progress bar mode, no additional output needed
+      return;
+    } else if (this.spinner) {
+      this.spinner.text = chalk.cyan(step.label);
     }
   }
 
   private completeCurrentStep(success: boolean): void {
-    const step = this.steps[this.currentStep];
-    const stepTime = ((Date.now() - this.stepStartTime) / 1000).toFixed(1);
+    if (!this.shouldShowProgress) return;
     
-    // Handle completion message based on display mode
-    if (this.spinner) {
-      if (success) {
-        this.spinner.succeed(chalk.green(`✅ ${step.label}`) + 
-          (this.options.showTimer ? chalk.gray(` (${stepTime}s)`) : ''));
-      } else {
-        this.spinner.fail(chalk.red(`❌ ${step.label} failed`));
-      }
-    } else if (this.progressBar) {
-      // For progress bar mode, just print completion status
-      if (success) {
-        console.log(chalk.green(`✔ ✅ ${step.label}`) + 
-          (this.options.showTimer ? chalk.gray(` (${stepTime}s)`) : ''));
-      } else {
-        console.log(chalk.red(`✖ ❌ ${step.label} failed`));
-      }
-    }
-
-    // Update progress bar
+    const step = this.steps[this.currentStep];
+    
+    // Update progress bar without verbose output
     if (this.progressBar) {
       const completedWeight = this.getCompletedWeight();
       this.progressBar.update(completedWeight);
     }
+    
+    // No verbose step completion messages unless in verbose mode
+    if (logger.isLevelEnabled(LogLevel.VERBOSE)) {
+      const stepTime = ((Date.now() - this.stepStartTime) / 1000).toFixed(1);
+      if (success) {
+        console.log(chalk.green(`✓ ${step.label}`) + 
+          (this.options.showTimer ? chalk.gray(` (${stepTime}s)`) : ''));
+      } else {
+        console.log(chalk.red(`✗ ${step.label} failed`));
+      }
+    }
   }
 
   private displaySteps(): void {
-    console.log(chalk.cyan.bold('\n📋 Process Steps:'));
+    // Only show steps in verbose mode
+    if (!logger.isLevelEnabled(LogLevel.VERBOSE)) return;
+    
+    console.log(chalk.cyan.bold('\nProcess Steps:'));
     this.steps.forEach((step, index) => {
-      console.log(chalk.gray(`   ${index + 1}. ${step.label}`));
+      console.log(chalk.gray(`  ${index + 1}. ${step.label}`));
     });
     console.log();
   }
@@ -176,13 +221,13 @@ export class ProgressManager {
   private showFailureContext(): void {
     if (this.currentStep < this.steps.length) {
       const failedStep = this.steps[this.currentStep];
-      console.log(chalk.red(`\n❌ Failed at step: ${failedStep.label}`));
-      console.log(chalk.yellow(`📍 Progress: ${this.currentStep}/${this.steps.length} steps completed`));
+      console.log(chalk.red(`Failed at: ${failedStep.label}`));
+      console.log(chalk.gray(`Progress: ${this.currentStep}/${this.steps.length} steps completed`));
       
       if (this.currentStep > 0) {
-        console.log(chalk.green('\n✅ Completed steps:'));
+        console.log(chalk.green('\nCompleted steps:'));
         this.steps.slice(0, this.currentStep).forEach((step, index) => {
-          console.log(chalk.green(`   ${index + 1}. ${step.label}`));
+          console.log(chalk.green(`  ${index + 1}. ${step.label}`));
         });
       }
     }
@@ -270,7 +315,11 @@ export function trackSteps<T>(
   operations: (() => Promise<any>)[],
   options?: ProgressOptions
 ): Promise<T[]> {
-  const progress = new ProgressManager(steps, options);
+  const progress = new ProgressManager(steps, {
+    compact: true,
+    minDuration: 1500, // Show progress for operations >1.5s
+    ...options
+  });
   
   return new Promise(async (resolve, reject) => {
     const results: any[] = [];
@@ -296,4 +345,81 @@ export function trackSteps<T>(
       reject(error);
     }
   });
+}
+
+/**
+ * Smart progress wrapper for single operations
+ * Only shows progress if operation takes longer than threshold
+ */
+export async function withSmartProgress<T>(
+  operation: () => Promise<T>,
+  label: string = 'Processing',
+  options: { minDuration?: number; silent?: boolean } = {}
+): Promise<T> {
+  const startTime = Date.now();
+  const minDuration = options.minDuration || 2000;
+  let spinner: Ora | null = null;
+  let showedProgress = false;
+
+  // Set up delayed progress indication
+  const progressTimer = setTimeout(() => {
+    if (!options.silent && logger.getLevel() > LogLevel.SILENT) {
+      const newSpinner = ora(chalk.cyan(label)).start();
+      spinner = newSpinner;
+      showedProgress = true;
+    }
+  }, minDuration);
+
+  try {
+    const result = await operation();
+    
+    // Clean up
+    clearTimeout(progressTimer);
+    if (spinner) {
+      (spinner as Ora).succeed();
+    }
+    
+    return result;
+  } catch (error) {
+    clearTimeout(progressTimer);
+    if (spinner) {
+      (spinner as Ora).fail();
+    }
+    throw error;
+  }
+}
+
+/**
+ * Minimal progress for quick operations
+ * Shows working indicator immediately but with minimal visual impact
+ */
+export async function withMinimalProgress<T>(
+  operation: () => Promise<T>,
+  label?: string
+): Promise<T> {
+  if (logger.getLevel() === LogLevel.SILENT) {
+    return operation();
+  }
+
+  const startTime = Date.now();
+  if (label && logger.isLevelEnabled(LogLevel.VERBOSE)) {
+    console.log(chalk.cyan('◦'), label);
+  }
+
+  try {
+    const result = await operation();
+    const duration = Date.now() - startTime;
+    
+    // Show completion only if it took a noticeable amount of time
+    if (duration > 1000 && label && logger.isLevelEnabled(LogLevel.VERBOSE)) {
+      console.log(chalk.green('✓'), `${label} completed`);
+    }
+    
+    return result;
+  } catch (error) {
+    if (label && logger.isLevelEnabled(LogLevel.VERBOSE)) {
+      console.log(chalk.red('✗'), `${label} failed`);
+    }
+    throw error;
+  }
 }

@@ -281,7 +281,7 @@ export class EnterpriseClassifier {
           maxTokens: 2000,
           apiKey: process.env.OPENAI_API_KEY
         });
-        logger.info('OpenAI ChatGPT initialized for enterprise classification');
+        logger.internal('info', 'OpenAI ChatGPT initialized for enterprise classification');
       } else {
         logger.info('OpenAI API key not found - will use rule-based classification with Anthropic fallback');
       }
@@ -296,7 +296,7 @@ export class EnterpriseClassifier {
         });
         logger.info('Anthropic Claude initialized as secondary classifier');
       } else {
-        logger.info('Anthropic API key not found - will use rule-based classification if OpenAI unavailable');
+        logger.internal('info', 'Anthropic API key not found - will use rule-based classification if OpenAI unavailable');
       }
 
       // Log AI capabilities status
@@ -305,7 +305,7 @@ export class EnterpriseClassifier {
       if (this.secondaryLLM) aiCapabilities.push('Anthropic Claude');
 
       if (aiCapabilities.length > 0) {
-        logger.info(`Enterprise classifier initialized with AI models: ${aiCapabilities.join(', ')}`);
+        logger.internal('info', `Enterprise classifier initialized with AI models: ${aiCapabilities.join(', ')}`);
       } else {
         logger.info('Enterprise classifier initialized with rule-based analysis (no AI models available)');
       }

@@ -74,7 +74,20 @@ export class HealthChecker {
 
   private async checkProjectStructure(): Promise<HealthCheckResult> {
     const requiredFiles = ['package.json'];
-    const recommendedDirs = ['src', 'components', 'lib'];
+    
+    // Context-aware recommended directories
+    let recommendedDirs: string[] = ['src'];
+    
+    // Add framework-specific recommendations
+    if (this.context.framework === 'react' || this.context.framework === 'next.js') {
+      recommendedDirs.push('components');
+    } else if (this.context.framework === 'node') {
+      // For CLI tools and Node.js projects, recommend utils and lib instead
+      recommendedDirs.push('lib', 'utils');
+    } else {
+      // For other frameworks, include components and lib
+      recommendedDirs.push('components', 'lib');
+    }
     
     const missing: string[] = [];
     const missingRecommended: string[] = [];
@@ -101,17 +114,26 @@ export class HealthChecker {
     }
 
     if (missingRecommended.length > 0) {
+      // Context-aware messaging
+      const contextMessage = this.context.framework === 'node' 
+        ? 'Some recommended directories are missing for CLI/Node.js projects'
+        : 'Some recommended directories are missing';
+        
+      const contextSuggestion = this.context.framework === 'node'
+        ? 'Consider creating standard directories for better CLI tool organization'
+        : 'Consider creating standard project directories for better organization';
+        
       return {
         status: 'warning',
-        message: 'Some recommended directories are missing',
+        message: contextMessage,
         details: missingRecommended,
-        fixSuggestion: 'Consider creating standard project directories for better organization'
+        fixSuggestion: contextSuggestion
       };
     }
 
     return {
       status: 'pass',
-      message: 'Project structure is valid'
+      message: `Project structure is valid for ${this.context.framework} project`
     };
   }
 
@@ -278,40 +300,81 @@ export class HealthChecker {
     try {
       const packagePath = path.join(this.context.rootPath, 'package.json');
       const packageJson = await fs.readJson(packagePath);
-      const hederaSdk = packageJson.dependencies?.['@hashgraph/sdk'] || 
-                       packageJson.devDependencies?.['@hashgraph/sdk'];
+      const hederaSdkDeclared = packageJson.dependencies?.['@hashgraph/sdk'] || 
+                               packageJson.devDependencies?.['@hashgraph/sdk'];
 
-      if (!hederaSdk) {
+      if (!hederaSdkDeclared) {
         return {
           status: 'fail',
-          message: 'Hedera SDK not installed',
+          message: 'Hedera SDK not declared in dependencies',
           fixSuggestion: 'Run: npm install @hashgraph/sdk'
         };
       }
 
-      // Check if it's a recent version (should be >= 2.40.0)
-      const version = hederaSdk.replace(/[^\d.]/g, '');
-      const [major, minor] = version.split('.').map(Number);
+      // Check actual installed version from node_modules
+      let actualVersion: string;
+      try {
+        const installedPackagePath = path.join(this.context.rootPath, 'node_modules', '@hashgraph', 'sdk', 'package.json');
+        const installedPackage = await fs.readJson(installedPackagePath);
+        actualVersion = installedPackage.version;
+      } catch (nodeModulesError) {
+        // Fallback: try to parse declared version if node_modules check fails
+        if (hederaSdkDeclared === 'latest') {
+          return {
+            status: 'pass',
+            message: 'Hedera SDK set to latest version',
+            details: [`Declared version: ${hederaSdkDeclared}`, 'Actual version: Unable to determine from node_modules'],
+            fixSuggestion: 'Run npm install to ensure latest version is installed'
+          };
+        }
+        
+        const versionOnly = hederaSdkDeclared.replace(/[^\d.]/g, '');
+        actualVersion = versionOnly;
+      }
+
+      // Parse version numbers
+      const versionMatch = actualVersion.match(/^(\d+)\.(\d+)\.(\d+)/);
+      if (!versionMatch) {
+        return {
+          status: 'warning',
+          message: 'Cannot parse Hedera SDK version',
+          details: [`Declared: ${hederaSdkDeclared}`, `Found: ${actualVersion}`],
+          fixSuggestion: 'Reinstall: npm install @hashgraph/sdk@latest'
+        };
+      }
+
+      const [, major, minor, patch] = versionMatch;
+      const majorNum = parseInt(major, 10);
+      const minorNum = parseInt(minor, 10);
       
-      if (major < 2 || (major === 2 && minor < 40)) {
+      // Check if version meets minimum requirement (>= 2.40.0)
+      if (majorNum < 2 || (majorNum === 2 && minorNum < 40)) {
         return {
           status: 'warning',
           message: 'Hedera SDK version may be outdated',
-          details: [`Current version: ${hederaSdk}`, 'Recommended: >= 2.40.0'],
+          details: [
+            `Declared: ${hederaSdkDeclared}`,
+            `Installed: ${actualVersion}`,
+            'Recommended: >= 2.40.0'
+          ],
           fixSuggestion: 'Update to latest version: npm install @hashgraph/sdk@latest'
         };
       }
 
       return {
         status: 'pass',
-        message: 'Hedera SDK is properly installed and up to date'
+        message: 'Hedera SDK is properly installed and up to date',
+        details: [
+          `Declared: ${hederaSdkDeclared}`,
+          `Installed: ${actualVersion}`
+        ]
       };
 
     } catch (error) {
       return {
         status: 'fail',
         message: 'Cannot verify Hedera SDK installation',
-        fixSuggestion: 'Check package.json and node_modules'
+        fixSuggestion: 'Check package.json and run npm install'
       };
     }
   }
@@ -423,7 +486,14 @@ export class HealthChecker {
   }
 
   private async checkWalletIntegration(): Promise<HealthCheckResult> {
-    const walletFiles = [
+    // Check for APIX AI wallet integration service (primary location)
+    const apixWalletFiles = [
+      'src/services/wallet-integration.ts',
+      'src/services/wallet-integration.js'
+    ];
+
+    // Check for user-generated wallet files (secondary locations)
+    const userWalletFiles = [
       'lib/hedera/wallet-service.ts',
       'lib/hedera/wallet-service.js',
       'src/lib/hedera/wallet-service.ts',
@@ -432,43 +502,90 @@ export class HealthChecker {
       'src/contexts/WalletContext.tsx'
     ];
 
-    const foundFiles = walletFiles.filter(file => 
+    const foundApixFiles = apixWalletFiles.filter(file => 
       fs.existsSync(path.join(this.context.rootPath, file))
     );
 
-    if (foundFiles.length === 0) {
+    const foundUserFiles = userWalletFiles.filter(file => 
+      fs.existsSync(path.join(this.context.rootPath, file))
+    );
+
+    // If APIX wallet service exists, analyze its capabilities
+    if (foundApixFiles.length > 0) {
+      try {
+        const walletServicePath = path.join(this.context.rootPath, foundApixFiles[0]);
+        const walletServiceContent = await fs.readFile(walletServicePath, 'utf-8');
+        
+        const supportedWallets: string[] = [];
+        if (walletServiceContent.includes('hashpack')) supportedWallets.push('HashPack');
+        if (walletServiceContent.includes('blade')) supportedWallets.push('Blade');
+        if (walletServiceContent.includes('walletconnect') || walletServiceContent.includes('WalletConnect')) {
+          supportedWallets.push('WalletConnect');
+        }
+        if (walletServiceContent.includes('metamask') || walletServiceContent.includes('MetaMask')) {
+          supportedWallets.push('MetaMask');
+        }
+
+        if (supportedWallets.length > 0) {
+          return {
+            status: 'pass',
+            message: `Wallet integration detected with ${supportedWallets.length} provider(s)`,
+            details: [`Supported wallets: ${supportedWallets.join(', ')}`, `Service file: ${foundApixFiles[0]}`]
+          };
+        } else {
+          return {
+            status: 'warning',
+            message: 'Wallet service exists but no wallet providers detected',
+            details: [`Found: ${foundApixFiles[0]}`],
+            fixSuggestion: 'Ensure wallet providers are properly configured'
+          };
+        }
+      } catch (error) {
+        return {
+          status: 'warning',
+          message: 'Wallet service exists but cannot be analyzed',
+          details: [`Found: ${foundApixFiles[0]}`],
+          fixSuggestion: 'Check wallet service file for syntax errors'
+        };
+      }
+    }
+
+    // Check user-generated wallet files
+    if (foundUserFiles.length > 0) {
+      const issues: string[] = [];
+      
+      // Check for wallet service
+      const hasWalletService = foundUserFiles.some(f => f.includes('wallet-service'));
+      if (!hasWalletService) {
+        issues.push('Wallet service file missing');
+      }
+
+      // Check for wallet context
+      const hasWalletContext = foundUserFiles.some(f => f.includes('WalletContext'));
+      if (!hasWalletContext) {
+        issues.push('Wallet context missing');
+      }
+
+      if (issues.length > 0) {
+        return {
+          status: 'warning',
+          message: 'User wallet integration appears incomplete',
+          details: issues,
+          fixSuggestion: 'Regenerate wallet integration: apix add wallet'
+        };
+      }
+
       return {
         status: 'pass',
-        message: 'Wallet integration not detected (optional)'
+        message: 'User wallet integration detected',
+        details: [`Found files: ${foundUserFiles.join(', ')}`]
       };
     }
 
-    const issues: string[] = [];
-    
-    // Check for wallet service
-    const hasWalletService = foundFiles.some(f => f.includes('wallet-service'));
-    if (!hasWalletService) {
-      issues.push('Wallet service file missing');
-    }
-
-    // Check for wallet context
-    const hasWalletContext = foundFiles.some(f => f.includes('WalletContext'));
-    if (!hasWalletContext) {
-      issues.push('Wallet context missing');
-    }
-
-    if (issues.length > 0) {
-      return {
-        status: 'warning',
-        message: 'Wallet integration appears incomplete',
-        details: issues,
-        fixSuggestion: 'Regenerate wallet integration: apix add wallet'
-      };
-    }
-
+    // No wallet integration found
     return {
       status: 'pass',
-      message: 'Wallet integration appears complete'
+      message: 'Wallet integration not detected (optional)'
     };
   }
 
@@ -775,11 +892,12 @@ export class HealthChecker {
     try {
       const { hederaOperations } = await import('../services/hedera-operations');
 
-      // Check if service is in mock mode
-      const isMockMode = hederaOperations.isMockMode();
+      // Check if service is in fallback mode
+      const isFallbackMode = hederaOperations.isFallbackMode();
       const network = hederaOperations.getNetwork();
+      const capabilities = hederaOperations.getCapabilities();
 
-      if (isMockMode) {
+      if (isFallbackMode) {
         return {
           status: 'warning',
           message: 'Live blockchain validation running in mock mode',

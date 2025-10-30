@@ -55,13 +55,13 @@ export class TestAccountManager {
           AccountId.fromString(operatorId),
           PrivateKey.fromString(operatorKey)
         );
-        logger.info('Test Account Manager initialized with operator credentials', {
+        logger.internal('info', 'Test Account Manager initialized with operator credentials', {
           network: this.network,
           operatorId
         });
       } else {
         logger.warn('Test Account Manager initialized without operator credentials');
-        logger.info('Limited to predefined test accounts only');
+        logger.internal('info', 'Limited to predefined test accounts only');
       }
 
     } catch (error: any) {
