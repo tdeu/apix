@@ -97,7 +97,7 @@ APIX CLI (Commander.js + AI Analysis)
 
 ```bash
 # Clone repository
-git clone https://github.com/your-username/apix.git
+git clone https://github.com/0xfishbone/apix.git
 cd apix
 
 # Install dependencies
