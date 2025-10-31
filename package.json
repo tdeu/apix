@@ -1,6 +1,6 @@
 {
   "name": "apix-ai",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Enterprise AI-powered Hedera development assistant with code composition and live blockchain validation",
   "main": "dist/cli/index.js",
   "bin": {
@@ -8,6 +8,7 @@
   },
   "files": [
     "dist",
+    "templates",
     "README.md",
     "LICENSE"
   ],
