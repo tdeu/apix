@@ -251,7 +251,7 @@ Comprehensive documentation in `/docs`:
 ## 🤝 Team & Contact
 
 **Team:** Moustapha Diop & Thomas De Rouck
-**Hedera Certified:**1/2 members
+**Hedera Certified:**1/2 members https://drive.google.com/file/d/1mtL32q84vTGLEaYCy9loGsKMaQ-3re9P/view?usp=sharing
 
 **Lead Developer:** Thomas - CLI architecture, Hedera SDK integration
 **GitHub:** https://github.com/tdeu
