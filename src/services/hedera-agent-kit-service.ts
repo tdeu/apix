@@ -174,10 +174,10 @@ export class HederaAgentKitService {
 
       // Execute the tool with proper parameters - ensure all required fields are present
       const params = {
-        name: options.name,
-        symbol: options.symbol,
-        decimals: options.decimals || 8,
-        initialSupply: String(options.initialSupply || 1000000),
+        tokenName: options.name,
+        tokenSymbol: options.symbol,
+        decimals: Number(options.decimals) || 8,
+        initialSupply: Number(options.initialSupply) || 1000000,
         // Add treasury account explicitly
         treasuryAccount: this.config.accountId
       };
