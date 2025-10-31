@@ -23,9 +23,9 @@ export class APIxCLI {
   private generator: IntegrationGenerator;
   private config: ConfigurationManager;
   private validator: IntegrationValidator;
-  private enterpriseClassifier: EnterpriseClassifier;
-  private conversationEngine: ConversationEngine;
-  private codeComposer: AICodeCompositionEngine;
+  private _enterpriseClassifier: EnterpriseClassifier | null = null;
+  private _conversationEngine: ConversationEngine | null = null;
+  private _codeComposer: AICodeCompositionEngine | null = null;
 
   constructor() {
     this.analyzer = new ProjectAnalyzer();
@@ -33,9 +33,29 @@ export class APIxCLI {
     this.generator = new IntegrationGenerator();
     this.config = new ConfigurationManager();
     this.validator = new IntegrationValidator();
-    this.enterpriseClassifier = new EnterpriseClassifier();
-    this.conversationEngine = new ConversationEngine();
-    this.codeComposer = new AICodeCompositionEngine();
+    // AI components are lazy-loaded to avoid slow initialization
+  }
+
+  // Lazy loaders for AI components
+  private get enterpriseClassifier(): EnterpriseClassifier {
+    if (!this._enterpriseClassifier) {
+      this._enterpriseClassifier = new EnterpriseClassifier();
+    }
+    return this._enterpriseClassifier;
+  }
+
+  private get conversationEngine(): ConversationEngine {
+    if (!this._conversationEngine) {
+      this._conversationEngine = new ConversationEngine();
+    }
+    return this._conversationEngine;
+  }
+
+  private get codeComposer(): AICodeCompositionEngine {
+    if (!this._codeComposer) {
+      this._codeComposer = new AICodeCompositionEngine();
+    }
+    return this._codeComposer;
   }
 
   async initialize(): Promise<void> {

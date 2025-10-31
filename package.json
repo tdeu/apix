@@ -4,8 +4,13 @@
   "description": "Enterprise AI-powered Hedera development assistant with code composition and live blockchain validation",
   "main": "dist/cli/index.js",
   "bin": {
-    "apix": "./dist/cli/index.js"
+    "apix": "dist/cli/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "build:check": "tsc --noEmit",
@@ -49,8 +54,16 @@
     "ai",
     "integration"
   ],
-  "author": "Your Name",
+  "author": "Moustapha Diop <moustapha.diop@7digitslab.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tdeu/apix.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tdeu/apix/issues"
+  },
+  "homepage": "https://github.com/tdeu/apix#readme",
   "dependencies": {
     "@hashgraph/hedera-wallet-snap": "^0.6.2",
     "@hashgraph/sdk": "latest",

@@ -11,9 +11,19 @@ export interface CompatibilityCheck {
 }
 
 export class ProjectAnalyzer {
+  private analysisCache: Map<string, { context: ProjectContext, timestamp: number }> = new Map();
+  private cacheTimeout = 5000; // 5 seconds cache
+
   async analyzeProject(directory: string): Promise<ProjectContext> {
     try {
       const projectPath = path.resolve(directory);
+
+      // Check cache first
+      const cached = this.analysisCache.get(projectPath);
+      if (cached && (Date.now() - cached.timestamp) < this.cacheTimeout) {
+        logger.debug('Using cached project analysis');
+        return cached.context;
+      }
       
       // Check if directory exists and has package.json
       if (!await fs.pathExists(path.join(projectPath, 'package.json'))) {
@@ -79,6 +89,13 @@ export class ProjectAnalyzer {
       };
 
       logger.debug('Project analysis complete:', context);
+
+      // Cache the result
+      this.analysisCache.set(projectPath, {
+        context,
+        timestamp: Date.now()
+      });
+
       return context;
 
     } catch (error) {

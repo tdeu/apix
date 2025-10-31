@@ -64,6 +64,11 @@ export interface ConversationResponse {
   limitations?: LimitationAssessment;
   actionItems?: ActionItem[];
   cliCommands?: CLICommand[];
+  error?: {
+    message: string;
+    details?: string;
+    status?: number;
+  };
 }
 
 /**

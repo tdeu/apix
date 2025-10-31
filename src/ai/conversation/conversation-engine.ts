@@ -129,7 +129,7 @@ export class ConversationEngine {
       const conversationHistory = session.messages.slice(-5); // Last 5 messages
 
       const completion = await this.anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-3-haiku-20240307',
         system: systemPrompt,
         messages: [
           ...conversationHistory.map(msg => ({
@@ -156,9 +156,48 @@ export class ConversationEngine {
         context: session.context
       };
 
-    } catch (error) {
-      logger.error('Anthropic API error:', error);
-      return this.generateMockResponse(message, session);
+    } catch (error: any) {
+      // Extract error information from Anthropic SDK error structure
+      let errorMessage = 'Unknown error';
+      let errorStatus: number | undefined;
+      let errorDetails: string | undefined;
+
+      // Anthropic SDK errors are TRIPLE nested: error.error.error.message
+      if (error?.error?.error?.message) {
+        errorMessage = error.error.error.message;
+        errorDetails = error.error.error.type;
+      }
+      // Sometimes double nested: error.error.message
+      else if (error?.error?.message) {
+        errorMessage = error.error.message;
+        errorDetails = error.error.type;
+      }
+      // Fallback to standard error.message
+      else if (error?.message) {
+        errorMessage = error.message;
+      }
+      // Last resort: convert error to string
+      else if (error) {
+        errorMessage = error.toString();
+      }
+
+      // Extract status code
+      if (error?.status) {
+        errorStatus = error.status;
+      }
+
+      // Log with full context
+      logger.error(`Anthropic API error: ${errorMessage}${errorStatus ? ` (Status: ${errorStatus})` : ''}`, error);
+
+      // Return mock response with error information embedded
+      const mockResponse = this.generateMockResponse(message, session);
+      mockResponse.error = {
+        message: errorMessage,
+        details: errorDetails,
+        status: errorStatus
+      };
+
+      return mockResponse;
     }
   }
 

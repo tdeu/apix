@@ -95,15 +95,27 @@ APIX CLI (Commander.js + AI Analysis)
 
 ### Installation
 
+**Option 1: Install from npm (Recommended)**
+```bash
+# Install globally from npm
+npm install -g apix-ai
+
+# Verify installation
+apix --version  # Shows: 2.0.0
+apix --help
+```
+
+**Option 2: Install from source**
 ```bash
 # Clone repository
-git clone https://github.com/0xfishbone/apix.git
+git clone https://github.com/tdeu/apix.git
 cd apix
 
 # Install dependencies
 npm install
 
-# Link globally
+# Build and link globally
+npm run build
 npm link
 
 # Verify installation

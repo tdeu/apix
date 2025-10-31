@@ -302,6 +302,18 @@ export class ChatInterface {
     console.log(chalk.blue('🤖 APIX AI:'));
     console.log('─'.repeat(80));
 
+    // Display error information if present
+    if (response.error) {
+      console.log(chalk.red(`\n❌ Anthropic API Error: ${response.error.message}`));
+      if (response.error.status) {
+        console.log(chalk.red(`   Status: ${response.error.status}`));
+      }
+      if (response.error.details) {
+        console.log(chalk.red(`   Details: ${response.error.details}`));
+      }
+      console.log(chalk.yellow('\n⚠️ Falling back to basic response mode.\n'));
+    }
+
     // Display main content with formatting
     const formattedContent = this.formatResponseContent(response.content);
     console.log(formattedContent);
