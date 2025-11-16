@@ -193,36 +193,37 @@ const hederaConfig = await config.getHederaConfig();
 - **Basic Blockchain Operations**: Token creation with Hedera SDK
 - **Test Account Management**: Automated account creation and validation
 
-### 🟡 Partially Working (Mock + Real)
+### 🟡 Partially Working
 - **Hedera Agent Kit Integration**: Direct SDK operations with Agent Kit structure
 - **AI Classification**: Rule-based with LangChain integration ready
-- **Validation System**: Health checks work, blockchain validation partial
+- **Validation System**: Health checks work, blockchain validation ongoing
 
-### 🔴 Mock Only
+### ⚠️ Advanced Features (In Development)
 - **Advanced AI Features**: Code composition, conversational interface
-- **Live Blockchain Validation**: Returns mock success
-- **Wallet Integration**: HashPack, Blade, WalletConnect mocked
+- **Wallet Integration**: HashPack, Blade, WalletConnect (in development)
 
 ## Testing Strategy
 
-### Development Mode (No API Keys)
+### Non-Blockchain Commands (No Credentials Required)
 ```bash
 apix --help                          # ✅ Always works
 apix analyze --directory .           # ✅ Real project analysis
 apix health --quick                  # ✅ System health check
 apix add hts --name MyToken         # ✅ Generates real TypeScript files
-apix create-token --name Test       # ✅ Blockchain operation (test account)
 ```
 
-### Production Mode (With API Keys)
+### Blockchain Operations (Requires Hedera Credentials)
 ```bash
+# Required: Set up Hedera testnet account (free HBAR)
 export HEDERA_ACCOUNT_ID=0.0.xxxxx
 export HEDERA_PRIVATE_KEY=302e...
-export OPENAI_API_KEY=sk-...
+export HEDERA_NETWORK=testnet
 
 npm run validate:env                 # Verify credentials
-apix create-token --name RealToken   # Live blockchain operation
+apix create-token --name TestToken   # Real blockchain operation (testnet is FREE!)
 ```
+
+**Note**: All blockchain operations now execute real transactions. Use testnet for development (free HBAR from https://portal.hedera.com/faucet)
 
 ## Environment Variables
 
@@ -244,7 +245,8 @@ ANTHROPIC_API_KEY=sk-ant-...         # Anthropic API key
 ### Common Issues
 1. **"Cannot find module 'hedera-agent-kit'"**: Expected, service uses fallback
 2. **TypeScript errors**: Run `npm run build:check`, fix systematically
-3. **Mock mode confusion**: Check logs for "mock mode" or "development mode"
+3. **"Hedera client not initialized"**: Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY in .env
+4. **Need testnet HBAR**: Get free testnet account and HBAR from https://portal.hedera.com/faucet
 
 ### Debug Commands
 ```bash
@@ -269,10 +271,11 @@ npm run apix:health
 3. Check mock status: `npm run audit:mocks`
 
 ### When Adding Features
-1. Follow graceful degradation pattern (works without API keys)
-2. Document new mocks in `MOCK_DATA_AUDIT.md`
-3. Add clear TODO comments for real implementations
-4. Run `npm run precommit` before committing
+1. Non-blockchain features should work without credentials
+2. Blockchain features must require valid Hedera credentials
+3. Provide clear error messages when credentials are missing
+4. Add tests for new functionality
+5. Run `npm run precommit` before committing
 
 ## Key Commands for New Contributors
 
@@ -281,10 +284,10 @@ npm run apix:health
 | `npm run build:check` | TypeScript compilation check | ⚡ Critical |
 | `npm run apix:health` | Basic functionality test | ✅ Working |
 | `npm run apix:analyze` | Project analysis test | ✅ Working |
-| `npm run apix:create-token` | Blockchain operation test | 🔄 Active Development |
-| `npm run audit:mocks` | Mock implementation count | 📊 Monitoring |
+| `npm run apix:create-token` | Real blockchain operation | ✅ Working (requires credentials) |
+| `npm run validate:env` | Verify credentials setup | ✅ Working |
 
-The codebase follows a progressive enhancement model where core functionality works without credentials, with optional real blockchain operations when properly configured.
+**Important**: All blockchain operations now require valid Hedera credentials. Use testnet for development (free HBAR available).
 
 ## 🚀 APIX AI - Complete Command Reference
 
@@ -446,10 +449,10 @@ export WALLETCONNECT_PROJECT_ID=your-project-id
 ## 📊 **Feature Status**
 
 - ✅ **All commands fully implemented**
-- ✅ **Real blockchain operations**
+- ✅ **Real blockchain operations** (requires Hedera credentials)
 - ✅ **AI-powered analysis and debugging**
-- ✅ **Production wallet integrations**
-- ✅ **Enterprise deployment features**
-- ✅ **Zero mock implementations remaining**
+- ✅ **Code generation and templates** (works without credentials)
+- 🔄 **Wallet integrations** (in development)
+- 🔄 **Enterprise deployment features** (in development)
 
-The CLI provides both development mode (works without credentials) and production mode (full blockchain integration) with intelligent fallbacks throughout.
+**IMPORTANT UPDATE (Nov 2025)**: Simulation mode has been removed. All blockchain operations now execute real transactions and require valid Hedera credentials. Use testnet for development - free HBAR available at https://portal.hedera.com/faucet

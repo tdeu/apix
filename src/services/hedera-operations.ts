@@ -247,29 +247,11 @@ export class HederaOperationsService {
 
     // Fallback to direct SDK operations
     if (!this.client) {
-      return {
-        success: false,
-        error: 'No Hedera client available - unable to create token'
-      };
-    }
-
-    // If using test accounts without real credentials, return simulation
-    if (!hasRealCredentials && this.testAccount && (this.testAccount.accountId === '0.0.2' || this.testAccount.accountId === '0.0.3')) {
-      logger.info('Simulating token creation with test account');
-      return {
-        success: true,
-        tokenId: `0.0.${Math.floor(Math.random() * 1000000) + 100000}`, // Simulate token ID
-        transactionId: `0.0.2@${Date.now()}-${Math.floor(Math.random() * 1000)}`, // Simulate transaction ID
-        explorerUrl: `https://hashscan.io/testnet/token/0.0.${Math.floor(Math.random() * 1000000) + 100000}`,
-        details: {
-          name: options.name,
-          symbol: options.symbol,
-          decimals: options.decimals || 8,
-          initialSupply: options.initialSupply || 1000000,
-          network: this.network,
-          note: 'This is a simulation using test account. Use real Hedera credentials for actual token creation.'
-        }
-      };
+      throw new Error(
+        'Hedera client not initialized. ' +
+        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set in your .env file, ' +
+        'or obtain testnet credentials from https://portal.hedera.com/faucet'
+      );
     }
 
     try {
@@ -424,25 +406,10 @@ export class HederaOperationsService {
     }
 
     if (!this.client) {
-      return {
-        success: false,
-        error: 'Hedera client not initialized - running in mock mode'
-      };
-    }
-
-    // Check if using test accounts without real credentials - simulate transfer
-    const hasRealCredentials = process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY;
-    if (!hasRealCredentials && this.testAccount) {
-      logger.info('Simulating token transfer with test account');
-      return {
-        success: true,
-        transactionId: `0.0.2@${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        explorerUrl: this.getExplorerUrl(`0.0.2@${Date.now()}`, 'transaction'),
-        details: {
-          ...options,
-          note: 'This is a simulation using test account. Use real Hedera credentials for actual transfers.'
-        }
-      };
+      throw new Error(
+        'Hedera client not initialized. ' +
+        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set.'
+      );
     }
 
     try {
@@ -523,28 +490,10 @@ export class HederaOperationsService {
     }
 
     if (!this.client) {
-      return {
-        success: false,
-        error: 'Hedera client not initialized - running in mock mode'
-      };
-    }
-
-    // Check if using test accounts without real credentials - simulate deployment
-    const hasRealCredentials = process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY;
-    if (!hasRealCredentials && this.testAccount) {
-      logger.info('Simulating smart contract deployment with test account');
-      return {
-        success: true,
-        tokenId: `0.0.${Math.floor(Math.random() * 1000000) + 500000}`, // Contract ID
-        transactionId: `0.0.2@${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        explorerUrl: this.getExplorerUrl(`0.0.${Math.floor(Math.random() * 1000000) + 500000}`, 'account'),
-        details: {
-          gas: options.gas,
-          initialBalance: options.initialBalance || 0,
-          network: this.network,
-          note: 'This is a simulation using test account. Use real Hedera credentials for actual contract deployment.'
-        }
-      };
+      throw new Error(
+        'Hedera client not initialized. ' +
+        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set.'
+      );
     }
 
     try {
@@ -646,26 +595,10 @@ export class HederaOperationsService {
     }
 
     if (!this.client) {
-      return {
-        success: false,
-        error: 'Hedera client not initialized - running in mock mode'
-      };
-    }
-
-    // Check if using test accounts without real credentials - simulate call
-    const hasRealCredentials = process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY;
-    if (!hasRealCredentials && this.testAccount) {
-      logger.info('Simulating smart contract call with test account');
-      return {
-        success: true,
-        transactionId: `0.0.2@${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        explorerUrl: this.getExplorerUrl(`0.0.2@${Date.now()}`, 'transaction'),
-        details: {
-          ...options,
-          result: 'mock-result',
-          note: 'This is a simulation using test account. Use real Hedera credentials for actual contract calls.'
-        }
-      };
+      throw new Error(
+        'Hedera client not initialized. ' +
+        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set.'
+      );
     }
 
     try {
@@ -744,27 +677,10 @@ export class HederaOperationsService {
     }
 
     if (!this.client) {
-      return {
-        success: false,
-        error: 'Hedera client not initialized - running in mock mode'
-      };
-    }
-
-    // Check if using test accounts without real credentials - simulate topic creation
-    const hasRealCredentials = process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY;
-    if (!hasRealCredentials && this.testAccount) {
-      logger.info('Simulating HCS topic creation with test account');
-      return {
-        success: true,
-        tokenId: `0.0.${Math.floor(Math.random() * 1000000) + 700000}`, // Topic ID
-        transactionId: `0.0.2@${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        explorerUrl: this.getExplorerUrl(`0.0.${Math.floor(Math.random() * 1000000) + 700000}`, 'account'),
-        details: {
-          memo: options.memo || '',
-          network: this.network,
-          note: 'This is a simulation using test account. Use real Hedera credentials for actual topic creation.'
-        }
-      };
+      throw new Error(
+        'Hedera client not initialized. ' +
+        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set.'
+      );
     }
 
     try {
@@ -857,26 +773,10 @@ export class HederaOperationsService {
     }
 
     if (!this.client) {
-      return {
-        success: false,
-        error: 'Hedera client not initialized - running in mock mode'
-      };
-    }
-
-    // Check if using test accounts without real credentials - simulate message submission
-    const hasRealCredentials = process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY;
-    if (!hasRealCredentials && this.testAccount) {
-      logger.info('Simulating HCS message submission with test account');
-      return {
-        success: true,
-        transactionId: `0.0.2@${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        explorerUrl: this.getExplorerUrl(`0.0.2@${Date.now()}`, 'transaction'),
-        details: {
-          ...options,
-          sequenceNumber: Math.floor(Math.random() * 10000) + 1,
-          note: 'This is a simulation using test account. Use real Hedera credentials for actual message submission.'
-        }
-      };
+      throw new Error(
+        'Hedera client not initialized. ' +
+        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set.'
+      );
     }
 
     try {

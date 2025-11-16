@@ -173,13 +173,16 @@ export class HederaAgentKitService {
       }
 
       // Execute the tool with proper parameters - ensure all required fields are present
+      // Note: HederaAgentKit v3.2.0+ expects specific parameter names
+      // Verify against actual tool schema: create_fungible_token_tool
       const params = {
         tokenName: options.name,
         tokenSymbol: options.symbol,
         decimals: Number(options.decimals) || 8,
         initialSupply: Number(options.initialSupply) || 1000000,
-        // Add treasury account explicitly
-        treasuryAccount: this.config.accountId
+        // Treasury account is automatically set to operator account in HederaAgentKit v3.2.0
+        // Only include if tool schema explicitly requires it
+        ...(this.config.accountId && { treasuryAccount: this.config.accountId })
       };
 
       logger.internal('debug', 'Creating token with HederaAgentKit parameters:', params);

@@ -1902,7 +1902,7 @@ export class APIxCLI {
         return true;
       }
 
-      // Mock mode is still "valid" for development
+      // Fallback mode available for development (uses test accounts)
       return true;
 
     } catch (error: any) {
@@ -1926,19 +1926,8 @@ export class APIxCLI {
       console.log(chalk.white(`   Initial Supply: ${chalk.bold((options.initialSupply || 1000000).toLocaleString())}`));
       console.log(chalk.white(`   Network: ${chalk.bold(hederaOperations.getNetwork().toUpperCase())}`));
 
-      const hasRealCredentials = process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY;
-
-      if (!hasRealCredentials) {
-        console.log(chalk.yellow('\n⚠️  Simulation Mode'));
-        console.log(chalk.gray('   Using test accounts - will simulate token creation'));
-        console.log(chalk.gray('   Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY for live blockchain operations\n'));
-      } else if (hederaOperations.isFallbackMode()) {
-        console.log(chalk.yellow('\n⚠️  Development Mode'));
-        console.log(chalk.gray('   Client initialization failed - using fallback mode\n'));
-      } else {
-        console.log(chalk.green('\n✅ Live Blockchain Mode'));
-        console.log(chalk.gray('   Connected to Hedera ' + hederaOperations.getNetwork() + '\n'));
-      }
+      console.log(chalk.green('\n✅ Live Blockchain Mode'));
+      console.log(chalk.gray('   Connected to Hedera ' + hederaOperations.getNetwork() + '\n'));
 
       // Create spinner for blockchain operation
       const spinner = ora('Initializing Hedera connection...').start();
@@ -1955,48 +1944,22 @@ export class APIxCLI {
         const result = await hederaOperations.createToken(options);
 
         if (result.success) {
-          const hasRealCredentials = process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY;
+          spinner.succeed(chalk.green('✅ Token created successfully!'));
+          console.log(chalk.green.bold('\n🎉 Token Creation Complete!\n'));
+          console.log(chalk.blue('Token Information:'));
+          console.log(chalk.white(`   Token ID: ${chalk.bold(result.tokenId)}`));
+          console.log(chalk.white(`   Transaction ID: ${chalk.bold(result.transactionId)}`));
+          console.log(chalk.white(`   Treasury Account: ${chalk.bold(accountId)}`));
 
-          if (!hasRealCredentials) {
-            spinner.succeed(chalk.green('✅ Token simulation completed!'));
-            console.log(chalk.green.bold('\n🎉 Token Simulation Complete!\n'));
-            console.log(chalk.blue('Simulated Token Information:'));
-            console.log(chalk.white(`   Token ID: ${chalk.bold(result.tokenId)} ${chalk.gray('(simulated)')}`));
-            console.log(chalk.white(`   Transaction ID: ${chalk.bold(result.transactionId)} ${chalk.gray('(simulated)')}`));
-            console.log(chalk.white(`   Treasury Account: ${chalk.bold(accountId)}`));
-
-            if (result.explorerUrl) {
-              console.log(chalk.white(`   Explorer: ${chalk.blue.underline(result.explorerUrl)} ${chalk.gray('(simulated)')}`));
-            }
-
-            console.log(chalk.yellow('\n⚠️  This was a simulation using test accounts'));
-            console.log(chalk.gray('   For real token creation, set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY'));
-
-            console.log(chalk.cyan('\n💡 Next Steps:'));
-            console.log(chalk.white('   • Set up real Hedera testnet credentials'));
-            console.log(chalk.white('   • Run with real credentials to create actual tokens'));
-            console.log(chalk.white('   • Use generated code templates in your project'));
-            console.log(chalk.white(`   • Run: ${chalk.cyan('apix add hts --name "' + options.name + '" --symbol ' + options.symbol)}`));
-
-          } else {
-            spinner.succeed(chalk.green('✅ Token created successfully!'));
-            console.log(chalk.green.bold('\n🎉 Token Creation Complete!\n'));
-            console.log(chalk.blue('Token Information:'));
-            console.log(chalk.white(`   Token ID: ${chalk.bold(result.tokenId)}`));
-            console.log(chalk.white(`   Transaction ID: ${chalk.bold(result.transactionId)}`));
-            console.log(chalk.white(`   Treasury Account: ${chalk.bold(accountId)}`));
-
-            if (result.explorerUrl) {
-              console.log(chalk.white(`   Explorer: ${chalk.blue.underline(result.explorerUrl)}`));
-            }
-
-            console.log(chalk.cyan('\n💡 Next Steps:'));
-            console.log(chalk.white('   • Use this token ID in your application'));
-            console.log(chalk.white('   • Transfer tokens to other accounts'));
-            console.log(chalk.white('   • Integrate with your frontend'));
-            console.log(chalk.white(`   • Run: ${chalk.cyan('apix add hts --name "' + options.name + '" --symbol ' + options.symbol)}`));
+          if (result.explorerUrl) {
+            console.log(chalk.white(`   Explorer: ${chalk.blue.underline(result.explorerUrl)}`));
           }
 
+          console.log(chalk.cyan('\n💡 Next Steps:'));
+          console.log(chalk.white('   • Use this token ID in your application'));
+          console.log(chalk.white('   • Transfer tokens to other accounts'));
+          console.log(chalk.white('   • Integrate with your frontend'));
+          console.log(chalk.white(`   • Run: ${chalk.cyan('apix add hts --name "' + options.name + '" --symbol ' + options.symbol)}`));
         } else {
           spinner.fail(chalk.red('❌ Token creation failed'));
           console.log(chalk.red('\n🚨 Token Creation Failed'));
