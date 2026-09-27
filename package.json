@@ -63,12 +63,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tdeu/apix.git"
+    "url": "git+https://github.com/0xfishbone/apix.git"
   },
   "bugs": {
-    "url": "https://github.com/tdeu/apix/issues"
+    "url": "https://github.com/0xfishbone/apix/issues"
   },
-  "homepage": "https://github.com/tdeu/apix#readme",
+  "homepage": "https://github.com/0xfishbone/apix#readme",
   "engines": {
     "node": ">=20"
   },

@@ -7,18 +7,24 @@ material, not a spec.
 - Never fake success: no mock responses, random outcomes, simulated
   transactions or test-account fallbacks. Real failures surface as errors
   with a clear, actionable message.
-- Hedera commands require real credentials (see
-  src/validation/environment-validator.ts) and fail fast without them.
-- AI commands require ANTHROPIC_API_KEY or OPENAI_API_KEY. If missing, they
-  exit with a clear error. Never return canned replies.
-- Non-AI, non-blockchain commands (analyze, add, generate, help, status)
-  must work with no keys at all.
+- Hedera commands (create-token, validate, deploy) require real credentials
+  (see src/utils/environment-validator.ts) and fail fast without them.
+- AI commands (chat, compose, generate, recommend, explain, compare,
+  confidence, debug) require ANTHROPIC_API_KEY or OPENAI_API_KEY. If missing,
+  they exit with a clear error. Never return canned replies.
+- Non-AI, non-blockchain commands (analyze, add, init, status, health, logs,
+  last-error, debug-info, --help, --version) must work with no keys at all.
+  `add hts` may offer optional real token creation only when Hedera
+  credentials are present.
 - Private keys only ever appear in server-side generated code.
 - Never print secrets in full (first 6 characters max).
 
 ## Process
 - We work in phases. Stay inside the current phase's scope. If you find
   something outside it, list it in your report instead of fixing it.
+- Canonical repo: github.com/0xfishbone/apix (origin).
+  Default branch: master. Work happens on revive/2.1 (or per-phase branches
+  off it) and is merged into master by PR only.
 - Branch: revive/2.1. Conventional commit messages (fix:, chore:, feat:...).
 - Never push, publish to npm or rewrite git history without explicit instruction.
 - Before committing (once available): npm run build:check, npm test and
