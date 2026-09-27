@@ -37,5 +37,23 @@ See /CLAUDE.md for the working rules.
 ## Phase 4
 
 ## Phase 5 (docs, README, cleanup)
+- ESLint rules downgraded to "warn" in `eslint.config.js` because of existing
+  violations (counts at Phase 1; set each back to "error" once clean):
+  - `@typescript-eslint/no-explicit-any`: 500
+  - `@typescript-eslint/no-unused-vars`: 145 (4 in test files)
+  - `@typescript-eslint/no-require-imports`: 14 (cli/index.ts, cli-core.ts,
+    chat-interface.ts, conversation-engine.ts, hedera-agent-kit-service.ts,
+    template-engine.ts)
+  - `no-case-declarations`: 12 (ai-code-composition-engine.ts,
+    file-generator.ts, input-sanitizer.ts)
+  - `@typescript-eslint/no-this-alias`: 3 (template-engine.ts)
+  - `no-async-promise-executor`: 2 (utils/progress.ts:300,324). Possible real
+    bug: a throw inside an async executor does not reject the promise.
+  - `no-control-regex`: 2 (status-line-manager.ts:389 ANSI stripping,
+    input-sanitizer.ts:158 control-char removal). Both look intentional;
+    use a targeted disable comment.
+  - `no-useless-escape`: 1 (ai/recovery/error-recovery-system.ts:1314). `\s`
+    in a string literal is just `s`; check whether a regex was intended.
+  - `prefer-const`: 1 (validation/health-checker.ts:79)
 
 ## Decisions
