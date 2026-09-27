@@ -7,7 +7,7 @@
 
 import { logger } from '../utils/logger';
 import { SignClient } from '@walletconnect/sign-client';
-import QRCodeModal from '@walletconnect/qrcode-modal';
+import qrcode from 'qrcode-terminal';
 import { getSdkError } from '@walletconnect/utils';
 
 // Browser globals declaration
@@ -75,11 +75,11 @@ export class WalletIntegrationService {
   private network: 'testnet' | 'mainnet';
   private walletConnectClient: InstanceType<typeof SignClient> | null = null;
   private walletConnectSession: any = null;
-  private projectId: string = 'your-project-id-here'; // Should be configured via environment
+  private projectId: string | undefined;
 
   constructor(network: 'testnet' | 'mainnet' = 'testnet') {
     this.network = network;
-    this.projectId = process.env.WALLETCONNECT_PROJECT_ID || 'apix-hedera-default';
+    this.projectId = process.env.WALLETCONNECT_PROJECT_ID;
   }
 
   /**
@@ -654,16 +654,14 @@ export class WalletIntegrationService {
 
       if (uri) {
         logger.info('WalletConnect URI generated, showing QR code');
-        QRCodeModal.open(uri, () => {
-          logger.info('WalletConnect QR modal closed');
-        });
+        console.log('\nScan this QR code with your WalletConnect-compatible Hedera wallet:\n');
+        qrcode.generate(uri, { small: true }, (qr) => console.log(qr));
+        console.log(`Or paste this pairing URI into your wallet:\n${uri}\n`);
       }
 
       // Wait for wallet approval
       const session = await approval();
       this.walletConnectSession = session;
-
-      QRCodeModal.close();
 
       const accounts = this.extractAccountsFromSession(session);
 
@@ -687,7 +685,6 @@ export class WalletIntegrationService {
 
     } catch (error: any) {
       logger.error('WalletConnect connection error:', error);
-      QRCodeModal.close();
       return {
         success: false,
         error: error.message || 'Failed to connect via WalletConnect'
@@ -696,6 +693,13 @@ export class WalletIntegrationService {
   }
 
   private async initializeWalletConnect(): Promise<void> {
+    if (!this.projectId) {
+      throw new Error(
+        'WALLETCONNECT_PROJECT_ID is not set. Create a free project ID at https://cloud.reown.com ' +
+        'and add WALLETCONNECT_PROJECT_ID=<your-project-id> to your .env file.'
+      );
+    }
+
     try {
       this.walletConnectClient = await SignClient.init({
         projectId: this.projectId,
