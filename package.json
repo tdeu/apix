@@ -55,7 +55,11 @@
     "ai",
     "integration"
   ],
-  "author": "Moustapha Diop <moustapha.diop@7digitslab.com>",
+  "author": "Emtée Studio",
+  "contributors": [
+    "Moustapha Diop",
+    "Thomas De Rouck"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -65,6 +69,9 @@
     "url": "https://github.com/tdeu/apix/issues"
   },
   "homepage": "https://github.com/tdeu/apix#readme",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@hashgraph/hedera-wallet-snap": "^0.6.2",
     "@hashgraph/sdk": "latest",
