@@ -74,7 +74,7 @@
   },
   "dependencies": {
     "@hashgraph/hedera-wallet-snap": "^0.6.2",
-    "@hashgraph/sdk": "latest",
+    "@hashgraph/sdk": "2.80.0",
     "@langchain/anthropic": "^0.3.0",
     "@langchain/core": "^0.3.0",
     "@langchain/openai": "^0.3.0",
@@ -91,7 +91,7 @@
     "fs-extra": "^11.1.1",
     "fuzzysort": "^3.1.0",
     "handlebars": "^4.7.8",
-    "hedera-agent-kit": "^3.2.0",
+    "hedera-agent-kit": "3.8.2",
     "inquirer": "^9.2.12",
     "lodash": "^4.17.21",
     "lru-cache": "^10.0.0",
@@ -123,5 +123,10 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.2.2",
     "typescript-eslint": "^8.70.1"
+  },
+  "overrides": {
+    "hedera-agent-kit": {
+      "@langchain/core": "1.2.13"
+    }
   }
 }
