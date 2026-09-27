@@ -127,6 +127,14 @@
   "overrides": {
     "hedera-agent-kit": {
       "@langchain/core": "1.2.13"
+    },
+    "protobufjs": "7.6.6",
+    "@grpc/grpc-js": "1.12.7",
+    "ethers": {
+      "ws": "^8.22.0"
+    },
+    "@elizaos/core": {
+      "pdfjs-dist": "^6.3.289"
     }
   }
 }
