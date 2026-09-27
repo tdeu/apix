@@ -4,22 +4,23 @@ Out-of-scope findings go here instead of being fixed in the current phase.
 See /CLAUDE.md for the working rules.
 
 ## Phase 2 (dependencies)
-- Remaining advisories after Phase 2 (0 critical, 0 high): 15 moderate,
+- Remaining advisories after Phase 2 (0 critical, 0 high): 6 moderate,
   15 low, all transitive under @hashgraph/sdk (bn.js, elliptic,
   @ethersproject/*, @hashgraph/cryptography), hedera-agent-kit (ai,
-  @ai-sdk/*, @elizaos/core, langchain, crypto-browserify chain),
-  @hashgraph/hedera-wallet-snap (@metamask/*) and uuid 9.x. npm's suggested
-  "fixes" are downgrades (sdk 2.72, agent-kit 3.7.1, wallet-snap 0.4.2) or a
+  @ai-sdk/*, @elizaos/core, langchain, crypto-browserify chain) and uuid 9.x.
+  npm's suggested "fixes" are downgrades (sdk 2.72, agent-kit 3.7.1) or a
   uuid major (14). Revisit when upstream releases.
 - `package.json` overrides to drop once upstream catches up:
   `hedera-agent-kit > @langchain/core` (kit pins 1.1.24 but its langgraph needs
   >=1.1.48), `protobufjs` 7.6.6 and `@grpc/grpc-js` 1.12.7 (pinned by
-  @hashgraph/sdk 2.80.0), `ethers > ws`, `@elizaos/core > pdfjs-dist`.
+  @hashgraph/sdk 2.80.0), `ethers > ws` (ethers now comes only from
+  hedera-agent-kit), `@elizaos/core > pdfjs-dist`.
+- Decision (Phase 2): the `@elizaos/core > pdfjs-dist` ^6 override is a forced
+  major but is kept. It is unreachable from our code (hedera-agent-kit's main
+  entry never loads @elizaos/core). Drop it when @elizaos/core updates
+  pdfjs-dist itself.
 - `@hashgraph/sdk` 2.81.0 exists (moves to protobufjs 8) but hedera-agent-kit
   3.8.2 pins 2.80.0. Move both together when the kit releases.
-- `@hashgraph/hedera-wallet-snap` is a dependency but is never imported (the
-  code only uses the snap ID string). Removing it drops ethers and the
-  7 @metamask/* moderate advisories. Needs a decision (see Decisions).
 - `npm outdated` majors not taken (not security-driven): chalk 6, commander 15,
   inquirer 14, ora 9, openai 7, zod 4, uuid 14, dotenv 18, lru-cache 11,
   configstore 8, fuzzysort 4, typescript 7, jest 30, eslint 10, @types/node 26.
