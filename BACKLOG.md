@@ -79,6 +79,12 @@ See /CLAUDE.md for the working rules.
   and the `WalletConnect` component/`components/WalletConnect.tsx` output it
   generates) so it isn't confused with the WalletConnect protocol. It is a
   generic "connect your wallet" UI.
+- Decide: delete `src/services/wallet-integration.ts`, or expose it as an
+  `apix wallet` command. It is unreachable from the CLI (only the removed
+  health integration test used it), and its HashPack/Blade paths use
+  `window.*`, so only the WalletConnect v2 path can work in a terminal. Phase 3a
+  removed its placeholder config (`getWalletConfig()` now throws when
+  `WALLETCONNECT_PROJECT_ID` / `BLADE_DAPP_CODE` are missing).
 - ESLint rules downgraded to "warn" in `eslint.config.js` because of existing
   violations (counts at Phase 1; set each back to "error" once clean):
   - `@typescript-eslint/no-explicit-any`: 500

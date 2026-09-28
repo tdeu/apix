@@ -69,6 +69,18 @@ export interface TransactionResult {
   explorerUrl?: string;
 }
 
+// dApp metadata shown to wallets when APIX requests a connection
+const APP_METADATA = {
+  name: 'APIX AI',
+  description: 'Enterprise AI-powered Hedera development assistant',
+  url: 'https://hedera.com',
+  icons: ['https://hedera.com/logo.png']
+};
+
+const WALLETCONNECT_PROJECT_ID_MISSING =
+  'WALLETCONNECT_PROJECT_ID is not set. Create a free project ID at https://cloud.reown.com ' +
+  'and add WALLETCONNECT_PROJECT_ID=<your-project-id> to your .env file.';
+
 export class WalletIntegrationService {
   private connectedWallet: WalletInfo | null = null;
   private connectedAccounts: WalletAccount[] = [];
@@ -694,21 +706,13 @@ export class WalletIntegrationService {
 
   private async initializeWalletConnect(): Promise<void> {
     if (!this.projectId) {
-      throw new Error(
-        'WALLETCONNECT_PROJECT_ID is not set. Create a free project ID at https://cloud.reown.com ' +
-        'and add WALLETCONNECT_PROJECT_ID=<your-project-id> to your .env file.'
-      );
+      throw new Error(WALLETCONNECT_PROJECT_ID_MISSING);
     }
 
     try {
       this.walletConnectClient = await SignClient.init({
         projectId: this.projectId,
-        metadata: {
-          name: 'APIX AI',
-          description: 'Enterprise AI-powered Hedera development assistant',
-          url: 'https://hedera.com',
-          icons: ['https://hedera.com/logo.png']
-        }
+        metadata: APP_METADATA
       });
 
       logger.info('WalletConnect v2 client initialized', {
@@ -1176,36 +1180,39 @@ export class WalletIntegrationService {
   }
 
   /**
-   * Get wallet-specific configuration
+   * Get wallet-specific configuration. Throws if required configuration is
+   * missing; never returns placeholder values.
    */
   getWalletConfig(walletId: string): any {
-    const configs = {
-      hashpack: {
-        appMetadata: {
-          name: 'APIX AI',
-          description: 'Enterprise AI-powered Hedera development platform',
-          icon: 'https://your-domain.com/icon.png'
-        },
-        network: this.network
-      },
-      blade: {
-        dAppCode: 'your-dapp-code',
-        network: this.network,
-        bladeEnv: this.network === 'mainnet' ? 'Mainnet' : 'Testnet'
-      },
-      walletconnect: {
-        projectId: 'your-walletconnect-project-id',
-        chains: this.network === 'mainnet' ? ['hedera:mainnet'] : ['hedera:testnet'],
-        metadata: {
-          name: 'APIX AI',
-          description: 'Enterprise AI-powered Hedera development platform',
-          url: 'https://your-domain.com',
-          icons: ['https://your-domain.com/icon.png']
+    switch (walletId) {
+      case 'hashpack':
+        return {
+          appMetadata: { name: APP_METADATA.name, description: APP_METADATA.description, icon: APP_METADATA.icons[0] },
+          network: this.network
+        };
+      case 'blade': {
+        const dAppCode = process.env.BLADE_DAPP_CODE;
+        if (!dAppCode) {
+          throw new Error('BLADE_DAPP_CODE is not set. Request a dApp code from Blade Labs and add BLADE_DAPP_CODE=<your-dapp-code> to your .env file.');
         }
+        return {
+          dAppCode,
+          network: this.network,
+          bladeEnv: this.network === 'mainnet' ? 'Mainnet' : 'Testnet'
+        };
       }
-    };
-
-    return configs[walletId as keyof typeof configs] || {};
+      case 'walletconnect':
+        if (!this.projectId) {
+          throw new Error(WALLETCONNECT_PROJECT_ID_MISSING);
+        }
+        return {
+          projectId: this.projectId,
+          chains: this.network === 'mainnet' ? ['hedera:mainnet'] : ['hedera:testnet'],
+          metadata: APP_METADATA
+        };
+      default:
+        throw new Error(`Unknown wallet "${walletId}". Supported: hashpack, blade, walletconnect`);
+    }
   }
 }
 
