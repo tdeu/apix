@@ -50,7 +50,7 @@ describe.each(['hts', 'smart-contract', 'consensus'])('`apix add %s` on a Next.j
     await generator.generateIntegration(plan, context);
     files = plan.templates.map(t => t.outputPath);
     dependencies = Object.keys((await fs.readJSON(path.join(root, 'package.json'))).dependencies);
-  });
+  }, 120_000); // generation is slow when the whole suite runs in parallel
 
   afterAll(async () => {
     jest.restoreAllMocks();

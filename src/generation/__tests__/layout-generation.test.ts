@@ -218,7 +218,7 @@ describe('a failed `apix add` leaves the project byte-for-byte unchanged', () =>
   });
 
   it.each([
-    ['consensus (missing template)', 'src-app' as const, 'consensus', {}],
+    ['consensus on a Pages Router project', 'pages' as const, 'consensus', {}],
     ['hts on a Pages Router project', 'pages' as const, 'hts', { name: 'MyToken', symbol: 'MTK' }],
   ])('%s', async (_name, layout, integration, options) => {
     root = await nextFixture(layout);

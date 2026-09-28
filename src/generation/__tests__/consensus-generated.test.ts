@@ -38,7 +38,14 @@ function nextContext(rootPath: string): ProjectContext {
 
 describe('generated consensus-operations', () => {
   let root: string;
-  let mod: any;
+  // The generated module, loaded at runtime
+  let mod: {
+    consensusManager: {
+      submitMessage(params: unknown): Promise<unknown>;
+      createTopic(params: unknown): Promise<unknown>;
+    };
+    ConsensusInputError: new (...args: unknown[]) => Error;
+  };
   const savedEnv = { id: process.env.HEDERA_ACCOUNT_ID, key: process.env.HEDERA_PRIVATE_KEY };
 
   beforeAll(async () => {

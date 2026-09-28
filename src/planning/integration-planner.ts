@@ -404,7 +404,7 @@ import {
     private async createConsensusPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
       plan.type = 'consensus';
       const layout = plan.layout!;
-      const framework = plan.context.framework as any;
+      const framework = plan.context.framework;
       plan.templates = [
         {
           templateId: 'utils/common/hedera-client',

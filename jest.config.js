@@ -1,6 +1,9 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  // Also the default for beforeAll/afterAll hooks; the generation tests render
+  // and write real projects, which is slow when all suites run in parallel
+  testTimeout: 30000,
   roots: ['<rootDir>/src'],
   testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
   transform: {
