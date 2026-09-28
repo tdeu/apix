@@ -15,6 +15,7 @@ import {
     WalletProvider
   } from '../types';
   import { logger } from '../utils/logger';
+  import { HEDERA_SDK_VERSION_RANGE } from '../generation/dependency-versions';
   
   export class IntegrationPlanner {
     
@@ -330,7 +331,7 @@ import {
           outputPath: 'lib/hedera/wallet-service.ts',
           variables: {
             network: 'testnet',
-            walletTypes: ['hashpack', 'blade', 'walletconnect']
+            walletTypes: ['hashpack', 'blade']
           }
         }
       ];
@@ -529,7 +530,7 @@ import {
         file: 'package.json',
         updates: {
           dependencies: {
-            '@hashgraph/sdk': '^2.40.0'
+            '@hashgraph/sdk': HEDERA_SDK_VERSION_RANGE
           }
         }
       });

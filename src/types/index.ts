@@ -171,7 +171,6 @@ export interface WalletConfiguration {
 export type WalletProvider = 
   | 'hashpack'
   | 'blade'
-  | 'walletconnect'
   | 'metamask'
   | 'kabila';
 

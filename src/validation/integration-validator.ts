@@ -301,7 +301,7 @@ export class IntegrationValidator {
         }
 
         const issues: string[] = [];
-        const supportedProviders = ['hashpack', 'blade', 'walletconnect'];
+        const supportedProviders = ['hashpack', 'blade'];
         
         if (plan.options.provider) {
           if (!supportedProviders.includes(plan.options.provider)) {

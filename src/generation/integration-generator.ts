@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { ProjectContext, IntegrationPlan, GeneratedFile, TemplateSelection, ConfigurationUpdate } from '../types';
 import { TemplateEngine } from '../templates/template-engine';
+import { generatedDependencyVersion } from './dependency-versions';
 import { PackageManager } from '../utils/package-manager';
 import { logger } from '../utils/logger';
 
@@ -51,7 +52,7 @@ export class IntegrationGenerator {
         // Convert string array to dependency objects
         const deps = plan.dependencies.map(dep => ({
           name: dep,
-          version: 'latest',
+          version: generatedDependencyVersion(dep),
           type: 'dependencies' as const
         }));
         await this.packageManager.addDependencies(deps);

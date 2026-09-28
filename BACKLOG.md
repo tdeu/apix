@@ -71,6 +71,14 @@ See /CLAUDE.md for the working rules.
 ## Phase 4
 
 ## Phase 5 (docs, README, cleanup)
+- Implement WalletConnect v2 in templates. Phase 3a removed `'walletconnect'`
+  from the generated `WalletProvider` types (`templates/utils/common/wallet-service.hbs`,
+  `templates/types/hedera-types.hbs`), `src/types` and the planner/validator
+  provider lists because no template implemented it.
+- Rename `templates/components/react/WalletConnect.hbs` (e.g. `ConnectWallet.hbs`,
+  and the `WalletConnect` component/`components/WalletConnect.tsx` output it
+  generates) so it isn't confused with the WalletConnect protocol. It is a
+  generic "connect your wallet" UI.
 - ESLint rules downgraded to "warn" in `eslint.config.js` because of existing
   violations (counts at Phase 1; set each back to "error" once clean):
   - `@typescript-eslint/no-explicit-any`: 500

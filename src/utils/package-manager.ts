@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { execSync } from 'child_process';
 import { logger } from './logger';
+import { HEDERA_SDK_VERSION_RANGE } from '../generation/dependency-versions';
 
 export interface Dependency {
   name: string;
@@ -305,7 +306,7 @@ export class PackageManager {
   // Hedera-specific dependencies
   async addHederaDependencies(): Promise<void> {
     const hederaDeps: Dependency[] = [
-      { name: '@hashgraph/sdk', version: '^2.68.0', type: 'dependencies' },
+      { name: '@hashgraph/sdk', version: HEDERA_SDK_VERSION_RANGE, type: 'dependencies' },
       { name: '@hashgraph/hedera-wallet-connect', version: 'latest', type: 'dependencies' }
     ];
 
