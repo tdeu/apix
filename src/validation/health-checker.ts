@@ -31,6 +31,11 @@ export interface HealthArea {
   hint?: string;
 }
 
+// Values copied unchanged from .env.example, e.g. "sk-ant-..." or "your-...-id"
+function looksLikePlaceholder(value: string): boolean {
+  return /your-|\.\.\.|x{4,}/i.test(value);
+}
+
 export class HealthChecker {
   private context: ProjectContext;
 
@@ -908,16 +913,24 @@ export class HealthChecker {
     const providers = [
       process.env.ANTHROPIC_API_KEY ? 'ANTHROPIC_API_KEY' : null,
       process.env.OPENAI_API_KEY ? 'OPENAI_API_KEY' : null
-    ].filter(Boolean);
+    ].filter((name): name is string => name !== null);
     if (providers.length === 0) {
       return { name: 'AI key', status: 'not configured', message: 'ANTHROPIC_API_KEY / OPENAI_API_KEY not set', hint: 'Needed for chat, compose, generate and the other AI commands' };
+    }
+    const placeholders = providers.filter(name => looksLikePlaceholder(process.env[name]!));
+    if (placeholders.length > 0) {
+      return { name: 'AI key', status: 'error', message: `${placeholders.join(', ')} still has the .env.example placeholder value` };
     }
     return { name: 'AI key', status: 'ok', message: `${providers.join(', ')} set (not verified)` };
   }
 
   private checkWalletConnectArea(): HealthArea {
-    if (!process.env.WALLETCONNECT_PROJECT_ID) {
+    const projectId = process.env.WALLETCONNECT_PROJECT_ID;
+    if (!projectId) {
       return { name: 'WalletConnect project ID', status: 'not configured', message: 'WALLETCONNECT_PROJECT_ID not set', hint: 'Get one at https://cloud.reown.com' };
+    }
+    if (looksLikePlaceholder(projectId)) {
+      return { name: 'WalletConnect project ID', status: 'error', message: 'WALLETCONNECT_PROJECT_ID still has the .env.example placeholder value', hint: 'Get one at https://cloud.reown.com' };
     }
     return { name: 'WalletConnect project ID', status: 'ok', message: 'WALLETCONNECT_PROJECT_ID set (not verified)' };
   }
