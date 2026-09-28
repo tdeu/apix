@@ -948,6 +948,13 @@ export class HealthChecker {
       : 'Ready for local use (blockchain operations need Hedera credentials)';
   }
 
+  /**
+   * `apix health` exits 0 by default; with --strict, 1 unless every area is ok.
+   */
+  static exitCode(areas: HealthArea[], strict: boolean): number {
+    return strict && areas.some(area => area.status !== 'ok') ? 1 : 0;
+  }
+
   static formatAreas(areas: HealthArea[]): string {
     const icons: Record<HealthAreaStatus, string> = { 'ok': '✅', 'not configured': '⚪', 'error': '❌' };
     const colors: Record<HealthAreaStatus, (text: string) => string> = { 'ok': chalk.green, 'not configured': chalk.gray, 'error': chalk.red };

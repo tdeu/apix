@@ -6,6 +6,7 @@ require('dotenv').config();
 import { program } from 'commander';
 import chalk from 'chalk';
 import { APIxCLI } from './cli-core';
+import { HealthChecker } from '../validation/health-checker';
 import { logger, LogLevel } from '../utils/logger';
 import { debugLogger, LogLevel as DebugLogLevel } from '../utils/debug-logger';
 import { formatter, createFormatter } from '../utils/output-formatter';
@@ -249,7 +250,7 @@ program
       const areas = await cli.health(options);
       debugLogger.endCommand(true, areas);
       debugLogger.success('Health check completed successfully');
-      process.exit(options.strict && areas.some(area => area.status !== 'ok') ? 1 : 0);
+      process.exit(HealthChecker.exitCode(areas, !!options.strict));
     } catch (error: any) {
       debugLogger.endCommand(false);
       debugLogger.error('Health check failed', error, {

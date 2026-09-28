@@ -1,4 +1,5 @@
 // src/services/__tests__/hedera-operations.test.ts
+import { Client, PrivateKey } from '@hashgraph/sdk';
 import { HederaOperationsService, TokenCreationOptions } from '../hedera-operations';
 
 // Mock dependencies
@@ -12,154 +13,99 @@ describe('HederaOperationsService', () => {
 
   beforeEach(() => {
     service = new HederaOperationsService('testnet');
+    jest.restoreAllMocks();
     jest.clearAllMocks();
-    // Clear environment variables
     delete process.env.HEDERA_ACCOUNT_ID;
     delete process.env.HEDERA_PRIVATE_KEY;
+    delete process.env.HEDERA_NETWORK;
   });
 
-  describe('Token Creation', () => {
-    // SKIP(phase-3): asserts fake behaviour
-    it.skip('should require initialization before token creation', async () => {
-      const options: TokenCreationOptions = {
-        name: 'Test Token',
-        symbol: 'TEST',
-        decimals: 8,
-        initialSupply: 1000000
-      };
+  afterEach(() => {
+    service.close();
+  });
 
-      // Should auto-initialize
-      const result = await service.createToken(options);
-      expect(result).toBeDefined();
+  describe('Initialization', () => {
+    it('should throw a helpful error without credentials', async () => {
+      const forTestnet = jest.spyOn(Client, 'forTestnet');
+
+      await expect(service.initialize()).rejects.toThrow(/Hedera credentials are not configured/);
+      await expect(service.initialize()).rejects.toThrow(/HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY/);
+      await expect(service.initialize()).rejects.toThrow(/portal\.hedera\.com\/faucet/);
+      expect(forTestnet).not.toHaveBeenCalled();
+      expect(service.getCapabilities().directSDK).toBe(false);
     });
 
-    it('should validate token parameters', async () => {
+    it('should reject malformed credentials before creating a Client', async () => {
+      process.env.HEDERA_ACCOUNT_ID = 'invalid';
+      process.env.HEDERA_PRIVATE_KEY = 'invalid';
+      const forTestnet = jest.spyOn(Client, 'forTestnet');
+
+      await expect(service.initialize()).rejects.toThrow(/Invalid HEDERA_ACCOUNT_ID format/);
+      expect(forTestnet).not.toHaveBeenCalled();
+    });
+
+    it('should close the Client when the operator key is rejected', async () => {
+      process.env.HEDERA_ACCOUNT_ID = '0.0.1234';
+      process.env.HEDERA_PRIVATE_KEY = 'z'.repeat(64); // passes the length check, not a key
+
+      const realForTestnet = Client.forTestnet.bind(Client);
+      let closeSpy: jest.SpyInstance | undefined;
+      jest.spyOn(Client, 'forTestnet').mockImplementation(() => {
+        const client = realForTestnet();
+        closeSpy = jest.spyOn(client, 'close');
+        return client;
+      });
+
+      await expect(service.initialize()).rejects.toThrow(/initialization failed/);
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+      expect(service.getCapabilities().directSDK).toBe(false);
+    });
+
+    it('should configure the operator from valid credentials', async () => {
+      process.env.HEDERA_ACCOUNT_ID = '0.0.1234';
+      process.env.HEDERA_PRIVATE_KEY = PrivateKey.generateED25519().toStringDer();
+
+      await service.initialize();
+
+      expect(service.getCurrentAccountId()).toBe('0.0.1234');
+      expect(service.getCapabilities()).toEqual({ agentKit: false, directSDK: true });
+    });
+  });
+
+  describe('Input Validation', () => {
+    const validToken: TokenCreationOptions = { name: 'Test Token', symbol: 'TEST', decimals: 8, initialSupply: 1000000 };
+
+    // Every case must throw before initialize(), i.e. before any SDK call
+    const cases: Array<[string, (s: HederaOperationsService) => Promise<unknown>, RegExp]> = [
+      ['empty token name', s => s.createToken({ ...validToken, name: '' }), /Token name is required/],
+      ['invalid token symbol', s => s.createToken({ ...validToken, symbol: 'invalid-symbol' }), /Token symbol must be at most 6 characters/],
+      ['negative decimals', s => s.createToken({ ...validToken, decimals: -1 }), /decimals must be non-negative/],
+      ['NaN decimals', s => s.createToken({ ...validToken, decimals: NaN }), /decimals must be a whole number/],
+      ['negative initial supply', s => s.createToken({ ...validToken, initialSupply: -5 }), /Initial supply must be non-negative/],
+      ['invalid treasury account', s => s.createToken({ ...validToken, treasuryAccount: 'treasury' }), /Invalid account ID format/],
+      ['invalid transfer account ID', s => s.transferToken({ tokenId: '0.0.123', fromAccount: 'invalid-account', toAccount: '0.0.456', amount: 100 }), /Invalid account ID format: "invalid-account"/],
+      ['invalid transfer token ID', s => s.transferToken({ tokenId: 'token', fromAccount: '0.0.1', toAccount: '0.0.2', amount: 100 }), /Invalid token ID format/],
+      ['zero transfer amount', s => s.transferToken({ tokenId: '0.0.123', fromAccount: '0.0.1', toAccount: '0.0.2', amount: 0 }), /Amount must be greater than 0/],
+      ['fractional transfer amount', s => s.transferToken({ tokenId: '0.0.123', fromAccount: '0.0.1', toAccount: '0.0.2', amount: 1.5 }), /Amount must be an integer/],
+      ['invalid contract ID', s => s.callSmartContract({ contractId: 'contract', functionName: 'f', gas: 50000 }), /Invalid contract ID format/],
+      ['negative payable amount', s => s.callSmartContract({ contractId: '0.0.5', functionName: 'f', gas: 50000, payableAmount: -1 }), /Payable amount must be a non-negative whole number/],
+      ['gas over the limit', s => s.deploySmartContract({ bytecode: '0x00', gas: 20_000_000 }), /Gas limit exceeds maximum/],
+      ['invalid topic ID', s => s.submitTopicMessage({ topicId: 'topic', message: 'hi' }), /Invalid topic ID format/],
+      ['empty topic message', s => s.submitTopicMessage({ topicId: '0.0.7', message: '' }), /Message is required/],
+      ['oversized topic message', s => s.submitTopicMessage({ topicId: '0.0.7', message: 'x'.repeat(1025) }), /exceeds 1024 bytes/],
+    ];
+
+    it.each(cases)('should reject %s before any SDK call', async (_name, call, expected) => {
       const initialize = jest.spyOn(service, 'initialize');
-      const invalidOptions: TokenCreationOptions = {
-        name: '', // Invalid: empty name
-        symbol: 'TEST',
-        decimals: 8,
-        initialSupply: 1000000
-      };
+      const forTestnet = jest.spyOn(Client, 'forTestnet');
 
-      await expect(service.createToken(invalidOptions)).rejects.toThrow('Token name is required');
+      await expect(call(service)).rejects.toThrow(expected);
       expect(initialize).not.toHaveBeenCalled();
+      expect(forTestnet).not.toHaveBeenCalled();
     });
 
-    // SKIP(phase-3): asserts fake behaviour
-    it.skip('should use test account when no credentials provided', async () => {
-      const options: TokenCreationOptions = {
-        name: 'Test Token',
-        symbol: 'TEST'
-      };
-
-      const result = await service.createToken(options);
-
-      expect(result.success).toBe(true);
-      expect(result.details?.note).toContain('simulation');
-    });
-
-    // SKIP(phase-3): asserts fake behaviour
-    it.skip('should use default decimals and supply when not provided', async () => {
-      const options: TokenCreationOptions = {
-        name: 'Test Token',
-        symbol: 'TEST'
-      };
-
-      const result = await service.createToken(options);
-
-      // In simulation mode, should still succeed
-      expect(result.success).toBe(true);
-    });
-
-    // SKIP(phase-3): asserts fake behaviour
-    it.skip('should generate explorer URL on success', async () => {
-      const options: TokenCreationOptions = {
-        name: 'Test Token',
-        symbol: 'TEST'
-      };
-
-      const result = await service.createToken(options);
-
-      if (result.success) {
-        expect(result.explorerUrl).toBeDefined();
-        expect(result.explorerUrl).toContain('hashscan.io/testnet');
-      }
-    });
-  });
-
-  describe('Token Transfer', () => {
-    // SKIP(phase-3): asserts fake behaviour
-    it.skip('should simulate token transfer without real credentials', async () => {
-      const options = {
-        tokenId: '0.0.123456',
-        fromAccount: '0.0.2',
-        toAccount: '0.0.3',
-        amount: 100
-      };
-
-      const result = await service.transferToken(options);
-
-      expect(result.success).toBe(true);
-      expect(result.details?.note).toContain('simulation');
-    });
-  });
-
-  describe('Smart Contract Operations', () => {
-    // SKIP(phase-3): asserts fake behaviour
-    it.skip('should simulate smart contract deployment', async () => {
-      const options = {
-        bytecode: '0x1234567890abcdef',
-        gas: 100000
-      };
-
-      const result = await service.deploySmartContract(options);
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.tokenId).toMatch(/^0\.0\.\d+$/); // Contract ID format
-      }
-    });
-
-    // SKIP(phase-3): asserts fake behaviour
-    it.skip('should simulate contract call', async () => {
-      const options = {
-        contractId: '0.0.500000',
-        functionName: 'transfer',
-        gas: 50000
-      };
-
-      const result = await service.callSmartContract(options);
-
-      expect(result.success).toBe(true);
-    });
-  });
-
-  describe('HCS (Consensus Service)', () => {
-    // SKIP(phase-3): asserts fake behaviour
-    it.skip('should simulate topic creation', async () => {
-      const options = {
-        memo: 'Test topic for APIX'
-      };
-
-      const result = await service.createTopic(options);
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.tokenId).toMatch(/^0\.0\.\d+$/); // Topic ID format
-      }
-    });
-
-    // SKIP(phase-3): asserts fake behaviour
-    it.skip('should simulate topic message submission', async () => {
-      const options = {
-        topicId: '0.0.700000',
-        message: 'Hello, Hedera!'
-      };
-
-      const result = await service.submitTopicMessage(options);
-
-      expect(result.success).toBe(true);
+    it('should reach credential checks once input is valid', async () => {
+      await expect(service.createToken(validToken)).rejects.toThrow(/Hedera credentials are not configured/);
     });
   });
 
@@ -172,77 +118,23 @@ describe('HederaOperationsService', () => {
       expect(mainnetService.getNetwork()).toBe('mainnet');
     });
 
-    it('should report capabilities', () => {
-      const capabilities = service.getCapabilities();
-
-      expect(capabilities).toHaveProperty('agentKit');
-      expect(capabilities).toEqual({ agentKit: false, directSDK: false });
-    });
-
-    // SKIP(phase-3): asserts fake behaviour
-    it.skip('should return current account ID when using test accounts', async () => {
-      await service.initialize();
-      const accountId = service.getCurrentAccountId();
-
-      expect(accountId).toBeDefined();
-      if (accountId) {
-        expect(accountId).toMatch(/^0\.0\.\d+$/);
-      }
-    });
-  });
-
-  describe('Cleanup', () => {
-    it('should close client connections', () => {
-      service.close();
-
-      expect(service.getCapabilities().directSDK).toBe(false);
+    it('should report no capabilities before initialization', () => {
+      expect(service.getCapabilities()).toEqual({ agentKit: false, directSDK: false });
       expect(service.getCurrentAccountId()).toBeNull();
     });
   });
 
-  describe('Error Handling', () => {
-    it('should handle initialization errors gracefully', async () => {
-      // Force initialization failure by using invalid credentials
-      process.env.HEDERA_ACCOUNT_ID = 'invalid';
-      process.env.HEDERA_PRIVATE_KEY = 'invalid';
+  describe('Cleanup', () => {
+    it('should close client connections', async () => {
+      process.env.HEDERA_ACCOUNT_ID = '0.0.1234';
+      process.env.HEDERA_PRIVATE_KEY = PrivateKey.generateED25519().toStringDer();
+      await service.initialize();
+      expect(service.getCapabilities().directSDK).toBe(true);
 
-      const newService = new HederaOperationsService('testnet');
+      service.close();
 
-      await expect(newService.initialize()).rejects.toThrow();
-
-      // initialize() leaves the Client open when setOperator() throws; close it
-      // so its network timers don't keep the test process alive.
-      newService.close();
-    });
-  });
-
-  describe('Input Validation', () => {
-    it('should validate account ID format in transfers', async () => {
-      const initialize = jest.spyOn(service, 'initialize');
-      const invalidOptions = {
-        tokenId: '0.0.123',
-        fromAccount: 'invalid-account',
-        toAccount: '0.0.456',
-        amount: 100
-      };
-
-      await expect(service.transferToken(invalidOptions)).rejects.toThrow(
-        'Invalid account ID format: "invalid-account"'
-      );
-      expect(initialize).not.toHaveBeenCalled();
-    });
-
-    it('should validate token symbol format', async () => {
-      const initialize = jest.spyOn(service, 'initialize');
-      const invalidOptions: TokenCreationOptions = {
-        name: 'Test Token',
-        symbol: 'invalid-symbol', // Should be uppercase, 2-6 chars
-        decimals: 8,
-        initialSupply: 1000000
-      };
-
-      await expect(service.createToken(invalidOptions)).rejects.toThrow('Token symbol must be at most 6 characters');
-      expect(initialize).not.toHaveBeenCalled();
+      expect(service.getCapabilities().directSDK).toBe(false);
+      expect(service.getCurrentAccountId()).toBeNull();
     });
   });
 });
