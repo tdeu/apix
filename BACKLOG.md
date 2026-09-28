@@ -4,6 +4,7 @@ Out-of-scope findings go here instead of being fixed in the current phase.
 See /CLAUDE.md for the working rules.
 
 ## Phase 2 (dependencies)
+- Phase 2: @hashgraph/hedera-wallet-snap removed (unused), 19e2bd0
 - Remaining advisories after Phase 2 (0 critical, 0 high): 6 moderate,
   15 low, all transitive under @hashgraph/sdk (bn.js, elliptic,
   @ethersproject/*, @hashgraph/cryptography), hedera-agent-kit (ai,
@@ -30,43 +31,58 @@ See /CLAUDE.md for the working rules.
   debug) return fallbacks instead of erroring without a key. `generate` is to
   become AI-key-required; template-only generation goes through `add`.
 - BUG_REPORT_AND_FIXES.md open items:
-  - #7 TODOs at `src/cli/cli-core.ts:1610,1618` and
-    `src/planning/integration-planner.ts:428` ("Methods disabled due to syntax
+  - #7 TODOs at `src/cli/cli-core.ts:1567,1575` and
+    `src/planning/integration-planner.ts:429` ("Methods disabled due to syntax
     issues").
   - #9 5-second analyzer cache in `src/analysis/project-analyzer.ts`, no
     invalidation.
   - #12 `ENABLE_TELEMETRY` in `.env.example` is not implemented.
-- Remove `src/utils/test-accounts.ts` and the test-account fallback in
-  `src/services/hedera-operations.ts`.
-- Delete the 10 tests in `src/services/__tests__/hedera-operations.test.ts`
-  marked `SKIP(phase-3): asserts fake behaviour` (simulated token/contract/topic
-  operations and test-account fallback). Also revisit two passing tests that
-  encode fallback behaviour: "should report capabilities" (expects a
-  `testAccounts` capability) and "should close client connections" (expects
-  `isFallbackMode()` to be true after close, contradicting its own comment).
-- `createToken` / `transferToken` do not validate input: `InputSanitizer`
-  (`src/utils/input-sanitizer.ts`) exists but is not wired in. Three tests are
-  skipped with `SKIP(phase-3)` until it is (empty token name, token symbol
-  format, account ID format).
-- `HederaOperationsService.initializeWithCredentials()` creates a `Client` and
-  does not close it when `setOperator()` throws on bad credentials, leaking
-  network timers (found because it kept jest from exiting).
-- `src/utils/test-accounts.ts` opens a Hedera `Client` at import time
-  (module-level `testAccountManager` singleton). Goes away with the file.
-- `apix add hts --name X --symbol Y` without credentials goes through the
-  test-account fallback and makes a real testnet network attempt before
-  printing "Token creation prompt failed".
-- The code generator writes `"@hashgraph/sdk": "latest"` (and any other plan
-  dependency as "latest") into the user's package.json
-  (`src/generation/integration-generator.ts:52`). Generated projects are
-  unpinned; should pin to the version APIX is tested against.
-- `src/services/wallet-integration.ts` is unreachable from the CLI (no `wallet`
-  command; only `health` calls `getSupportedWallets()`), and its HashPack/Blade
-  paths use `window.*`, so they can't work in a terminal. `getDefaultConfig()`
-  (~line 1190) still returns placeholder project IDs/dApp codes. Decide whether
-  to wire up a `wallet` command or delete the service.
-- Generated wallet code lists `'walletconnect'` as a provider type but
-  implements no WalletConnect connection.
+- Done in Phase 3a (Hedera side):
+  - Test-account system removed; `initialize()` requires credentials and
+    `add hts` makes no network call without credentials + confirmation or
+    `--create-token` (83534eb).
+  - Client leak on bad credentials fixed (83534eb).
+  - InputSanitizer wired into every Hedera operation; the 3 category-B tests
+    un-skipped (623b2a5).
+  - Honest `apix health` by area, `--strict` (201ba0a, 1dc7878).
+  - Generated projects pin `@hashgraph/sdk` to `^2.80.0`; `walletconnect`
+    removed from generated provider types (4828c18).
+  - `wallet-integration.ts` placeholder config removed (8318b80); delete/expose
+    decision moved to Phase 5.
+  - 10 category-C tests deleted, the 2 fallback tests rewritten, 0 skipped
+    (3d648e2).
+- Found in Phase 3a, not fixed (outside its scope or needs a decision):
+  - Templates that fail to render (Handlebars parse errors):
+    `api/adaptive/tokens/create` (line 47),
+    `components/react/TokenManagerEnhanced` (line 21),
+    `utils/common/hedera-client` (line 42). See
+    `npm run snapshot:templates`.
+  - TemplateEngine never loads `templates/types/hedera-types.hbs` or
+    `templates/enterprise-variants/**`: it only reads `<category>/<framework>/`
+    subdirectories of a fixed category list.
+  - `apix add consensus` fails: the planner uses
+    `utils/common/consensus-operations`, which doesn't exist. The `account`
+    plan has no templates at all.
+  - IntegrationGenerator ignores `TemplateSelection.variables`, so per-template
+    planner variables (e.g. `walletTypes`) never reach the templates.
+  - Generated wallet-service still lists `'metamask'` as a provider with no
+    adapter (only HashPack and Blade are implemented).
+  - `add` prints next steps for a README and tests that are never generated.
+  - `validate` only checks local configuration (no network call; it now says
+    so). `--testnet`/`--mainnet` are ignored (network comes from
+    HEDERA_NETWORK), and `--enterprise/--performance/--security/--compliance`
+    do nothing (now printed as not implemented). Decide: implement or remove.
+  - `createToken` ignores `treasuryAccount` (always the operator).
+    `deploySmartContract` doesn't validate bytecode: decide the expected format
+    first (`InputSanitizer.validateBytecode` wants a `0x` prefix, but the raw
+    string goes to `FileCreateTransaction.setContents`). `createTopic`
+    doesn't validate the memo (100-byte limit).
+  - `InputSanitizer.validateTokenCreation` silently upper-cases symbols
+    (`test` becomes `TEST`).
+  - `wallet-integration.ts` logs the WalletConnect project ID in full, and its
+    dApp metadata uses hedera.com's URL and logo as APIX's identity.
+  - The repo mixes CRLF and LF files with no `.gitattributes`. Git Bash
+    `sed -i` rewrites CRLF files as LF. Consider normalising in Phase 5.
 
 ## Phase 4
 
