@@ -12,6 +12,7 @@ export const MODULES = {
   'hedera-client': 'lib/hedera/client',
   'hts-operations': 'lib/hedera/hts-operations',
   'smart-contract-operations': 'lib/hedera/smart-contract-operations',
+  'consensus-operations': 'lib/hedera/consensus-operations',
   'wallet-service': 'lib/hedera/wallet-service',
   'hedera-types': 'types/hedera',
   'use-tokens': 'hooks/useTokens',

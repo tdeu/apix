@@ -30,9 +30,9 @@ function nextContext(rootPath: string): ProjectContext {
 }
 
 // Modules that touch the operator key or the Hedera Client
-const SERVER_ONLY = ['src/lib/hedera/client.ts', 'src/lib/hedera/hts-operations.ts', 'src/lib/hedera/smart-contract-operations.ts'];
+const SERVER_ONLY = ['src/lib/hedera/client.ts', 'src/lib/hedera/hts-operations.ts', 'src/lib/hedera/smart-contract-operations.ts', 'src/lib/hedera/consensus-operations.ts'];
 
-describe.each(['hts', 'smart-contract'])('`apix add %s` on a Next.js src/app project', integration => {
+describe.each(['hts', 'smart-contract', 'consensus'])('`apix add %s` on a Next.js src/app project', integration => {
   let root: string;
   let files: string[];
   let dependencies: string[];

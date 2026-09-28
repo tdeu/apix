@@ -129,7 +129,7 @@ describe('templates against the installed @hashgraph/sdk', () => {
 
   // Server side only: hooks and components need real React types (checked by
   // the e2e build); they don't import the SDK.
-  it.each(['hts', 'smart-contract'])('the server code `apix add %s` generates for Next.js compiles with no errors', async integration => {
+  it.each(['hts', 'smart-contract', 'consensus'])('the server code `apix add %s` generates for Next.js compiles with no errors', async integration => {
     const root = path.join(tmp, integration);
     await fs.outputJSON(path.join(root, 'package.json'), { name: 'app', version: '1.0.0', dependencies: { next: '16.3.6' } });
     await fs.outputFile(path.join(root, 'src/app/page.tsx'), 'export default function Page() { return null; }\n');

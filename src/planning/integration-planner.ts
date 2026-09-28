@@ -403,28 +403,34 @@ import {
 
     private async createConsensusPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
       plan.type = 'consensus';
+      const layout = plan.layout!;
+      const framework = plan.context.framework as any;
       plan.templates = [
+        {
+          templateId: 'utils/common/hedera-client',
+          templateType: 'utility',
+          framework,
+          outputPath: moduleFile(layout, 'hedera-client', '.ts'),
+          variables: {}
+        },
         {
           templateId: 'utils/common/consensus-operations',
           templateType: 'utility',
-          framework: plan.context.framework as any,
-          outputPath: 'lib/hedera/consensus-operations.ts',
-          variables: {
-            network: 'testnet',
-            topicId: null
-          }
-        }
+          framework,
+          outputPath: moduleFile(layout, 'consensus-operations', '.ts'),
+          variables: {}
+        },
+        ...['topics', 'messages'].map((route): TemplateSelection => ({
+          templateId: `api/nextjs/consensus/${route}`,
+          templateType: 'api',
+          framework: 'next.js',
+          outputPath: apiRouteFile(layout, `consensus/${route}`),
+          variables: {}
+        }))
       ];
 
-      plan.dependencies.push('@hashgraph/sdk');
-      plan.newFiles = [
-        {
-          path: 'lib/hedera/consensus-operations.ts',
-          content: '// Consensus operations placeholder',
-          type: 'typescript',
-          overwrite: false
-        }
-      ];
+      plan.dependencies.push('@hashgraph/sdk', 'server-only');
+      plan.newFiles = this.newFilesFor(plan.templates);
       return plan;
     }
 
