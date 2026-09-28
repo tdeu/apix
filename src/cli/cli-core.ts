@@ -1011,7 +1011,8 @@ export class APIxCLI {
 
   async comprehensiveValidation(options: any): Promise<void> {
     console.log(chalk.blue.bold('\n🔍 Comprehensive Hedera Validation\n'));
-    console.log(chalk.cyan(`Network: Hedera ${hederaOperations.getNetwork()} (from HEDERA_NETWORK)`));
+    const networkSource = process.env.HEDERA_NETWORK ? 'from HEDERA_NETWORK' : 'default; set HEDERA_NETWORK to change';
+    console.log(chalk.cyan(`Network: Hedera ${hederaOperations.getNetwork()} (${networkSource})`));
 
     const spinner = ora('Initializing Hedera validation...').start();
 

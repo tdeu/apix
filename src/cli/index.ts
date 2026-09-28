@@ -361,10 +361,16 @@ program
   .action(async (options) => {
     try {
       await ensureCliInitialized();
+    } catch (error) {
+      console.error(chalk.red(`❌ ${error instanceof Error ? error.message : error}`));
+      process.exit(1);
+    }
+
+    try {
       await cli.comprehensiveValidation(options);
       process.exit(0);
-    } catch (error) {
-      logger.error('Comprehensive validation failed:', error);
+    } catch {
+      // comprehensiveValidation has already printed the error
       process.exit(1);
     }
   });
