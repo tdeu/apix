@@ -23,6 +23,7 @@
     "start": "node dist/cli/index.js",
     "lint": "eslint src",
     "format": "prettier --write src/**/*.ts",
+    "snapshot:templates": "ts-node --transpile-only scripts/snapshot-templates.ts",
     "audit:mocks": "./scripts/audit-mocks.sh",
     "precommit": "npm run build:check && npm run lint && npm test",
     "validate:env": "node -e \"console.log('Environment check:'); ['OPENAI_API_KEY', 'HEDERA_ACCOUNT_ID', 'HEDERA_PRIVATE_KEY'].forEach(key => console.log(key + ':', process.env[key] ? '✅ Set' : '❌ Missing'));\"",
