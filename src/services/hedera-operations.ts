@@ -1,6 +1,7 @@
 import { Client, AccountId, PrivateKey, TokenCreateTransaction, TokenType, TokenSupplyType, Hbar, TransactionResponse, TransactionReceipt, TokenAssociateTransaction, TransferTransaction, TokenId, ContractCreateTransaction, ContractExecuteTransaction, FileCreateTransaction, FileAppendTransaction, TopicCreateTransaction, TopicMessageSubmitTransaction, TopicId } from '@hashgraph/sdk';
 import { logger } from '../utils/logger';
 import { EnvironmentValidator } from '../utils/environment-validator';
+import { InputSanitizer } from '../utils/input-sanitizer';
 import { HederaAgentKitService } from './hedera-agent-kit-service';
 
 /**
@@ -66,6 +67,18 @@ export interface TopicMessageOptions {
   topicId: string;
   message: string;
   submitKey?: string;
+}
+
+type InputCheck = { valid: boolean; error?: string };
+
+/**
+ * Throw before any SDK call if any input check failed.
+ */
+function assertValidInput(operation: string, checks: InputCheck[]): void {
+  const errors = checks.filter(check => !check.valid).map(check => check.error);
+  if (errors.length > 0) {
+    throw new Error(`Invalid ${operation} input:\n${errors.map(error => `  - ${error}`).join('\n')}`);
+  }
 }
 
 export class HederaOperationsService {
@@ -163,6 +176,13 @@ export class HederaOperationsService {
    * Create a new token using Agent Kit
    */
   async createToken(options: TokenCreationOptions): Promise<TokenOperationResult> {
+    const tokenInput = InputSanitizer.validateTokenCreation(options);
+    assertValidInput('token creation', [
+      ...tokenInput.errors.map(error => ({ valid: false, error })),
+      options.treasuryAccount ? InputSanitizer.validateAccountIdFormat(options.treasuryAccount) : { valid: true }
+    ]);
+    options = { ...options, ...tokenInput.sanitized };
+
     if (!this.initialized) {
       await this.initialize();
     }
@@ -355,6 +375,13 @@ export class HederaOperationsService {
    * Transfer tokens between accounts
    */
   async transferToken(options: TokenTransferOptions): Promise<TokenOperationResult> {
+    assertValidInput('token transfer', [
+      InputSanitizer.validateTokenIdFormat(options.tokenId),
+      InputSanitizer.validateAccountIdFormat(options.fromAccount),
+      InputSanitizer.validateAccountIdFormat(options.toAccount),
+      InputSanitizer.validateTransferAmount(options.amount)
+    ]);
+
     if (!this.initialized) {
       await this.initialize();
     }
@@ -439,6 +466,11 @@ export class HederaOperationsService {
    * Deploy a smart contract to Hedera network
    */
   async deploySmartContract(options: SmartContractOptions): Promise<TokenOperationResult> {
+    assertValidInput('contract deployment', [
+      InputSanitizer.validateGasLimit(options.gas),
+      InputSanitizer.validateOptionalAmount(options.initialBalance, 'Initial balance')
+    ]);
+
     if (!this.initialized) {
       await this.initialize();
     }
@@ -542,6 +574,12 @@ export class HederaOperationsService {
    * Call a smart contract function
    */
   async callSmartContract(options: ContractCallOptions): Promise<TokenOperationResult> {
+    assertValidInput('contract call', [
+      InputSanitizer.validateEntityIdFormat(options.contractId, 'contract ID'),
+      InputSanitizer.validateGasLimit(options.gas),
+      InputSanitizer.validateOptionalAmount(options.payableAmount, 'Payable amount')
+    ]);
+
     if (!this.initialized) {
       await this.initialize();
     }
@@ -718,6 +756,11 @@ export class HederaOperationsService {
    * Submit a message to an HCS topic
    */
   async submitTopicMessage(options: TopicMessageOptions): Promise<TokenOperationResult> {
+    assertValidInput('topic message', [
+      InputSanitizer.validateEntityIdFormat(options.topicId, 'topic ID'),
+      InputSanitizer.validateTopicMessage(options.message)
+    ]);
+
     if (!this.initialized) {
       await this.initialize();
     }

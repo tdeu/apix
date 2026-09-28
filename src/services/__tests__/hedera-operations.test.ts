@@ -33,8 +33,8 @@ describe('HederaOperationsService', () => {
       expect(result).toBeDefined();
     });
 
-    // SKIP(phase-3): createToken does not validate input (InputSanitizer not wired in); also only reachable via test-account fallback
-    it.skip('should validate token parameters', async () => {
+    it('should validate token parameters', async () => {
+      const initialize = jest.spyOn(service, 'initialize');
       const invalidOptions: TokenCreationOptions = {
         name: '', // Invalid: empty name
         symbol: 'TEST',
@@ -42,9 +42,8 @@ describe('HederaOperationsService', () => {
         initialSupply: 1000000
       };
 
-      // Should handle gracefully (currently no validation, but should add)
-      const result = await service.createToken(invalidOptions);
-      expect(result).toBeDefined();
+      await expect(service.createToken(invalidOptions)).rejects.toThrow('Token name is required');
+      expect(initialize).not.toHaveBeenCalled();
     });
 
     // SKIP(phase-3): asserts fake behaviour
@@ -217,9 +216,9 @@ describe('HederaOperationsService', () => {
     });
   });
 
-  describe('Input Validation (should be added)', () => {
-    // SKIP(phase-3): transferToken does not validate account ID format (InputSanitizer not wired in)
-    it.skip('should validate account ID format in transfers', async () => {
+  describe('Input Validation', () => {
+    it('should validate account ID format in transfers', async () => {
+      const initialize = jest.spyOn(service, 'initialize');
       const invalidOptions = {
         tokenId: '0.0.123',
         fromAccount: 'invalid-account',
@@ -227,13 +226,14 @@ describe('HederaOperationsService', () => {
         amount: 100
       };
 
-      // Currently no validation - should add this
-      const result = await service.transferToken(invalidOptions);
-      // After adding validation, this should fail with clear error
+      await expect(service.transferToken(invalidOptions)).rejects.toThrow(
+        'Invalid account ID format: "invalid-account"'
+      );
+      expect(initialize).not.toHaveBeenCalled();
     });
 
-    // SKIP(phase-3): createToken does not validate token symbol format (InputSanitizer not wired in)
-    it.skip('should validate token symbol format', async () => {
+    it('should validate token symbol format', async () => {
+      const initialize = jest.spyOn(service, 'initialize');
       const invalidOptions: TokenCreationOptions = {
         name: 'Test Token',
         symbol: 'invalid-symbol', // Should be uppercase, 2-6 chars
@@ -241,9 +241,8 @@ describe('HederaOperationsService', () => {
         initialSupply: 1000000
       };
 
-      // Currently no validation - should add this
-      const result = await service.createToken(invalidOptions);
-      // After adding validation, this should fail with clear error
+      await expect(service.createToken(invalidOptions)).rejects.toThrow('Token symbol must be at most 6 characters');
+      expect(initialize).not.toHaveBeenCalled();
     });
   });
 });
