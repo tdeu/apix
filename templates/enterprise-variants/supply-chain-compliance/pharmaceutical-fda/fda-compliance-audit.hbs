@@ -133,6 +133,9 @@ export class FDAComplianceAuditSystem {
 
       const receipt = await transaction.getReceipt(this.client);
       const sequenceNumber = receipt.topicSequenceNumber;
+      if (!sequenceNumber) {
+        throw new Error('Topic message receipt has no sequence number');
+      }
 
       // Store reference for FDA audit retrieval
       await this.storeAuditReference(record.recordId, sequenceNumber.toString());

@@ -110,6 +110,9 @@ export class OracleBasedClaimsAutomation {
 
       const fileReceipt = await fileTransaction.getReceipt(this.client);
       const bytecodeFileId = fileReceipt.fileId;
+      if (!bytecodeFileId) {
+        throw new Error('File creation receipt has no file ID');
+      }
 
       // Deploy smart contract
       const contractTransaction = await new ContractCreateTransaction()

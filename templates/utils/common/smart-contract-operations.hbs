@@ -149,11 +149,12 @@ export class SmartContractManager {
       }
 
       const response = await transaction.execute(this.client);
-      const receipt = await response.getReceipt(this.client);
+      // The function's return value is on the transaction record, not the receipt
+      const record = await response.getRecord(this.client);
 
       return {
         transactionId: response.transactionId.toString(),
-        result: receipt.contractFunctionResult
+        result: record.contractFunctionResult
       };
     } catch (error) {
       console.error('Error executing contract:', error);

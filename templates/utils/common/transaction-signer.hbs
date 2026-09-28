@@ -98,15 +98,15 @@ export class TransactionSigner {
       const txResponse = await signedTransaction.execute(this.client);
       const transactionId = txResponse.transactionId.toString();
 
-      // Get receipt
-      const receipt = await txResponse.getReceipt(this.client);
-      
+      // The record carries the receipt, the consensus timestamp and the fee charged
+      const record = await txResponse.getRecord(this.client);
+
       return {
         transactionId,
-        status: receipt.status.toString(),
-        receipt,
-        consensusTimestamp: receipt.consensusTimestamp?.toString(),
-        charged: txResponse.cost?.toString()
+        status: record.receipt.status.toString(),
+        receipt: record.receipt,
+        consensusTimestamp: record.consensusTimestamp.toDate().toISOString(),
+        charged: record.transactionFee.toString()
       };
 
     } catch (error) {
@@ -143,33 +143,15 @@ export class TransactionSigner {
   }
 
   /**
-   * Estimate transaction fee
+   * Upper bound on the fee: the transaction's max fee, or the client default.
+   * The SDK cannot estimate a transaction's fee in advance (only query costs).
    */
-  async estimateTransactionFee(
-    transaction: Transaction,
-    accountId?: string
-  ): Promise<Hbar> {
-    const connectionState = this.walletService.getConnectionState();
-    const operatorId = accountId || connectionState.account?.accountId;
-
-    if (!operatorId) {
-      throw new Error('No account ID available for fee estimation');
+  async estimateTransactionFee(transaction: Transaction): Promise<Hbar> {
+    const maxFee = transaction.maxTransactionFee ?? this.client.defaultMaxTransactionFee;
+    if (!maxFee) {
+      throw new Error('No max transaction fee is set on the transaction or the client');
     }
-
-    // Clone transaction to avoid modifying original
-    const clonedTx = transaction.toBytes();
-    const estimateTx = Transaction.fromBytes(clonedTx);
-
-    // Set operator for fee estimation
-    estimateTx.setTransactionId(TransactionId.generate(AccountId.fromString(operatorId)));
-    
-    if (!estimateTx.isFrozen()) {
-      estimateTx.freezeWith(this.client);
-    }
-
-    // Get cost estimate
-    const cost = await estimateTx.getCost(this.client);
-    return cost;
+    return maxFee;
   }
 
   /**
