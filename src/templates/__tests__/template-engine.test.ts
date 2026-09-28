@@ -1,7 +1,11 @@
 // src/templates/__tests__/template-engine.test.ts
 import { TemplateEngine, TemplateContext } from '../template-engine';
+import { modulePathMap } from '../../generation/module-paths';
 
 jest.mock('../../utils/logger');
+
+// Paths for the importFrom helper: a standard src/ app-router layout
+const MODULE_PATHS = modulePathMap({ sourceRoot: 'src', router: 'app', routesDir: 'src/app', importAlias: null });
 
 const SAMPLE_CONTEXTS: Record<string, TemplateContext> = {
   'next.js + typescript': {
@@ -59,8 +63,9 @@ describe('TemplateEngine', () => {
     it('renders every template without errors', async () => {
       const failures: string[] = [];
       for (const template of engine.listTemplates()) {
+        const outputPath = `src/${template.id}.ts`;
         try {
-          await engine.generateFile(template.id, context, `out/${template.id}`);
+          await engine.generateFile(template.id, { ...context, __outputPath: outputPath, __modulePaths: MODULE_PATHS }, outputPath);
         } catch (error) {
           failures.push(`${template.id}: ${error instanceof Error ? error.message.split('\n')[0] : error}`);
         }

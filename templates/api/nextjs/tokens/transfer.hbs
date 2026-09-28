@@ -1,8 +1,8 @@
 {{!-- META: {"name": "Token Transfer API Route", "description": "Next.js API route for token transfers", "language": "typescript"} --}}
 {{#ifLanguage language "typescript"}}// pages/api/tokens/transfer.ts or app/api/tokens/transfer/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { htsManager } from '@/lib/hedera/hts-operations';
-import { TransferTokenParams } from '@/types/hedera';
+import { htsManager } from '{{importFrom "hts-operations"}}';
+import { TransferTokenParams } from '{{importFrom "hedera-types"}}';
 
 export async function POST(request: NextRequest) {
   try {
@@ -127,7 +127,7 @@ export default async function handler(req: any, res: any) {
   }
 }
 {{else}}// pages/api/tokens/transfer.js
-const { htsManager } = require('@/lib/hedera/hts-operations');
+const { htsManager } = require('{{importFrom "hts-operations"}}');
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

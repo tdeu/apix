@@ -1,6 +1,6 @@
 {{!-- META: {"name": "Wallet Connect Component", "description": "React component for connecting Hedera wallets", "language": "typescript"} --}}
 {{#ifLanguage language "typescript"}}import React, { useState, useCallback } from 'react';
-import { useWallet } from '../hooks/useWallet';
+import { useWallet } from '{{importFrom "use-wallet"}}';
 
 interface WalletConnectProps {
   className?: string;
@@ -12,7 +12,7 @@ export const WalletConnect: React.FC<WalletConnectProps> = ({
   onConnectionChange 
 }) => {
 {{else}}import React, { useState, useCallback } from 'react';
-import { useWallet } from '../hooks/useWallet';
+import { useWallet } from '{{importFrom "use-wallet"}}';
 
 export const WalletConnect = ({ className = '', onConnectionChange }) => {
 {{/ifLanguage}}

@@ -4,6 +4,7 @@ import path from 'path';
 import { SupportedFramework, ProjectContext, TemplateSelection, GeneratedFile } from '../types';
 import { logger } from '../utils/logger';
 import { debugLogger } from '../utils/debug-logger';
+import { relativeImport } from '../generation/module-paths';
 
 export interface TemplateContext {
   projectName: string;
@@ -55,6 +56,21 @@ export class TemplateEngine {
     // Helper for conditional logic based on framework
     this.handlebars.registerHelper('ifFramework', function(this: any, framework: string, expected: string, options: any) {
       return framework === expected ? options.fn(this) : options.inverse(this);
+    });
+
+    // Relative import from the file being generated to another generated
+    // module, by logical id (see src/generation/module-paths.ts):
+    //   import { htsManager } from '{{importFrom "hts-operations"}}';
+    this.handlebars.registerHelper('importFrom', function(moduleId: string, options: Handlebars.HelperOptions) {
+      const root = options.data?.root ?? {};
+      const target = root.__modulePaths?.[moduleId];
+      if (!root.__outputPath || !target) {
+        throw new Error(
+          `importFrom "${moduleId}": ${!root.__outputPath ? '__outputPath' : `module "${moduleId}"`} ` +
+          'is not in the template context'
+        );
+      }
+      return relativeImport(root.__outputPath, target);
     });
 
     // Block helper comparing a value, e.g. {{#ifEquals quotesStyle 'single'}}...{{else}}...{{/ifEquals}}

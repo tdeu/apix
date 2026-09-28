@@ -11,7 +11,7 @@ import {
   TokenOperationResult,
   TransactionResult,
   UseTokensReturn 
-} from '@/types/hedera';
+} from '{{importFrom "hedera-types"}}';
 
 export const useTokens = (): UseTokensReturn => {
   const [isLoading, setIsLoading] = useState(false);

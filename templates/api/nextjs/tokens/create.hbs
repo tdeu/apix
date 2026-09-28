@@ -1,8 +1,8 @@
 {{!-- META: {"name": "Token Create API Route", "description": "Next.js API route for token creation", "language": "typescript"} --}}
 {{#ifLanguage language "typescript"}}// pages/api/tokens/create.ts or app/api/tokens/create/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { htsManager } from '@/lib/hedera/hts-operations';
-import { CreateTokenParams } from '@/types/hedera';
+import { htsManager } from '{{importFrom "hts-operations"}}';
+import { CreateTokenParams } from '{{importFrom "hedera-types"}}';
 
 export async function POST(request: NextRequest) {
   try {
@@ -90,7 +90,7 @@ export default async function handler(req: any, res: any) {
   }
 }
 {{else}}// pages/api/tokens/create.js
-const { htsManager } = require('@/lib/hedera/hts-operations');
+const { htsManager } = require('{{importFrom "hts-operations"}}');
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

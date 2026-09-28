@@ -1,8 +1,8 @@
 {{!-- META: {"name": "Transaction Status Component", "description": "React component for displaying transaction status and details", "language": "typescript"} --}}
 {{#ifLanguage language "typescript"}}import React, { useState } from 'react';
-import { TransactionResult } from '@/types/hedera';
-import { Button } from './ui/Button';
-import { Card } from './ui/Card';
+import { TransactionResult } from '{{importFrom "hedera-types"}}';
+import { Button } from '{{importFrom "ui-button"}}';
+import { Card } from '{{importFrom "ui-card"}}';
 
 interface TransactionStatusProps {
   transaction?: TransactionResult;

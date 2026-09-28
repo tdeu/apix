@@ -16,6 +16,8 @@ import {
   } from '../types';
   import { logger } from '../utils/logger';
   import { HEDERA_SDK_VERSION_RANGE } from '../generation/dependency-versions';
+  import { detectProjectLayout, ProjectLayout } from '../analysis/project-layout';
+  import { apiRouteFile, moduleFile } from '../generation/module-paths';
   
   export class IntegrationPlanner {
     
@@ -80,7 +82,8 @@ import {
         dependencies: [],
         newFiles: [],
         modifications: [],
-        configuration: []
+        configuration: [],
+        layout: await detectProjectLayout(context.rootPath, context.framework)
       };
 
       let resultPlan: IntegrationPlan;
@@ -300,7 +303,7 @@ import {
       plan.dependencies = ['@hashgraph/sdk'];
       
       // Select templates based on framework
-      plan.templates = this.selectHTSTemplates(context.framework, htsConfig);
+      plan.templates = this.selectHTSTemplates(context.framework, htsConfig, plan.layout!);
 
       // Set output files based on templates
       plan.newFiles = plan.templates.map(t => ({
@@ -328,7 +331,7 @@ import {
           templateId: 'utils/common/wallet-service',
           templateType: 'utility',
           framework: plan.context.framework as any,
-          outputPath: 'lib/hedera/wallet-service.ts',
+          outputPath: moduleFile(plan.layout!, 'wallet-service', '.ts'),
           variables: {
             network: 'testnet',
             walletTypes: ['hashpack', 'blade']
@@ -341,7 +344,7 @@ import {
           templateId: 'hooks/react/useWallet',
           templateType: 'hook',
           framework: 'next.js',
-          outputPath: 'hooks/useWallet.ts',
+          outputPath: moduleFile(plan.layout!, 'use-wallet', '.ts'),
           variables: { network: 'testnet' }
         });
 
@@ -349,20 +352,22 @@ import {
           templateId: 'components/react/WalletConnect',
           templateType: 'component',
           framework: 'next.js',
-          outputPath: 'components/WalletConnect.tsx',
+          outputPath: moduleFile(plan.layout!, 'wallet-connect', '.tsx'),
           variables: { network: 'testnet' }
         });
       }
 
-      plan.newFiles = [
-        {
-          path: 'lib/hedera/wallet-service.ts',
-          content: '// Wallet service placeholder',
-          type: 'typescript',
-          overwrite: false
-        }
-      ];
+      plan.newFiles = this.newFilesFor(plan.templates);
       return plan;
+    }
+
+    private newFilesFor(templates: TemplateSelection[]): GeneratedFile[] {
+      return templates.map(t => ({
+        path: t.outputPath,
+        content: '', // Filled by the template engine
+        type: 'typescript',
+        overwrite: false
+      }));
     }
 
     private async createSmartContractPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
@@ -372,7 +377,7 @@ import {
           templateId: 'utils/common/smart-contract-operations',
           templateType: 'utility',
           framework: plan.context.framework as any,
-          outputPath: 'lib/hedera/smart-contract-operations.ts',
+          outputPath: moduleFile(plan.layout!, 'smart-contract-operations', '.ts'),
           variables: {
             network: 'testnet',
             contractLanguage: 'solidity'
@@ -381,14 +386,7 @@ import {
       ];
 
       plan.dependencies.push('@hashgraph/sdk');
-      plan.newFiles = [
-        {
-          path: 'lib/hedera/smart-contract-operations.ts',
-          content: '// Smart contract operations placeholder',
-          type: 'typescript',
-          overwrite: false
-        }
-      ];
+      plan.newFiles = this.newFilesFor(plan.templates);
       return plan;
     }
 
@@ -429,18 +427,18 @@ import {
     // TODO: These methods are temporarily disabled due to syntax issues
     // They will be re-enabled once the structural problems are resolved
 
-    private selectHTSTemplates(framework: string, config: HTSConfiguration): TemplateSelection[] {
+    private selectHTSTemplates(framework: string, config: HTSConfiguration, layout: ProjectLayout): TemplateSelection[] {
       const templates: TemplateSelection[] = [];
-      
+
       // Core HTS utility template
       templates.push({
         templateId: 'utils/common/hts-operations',
         templateType: 'utility',
         framework: framework as any,
-        outputPath: 'lib/hedera/hts-operations.ts',
+        outputPath: moduleFile(layout, 'hts-operations', '.ts'),
         variables: { ...config }
       });
-      
+
       // Framework-specific templates
       switch (framework) {
         case 'next.js':
@@ -449,46 +447,46 @@ import {
               templateId: 'api/nextjs/tokens/create',
               templateType: 'api',
               framework: 'next.js',
-              outputPath: 'app/api/tokens/create/route.ts',
+              outputPath: apiRouteFile(layout, 'tokens/create'),
               variables: { tokenName: config.name, symbol: config.symbol }
             },
             {
               templateId: 'api/nextjs/tokens/info',
               templateType: 'api',
               framework: 'next.js',
-              outputPath: 'app/api/tokens/info/route.ts',
+              outputPath: apiRouteFile(layout, 'tokens/info'),
               variables: { tokenName: config.name, symbol: config.symbol }
             },
             {
               templateId: 'components/react/TokenManager',
               templateType: 'component',
               framework: 'next.js',
-              outputPath: 'components/TokenManager.tsx',
+              outputPath: moduleFile(layout, 'token-manager', '.tsx'),
               variables: { ...config }
             }
           );
           break;
-          
+
         case 'react':
           templates.push(
             {
               templateId: 'hooks/react/useTokenOperations',
               templateType: 'hook',
               framework: 'react',
-              outputPath: 'hooks/useTokenOperations.ts',
+              outputPath: moduleFile(layout, 'use-token-operations', '.ts'),
               variables: { ...config }
             },
             {
               templateId: 'components/react/TokenManager',
               templateType: 'component',
               framework: 'react',
-              outputPath: 'components/TokenManager.tsx',
+              outputPath: moduleFile(layout, 'token-manager', '.tsx'),
               variables: { ...config }
             }
           );
           break;
       }
-      
+
       return templates;
     }
   

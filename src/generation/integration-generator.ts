@@ -3,7 +3,9 @@ import path from 'path';
 import { ProjectContext, IntegrationPlan, GeneratedFile, TemplateSelection, ConfigurationUpdate } from '../types';
 import { TemplateEngine } from '../templates/template-engine';
 import { generatedDependencyVersion } from './dependency-versions';
-import { PackageManager } from '../utils/package-manager';
+import { modulePathMap } from './module-paths';
+import { detectProjectLayout } from '../analysis/project-layout';
+import { PackageManager, Dependency } from '../utils/package-manager';
 import { logger } from '../utils/logger';
 
 export interface GenerationResult {
@@ -45,8 +47,30 @@ export class IntegrationGenerator {
     try {
       // Initialize package manager for this project
       this.packageManager = new PackageManager(context.rootPath);
-      
-      // Step 1: Install dependencies
+
+      // Step 1: Render every file in memory first, so a template error
+      // leaves the project untouched
+      logger.info(`Generating ${plan.templates.length} files from templates...`);
+
+      // Use the template engine's helper to create proper context
+      const baseContext = this.templateEngine.createContextFromProject(context, plan.options);
+      const layout = plan.layout ?? await detectProjectLayout(context.rootPath, context.framework);
+      const templateContext = {
+        ...baseContext,
+        hederaNetwork: 'testnet' as const, // Override to ensure testnet
+        __modulePaths: modulePathMap(layout)
+      };
+
+      const rendered: GeneratedFile[] = [];
+      for (const selection of plan.templates) {
+        rendered.push(await this.templateEngine.generateFile(
+          selection.templateId,
+          { ...templateContext, __outputPath: selection.outputPath },
+          selection.outputPath
+        ));
+      }
+
+      // Step 2: Install dependencies
       if (plan.dependencies.length > 0) {
         logger.info(`Installing ${plan.dependencies.length} dependencies...`);
         // Convert string array to dependency objects
@@ -55,43 +79,19 @@ export class IntegrationGenerator {
           version: generatedDependencyVersion(dep),
           type: 'dependencies' as const
         }));
-        await this.packageManager.addDependencies(deps);
+        await this.addDependenciesOrRestore(context.rootPath, deps);
         result.installedDependencies = plan.dependencies;
         logger.success('✅ Dependencies installed successfully');
       }
 
-      // Step 2: Generate files from templates
-      logger.info(`Generating ${plan.templates.length} files from templates...`);
-      
-      // Use the template engine's helper to create proper context
-      const baseContext = this.templateEngine.createContextFromProject(context, plan.options);
-      const templateContext = {
-        ...baseContext,
-        hederaNetwork: 'testnet' as const // Override to ensure testnet
-      };
-
-      let generatedCount = 0;
-      for (const selection of plan.templates) {
-        generatedCount++;
-        logger.info(`📝 Generating ${generatedCount}/${plan.templates.length}: ${selection.outputPath}`);
-        try {
-          const generatedFile = await this.templateEngine.generateFile(
-            selection.templateId,
-            templateContext,
-            selection.outputPath
-          );
-          
-          // Actually write the file to disk
-          const fullPath = path.join(context.rootPath, generatedFile.path);
-          await fs.ensureDir(path.dirname(fullPath));
-          await fs.writeFile(fullPath, generatedFile.content, 'utf8');
-          logger.success(`✅ Generated: ${selection.outputPath}`);
-          
-          result.generatedFiles.push(generatedFile);
-        } catch (error) {
-          logger.error(`❌ Failed to generate ${selection.outputPath}:`, error);
-          throw error;
-        }
+      // Step 3: Write the rendered files
+      for (const [index, generatedFile] of rendered.entries()) {
+        logger.info(`📝 Writing ${index + 1}/${rendered.length}: ${generatedFile.path}`);
+        const fullPath = path.join(context.rootPath, generatedFile.path);
+        await fs.ensureDir(path.dirname(fullPath));
+        await fs.writeFile(fullPath, generatedFile.content, 'utf8');
+        logger.success(`✅ Generated: ${generatedFile.path}`);
+        result.generatedFiles.push(generatedFile);
       }
 
       // Step 3: Apply configuration updates
@@ -118,6 +118,30 @@ export class IntegrationGenerator {
 
     } catch (error) {
       logger.error('Integration generation failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add dependencies and run the install. If that fails, put package.json and
+   * the lockfile back as they were before rethrowing.
+   */
+  private async addDependenciesOrRestore(rootPath: string, deps: Dependency[]): Promise<void> {
+    const saved: Array<[string, string | null]> = [];
+    for (const name of ['package.json', 'package-lock.json']) {
+      const file = path.join(rootPath, name);
+      saved.push([file, await fs.pathExists(file) ? await fs.readFile(file, 'utf8') : null]);
+    }
+    try {
+      await this.packageManager.addDependencies(deps);
+    } catch (error) {
+      for (const [file, content] of saved) {
+        if (content === null) {
+          await fs.remove(file);
+        } else {
+          await fs.writeFile(file, content, 'utf8');
+        }
+      }
       throw error;
     }
   }

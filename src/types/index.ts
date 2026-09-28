@@ -1,4 +1,5 @@
 // Core Type Definitions
+import type { ProjectLayout } from '../analysis/project-layout';
 
 // CLI Command Options
 export interface AnalysisOptions {
@@ -100,6 +101,8 @@ export interface IntegrationPlan {
   newFiles: GeneratedFile[];
   modifications: FileModification[];
   configuration: ConfigurationUpdate[];
+  /** Project layout the output paths were computed for (set by the planner) */
+  layout?: ProjectLayout;
 }
 
 export interface TemplateSelection {

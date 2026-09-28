@@ -20,6 +20,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import { TemplateEngine, TemplateContext } from '../src/templates/template-engine';
+import { modulePathMap } from '../src/generation/module-paths';
 import { IntegrationPlanner } from '../src/planning/integration-planner';
 import { IntegrationGenerator } from '../src/generation/integration-generator';
 import { PackageManager } from '../src/utils/package-manager';
@@ -27,6 +28,9 @@ import { logger, LogLevel } from '../src/utils/logger';
 import { IntegrationOptions, ProjectContext, SupportedFramework } from '../src/types';
 
 const INTEGRATION_TYPES = ['hts', 'wallet', 'smart-contract', 'consensus'];
+
+// Module paths for rendering templates on their own: a standard src/ layout
+const MODULE_PATHS = modulePathMap({ sourceRoot: 'src', router: 'app', routesDir: 'src/app', importAlias: null });
 
 const SAMPLE_OPTIONS: IntegrationOptions = { name: 'SnapshotToken', symbol: 'SNAP' };
 
@@ -119,7 +123,9 @@ async function snapshotTemplates(outDir: string): Promise<number> {
       const target = path.join(outDir, 'templates', name, template.id);
       await fs.ensureDir(path.dirname(target));
       try {
-        const file = await engine.generateFile(template.id, context, template.id);
+        // importFrom needs the file's own path and the module map (src/ layout)
+        const outputPath = `src/${template.id}.ts`;
+        const file = await engine.generateFile(template.id, { ...context, __outputPath: outputPath, __modulePaths: MODULE_PATHS }, outputPath);
         await fs.writeFile(`${target}.out`, file.content, 'utf8');
       } catch (error) {
         await fs.writeFile(`${target}.error`, errorText(error), 'utf8');
