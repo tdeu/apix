@@ -68,26 +68,24 @@ refactor.
   - `add hts` / `add smart-contract` (Next.js) generate every module they
     import; lazy client, `server-only`, `'use client'` (1f3012c).
   - Templates match @hashgraph/sdk 2.80; sdk-compat test (f532214).
-  - e2e (Next.js 16.3.6, no .env): baseline and hts pass install + type
-    check + build. smart-contract passes type check + build in a local
-    sandbox; its harness run is still pending (memory).
+  - e2e (Next.js 16.3.6, no .env): baseline, hts and smart-contract pass
+    install + type check + build.
 - Found in Phase 3a, not fixed (outside its scope or needs a decision):
-  - [blocker-2.1] `apix add consensus` fails: the planner uses
-    `utils/common/consensus-operations`, which doesn't exist. `apix add
-    account` generates nothing but reports success. Both are listed as
-    supported integration types.
+  - [done 3c] `apix add consensus` generates a working HCS integration
+    (1d278d3); `apix add account` is refused, "not available in this
+    version" (3a3432a; implementing it is post-2.1).
   - [2.1-nice] IntegrationGenerator ignores `TemplateSelection.variables`, so
     per-template planner variables (e.g. `walletTypes`) never reach the
     templates.
   - [2.1-nice] Generated wallet-service still lists `'metamask'` as a provider
     with no adapter (only HashPack and Blade are implemented).
-  - [blocker-2.1] `add` prints next steps for a README and tests that are never
-    generated (seen by everyone running the demo).
+  - [done 3c] Next steps list only what was generated (f31e665).
   - [2.1-nice] `validate` only checks local configuration (no network call; it
     now says so). `--testnet`/`--mainnet` are ignored (network comes from
     HEDERA_NETWORK), and `--enterprise/--performance/--security/--compliance`
     do nothing (now printed as not implemented). Decide: implement or remove.
-  - [2.1-nice] `createToken` ignores `treasuryAccount` (always the operator).
+  - [2.1-nice] APIX's own HederaOperationsService (src/services, not the
+    templates): `createToken` ignores `treasuryAccount` (always the operator).
     `deploySmartContract` doesn't validate bytecode: decide the expected format
     first (`InputSanitizer.validateBytecode` wants a `0x` prefix, but the raw
     string goes to `FileCreateTransaction.setContents`). `createTopic`
@@ -102,28 +100,19 @@ refactor.
     Phase 5.
 
 - Found in Phase 3c step 2, not fixed:
-  - [blocker-2.1] Generated `deployERC20Token()` in
-    `smart-contract-operations.hbs` deploys placeholder bytecode
-    ("0x6080...", commented "Placeholder bytecode"): fake behaviour shipped
-    to users. Remove it or take real bytecode as input. S.
-  - [blocker-2.1] JavaScript projects: the planner always writes `.ts`/`.tsx`
-    files, but renders the templates' JavaScript branches into them, and the
-    JS branches of hts-operations / smart-contract-operations are stubs with
-    empty methods ("Simplified for brevity"). Decide: refuse JS projects with
-    a clear error (S) or support them (L).
-  - [2.1-nice] TokenManager passes the connected wallet's account as
-    `treasuryAccountId` / `fromAccountId`, but the routes sign with the
-    server's operator key, so transfers from a wallet account will fail.
-    Decide the model: operator-only, or wallet-signed transactions. M.
-  - [2.1-nice] `hedera-client` passes HEDERA_MIRROR_NODE_URL to
-    `setMirrorNetwork()`, which expects a gRPC `host:port`, while
-    `.env.example` has an https URL. S.
+  - [done 3c] deployERC20Token() and all hard-coded bytecode removed; contract
+    helpers take validated bytecode (57d1c50).
+  - [done 3c] JavaScript projects are refused, "TypeScript projects only"
+    (3a3432a); supporting them is post-2.1.
+  - [done 3c] TokenManager/routes: the operator is treasury and sender; the
+    wallet is only shown and used as recipient (1dffb08).
+  - [done 3c] https mirror node URLs are converted to host:443 (1dffb08).
   - [2.1-nice] `lib/hedera/{hts,smart-contract}-operations.ts` at the repo root
     are generated files committed by accident in 1aa9b5c (not compiled;
     tsconfig only includes src/). Delete. S.
-  - [2.1-nice] `apix add hts` refuses Next.js Pages Router projects (the route
-    templates are App Router only). Decide whether 2.1 needs Pages Router
-    routes. M.
+  - [post-2.1] Pages Router: `add hts` and `add consensus` are refused cleanly
+    (their routes are App Router only); wallet and smart-contract work. Pages
+    Router API routes would be new templates. M.
   - [post-2.1] Token burn, associate and balances: hooks + routes were cut from
     useTokens (only create/info/mint/transfer are generated).
   - [post-2.1] Unused templates still use `@/` imports or APIs that don't match
@@ -131,6 +120,22 @@ refactor.
     useTokensWithWallet, MobileWalletInterface, WalletConnectionModal,
     WalletConnectV2, TokenManagerEnhanced, api/adaptive, hts-wallet-operations,
     transaction-signer. Delete or wire up.
+- Found in Phase 3c step 3, not fixed:
+  - [2.1-nice] The validator's "template-conflicts" warning counts files that
+    are byte-identical to what would be generated (the generator now skips
+    those), so it overstates conflicts. S.
+  - [2.1-nice] Existing-integration detection (project-analyzer) only looks at
+    root paths (components/, lib/), so it never fires for src/ projects; the
+    overwrite check is what protects files there. Align it with the
+    detected layout or drop it. S.
+  - [2.1-nice] Decide what `apix add` does on frameworks other than Next.js and
+    React/Vite (Vue, Angular, Express, plain Node, unknown): today they are
+    not refused and get lib/ files without routes. S to refuse, M+ to support.
+  - [2.1-nice] The e2e CI job (ci.yml) and the nightly workflow have not run on
+    GitHub yet; check the first PR run (timing, npm cache, artifact).
+  - [2.1-nice] When `apix add` runs `npm install` and it fails, the user only
+    sees "Command failed: npm install": PackageManager captures npm's output
+    and drops it. Show npm's error (at least the last lines). S.
 
 ## Phase 4
 
