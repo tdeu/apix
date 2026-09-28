@@ -154,7 +154,8 @@ export class IntegrationGenerator {
       // await this.generateDocumentation(plan, context, result);
       
       // Step 5: Generate next steps
-      result.nextSteps = this.generateNextSteps(plan, context, result);
+      // From everything this integration produced, written now or already present
+      result.nextSteps = this.generateNextSteps(rendered);
 
       logger.success(`🎉 Integration completed! Generated ${result.generatedFiles.length} files`);
       return result;
@@ -287,46 +288,44 @@ export class IntegrationGenerator {
     await fs.writeJSON(filePath, packageJson, { spaces: 2 });
   }
 
-  private generateNextSteps(
-    plan: IntegrationPlan,
-    context: ProjectContext,
-    result: GenerationResult
-  ): string[] {
+  /**
+   * Next steps built only from the files this integration produced (written
+   * or already up to date) and the environment variables they need.
+   */
+  private generateNextSteps(files: GeneratedFile[]): string[] {
     const steps: string[] = [];
+    const paths = files.map(file => file.path.split(/[\\/]/).join('/'));
 
-    // Basic next steps based on integration type
-    if (plan.type === 'hts') {
-      steps.push('🎯 Your HTS integration is ready!');
-      steps.push('📝 Update your Hedera account credentials in .env.local');
-      steps.push('🚀 Start your development server: npm run dev');
-      steps.push('🔗 Import and use the HTSManager in your components');
-      
-      if (result.generatedFiles.some(f => f.path.includes('TokenManager'))) {
-        steps.push('📦 Use the TokenManager component in your app');
-      }
+    // Server modules read the operator credentials at runtime
+    if (files.some(file => file.content.includes('HEDERA_PRIVATE_KEY'))) {
+      steps.push(
+        'Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY in .env.local (server-side only, never NEXT_PUBLIC_). ' +
+        'Get a free testnet account at https://portal.hedera.com/faucet'
+      );
     }
 
-    if (plan.type === 'wallet') {
-      steps.push('🎯 Your wallet integration is ready!');
-      steps.push('📱 Wrap your app with WalletProvider');
-      steps.push('🔌 Use the WalletConnect component');
-      steps.push('🔧 Test with HashPack wallet extension');
+    // API routes, with the HTTP methods they actually export
+    for (const file of files) {
+      const match = file.path.split(/[\\/]/).join('/').match(/(?:^|\/)app(\/api\/.*)\/route\.ts$/);
+      if (!match) continue;
+      const methods = Array.from(file.content.matchAll(/export async function (GET|POST|PUT|PATCH|DELETE)\b/g)).map(m => m[1]);
+      steps.push(`API route: ${methods.join(', ') || 'route'} ${match[1]}`);
     }
 
-    // Framework-specific steps
-    if (context.framework === 'next.js') {
-      steps.push('📁 Check the generated API routes in /api');
-      steps.push('🎨 Import components in your pages');
+    // Top-level components (not the small building blocks under components/hedera/)
+    for (const path of paths.filter(p => /\/components\/[^/]+\.tsx$/.test(p))) {
+      const name = path.slice(path.lastIndexOf('/') + 1, -'.tsx'.length);
+      steps.push(`Render <${name} /> (${path}) from a page`);
     }
 
-    // General steps
-    steps.push('📚 Read the generated README.md for detailed usage');
-    steps.push('🧪 Run tests to ensure everything works');
-    steps.push('🔍 Check the generated TypeScript definitions');
+    // Server-side helpers you can import from your own route handlers
+    for (const path of paths.filter(p => /\/lib\/hedera\/[^/]+-operations\.ts$/.test(p))) {
+      steps.push(`Server-side helpers: ${path}`);
+    }
 
+    steps.push('Start the dev server: npm run dev');
     return steps;
   }
-
   async generateFromTemplate(
     templateId: string,
     parameters: Record<string, any>,
