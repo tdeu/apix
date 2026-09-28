@@ -78,7 +78,7 @@ describe('generated consensus-operations', () => {
     }
 
     // Importing must not need credentials
-    mod = require(path.join(root, 'src/lib/hedera/consensus-operations.js'));
+    mod = jest.requireActual(path.join(root, 'src/lib/hedera/consensus-operations.js'));
   }, 120_000);
 
   afterAll(async () => {
@@ -117,7 +117,7 @@ describe('generated consensus-operations', () => {
     process.env.HEDERA_ACCOUNT_ID = '0.0.1234';
     process.env.HEDERA_PRIVATE_KEY = PrivateKey.generateED25519().toStringDer();
     process.env.HEDERA_MIRROR_NODE_URL = 'https://testnet.mirrornode.hedera.com';
-    const { createDefaultClient } = require(path.join(root, 'src/lib/hedera/client.js'));
+    const { createDefaultClient } = jest.requireActual(path.join(root, 'src/lib/hedera/client.js'));
     const client = createDefaultClient();
     try {
       expect(client.getClient().mirrorNetwork).toEqual(['testnet.mirrornode.hedera.com:443']);

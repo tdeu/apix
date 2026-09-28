@@ -95,12 +95,15 @@ export class OracleBasedClaimsAutomation {
   }
 
   /**
-   * Deploy smart contract for automated claims processing
+   * Deploy your compiled claims contract (0x-prefixed hex bytecode, e.g. from
+   * solc or Hardhat). APIX does not ship contract bytecode.
    */
-  async deployClaimsContract(): Promise<ContractId> {
+  async deployClaimsContract(bytecode: string): Promise<ContractId> {
     try {
-      // Smart contract bytecode (Solidity compiled)
-      const contractBytecode = this.getClaimsContractBytecode();
+      if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(bytecode.trim())) {
+        throw new Error('Bytecode must be a non-empty, even-length hex string starting with "0x"');
+      }
+      const contractBytecode = bytecode.trim().slice(2);
       
       // Create file for contract bytecode
       const fileTransaction = await new FileCreateTransaction()
@@ -468,11 +471,6 @@ export class OracleBasedClaimsAutomation {
   private startOracleMonitoring(policy: InsurancePolicy): void {
     // Start background monitoring for policy triggers
     console.log(`Started oracle monitoring for policy: ${policy.policyId}`);
-  }
-
-  private getClaimsContractBytecode(): string {
-    // Return compiled Solidity contract bytecode
-    return '0x608060405234801561001057600080fd5b5061001a3361001f565b61006f565b600080546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b610e738061007e6000396000f3fe608060405234801561001057600080fd5b50600436106100365760003560e01c8063715018a61461003b5780638da5cb5b14610045575b600080fd5b610043610059565b005b61004d6100cd565b6040516100569190610136565b60405180910390f35b6100616100dc565b73ffffffffffffffffffffffffffffffffffffffff81163381146100ca576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016100c190610175565b60405180910390fd5b50565b60005473ffffffffffffffffffffffffffffffffffffffff1690565b60005473ffffffffffffffffffffffffffffffffffffffff163314610123576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161011a906101b5565b60405180910390fd5b50565b73ffffffffffffffffffffffffffffffffffffffff1690565b6000602082019050610151600083018461012a565b92915050565b7f4f776e61626c653a2063616c6c6572206973206e6f7420746865206f776e6572600082015250565b600061018d602083610157565b9150610198826101f5565b602082019050919050565b600060208201905081810360008301526101bc81610180565b9050919050565b7f4f776e61626c653a206e6577206f776e657220697320746865207a65726f206160008201527f6464726573730000000000000000000000000000000000000000000000000000602082015250565b6000610220602683610157565b915061022b826101c3565b604082019050919050565b6000602082019050818103600083015261024f81610213565b905091905056fea2646970667358221220c4b1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e1b1e164736f6c63430008070033';
   }
 }
 
