@@ -7,6 +7,7 @@ import { program } from 'commander';
 import chalk from 'chalk';
 import { APIxCLI } from './cli-core';
 import { HealthChecker } from '../validation/health-checker';
+import { describeIntegrations, normalizeIntegration } from '../planning/integration-types';
 import { logger, LogLevel } from '../utils/logger';
 import { debugLogger, LogLevel as DebugLogLevel } from '../utils/debug-logger';
 import { formatter, createFormatter } from '../utils/output-formatter';
@@ -160,14 +161,17 @@ program
 
 program
   .command('add <integration>')
-  .description('Add Hedera integration to your project')
+  .description(`Add a Hedera integration to your project: ${describeIntegrations()}`)
+  .addHelpText('after', `\nIntegrations: ${describeIntegrations()}\nNext.js App Router + TypeScript only in this version.`)
   .option('-n, --name <n>', 'Integration name')
   .option('-s, --symbol <symbol>', 'Token symbol (for HTS)')
   .option('-p, --provider <provider>', 'Wallet provider')
   .option('-t, --type <type>', 'Contract type')
   .option('-f, --force', 'Force overwrite existing files')
   .option('--create-token', 'HTS only: also create the token on Hedera (needs HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY)')
-  .action(async (integration, options) => {
+  .action(async (rawIntegration, options) => {
+    // The one place aliases (hcs, contract) become canonical names
+    const integration = normalizeIntegration(rawIntegration);
     const globalOptions = program.opts();
     const allOptions = { ...options, ...globalOptions };
 

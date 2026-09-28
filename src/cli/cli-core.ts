@@ -14,6 +14,7 @@ import { IntegrationOptions, AnalysisOptions, ProjectContext } from '../types';
 import { hederaOperations, TokenCreationOptions } from '../services/hedera-operations';
 import { EnvironmentValidator } from '../utils/environment-validator';
 import { checkIntegrationSupport } from '../planning/support-policy';
+import { INTEGRATION_TYPES, describeIntegrations } from '../planning/integration-types';
 import { EnterpriseClassifier } from '../ai/classifiers/enterprise-classifier';
 import { ConversationEngine } from '../ai/conversation/conversation-engine';
 import { AICodeCompositionEngine } from '../ai/composition/ai-code-composition-engine';
@@ -194,9 +195,9 @@ export class APIxCLI {
     if (!this.isValidIntegration(integration)) {
       debugLogger.error('Invalid integration type', undefined, {
         integration,
-        validTypes: ['hts', 'wallet', 'smart-contract', 'hcs']
+        validTypes: INTEGRATION_TYPES
       });
-      throw new Error(`Unknown integration type: ${integration}`);
+      throw new Error(`Unknown integration type: ${integration}. Available: ${describeIntegrations()}`);
     }
 
     // Refuse unsupported integrations before anything is written
@@ -670,13 +671,14 @@ export class APIxCLI {
     }]);
 
     if (selectedAction !== 'exit') {
-      const command = selectedAction === 'token' ? 'hts' : 
-                     selectedAction === 'consensus' ? 'hcs' :
-                     selectedAction === 'smart-contract' ? 'smart-contract' :
-                     selectedAction === 'account' ? 'account' : selectedAction;
-      
-      console.log(chalk.cyan(`\n🚀 Run: apix add ${command}`));
-      console.log(chalk.gray('   This will generate the integration files and setup code for your project.'));
+      const command = selectedAction === 'token' ? 'hts' : selectedAction;
+
+      if (command === 'account') {
+        console.log(chalk.yellow('\n`apix add account` is not available in this version.'));
+      } else {
+        console.log(chalk.cyan(`\n🚀 Run: apix add ${command}`));
+        console.log(chalk.gray('   This will generate the integration files and setup code for your project.'));
+      }
     }
   }
 
@@ -701,9 +703,9 @@ export class APIxCLI {
     ]);
   }
 
+  // Aliases (hcs, contract) are mapped when the command is parsed (cli/index.ts)
   private isValidIntegration(integration: string): boolean {
-    const validIntegrations = ['hts', 'wallet', 'smart-contract', 'hcs', 'contract', 'consensus', 'account'];
-    return validIntegrations.includes(integration);
+    return (INTEGRATION_TYPES as readonly string[]).includes(integration);
   }
 
   private showNextSteps(plan: any): void {
