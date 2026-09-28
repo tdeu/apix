@@ -183,5 +183,15 @@ refactor.
   (`templates/utils/common/wallet-service.hbs`, `templates/types/hedera-types.hbs`),
   `src/types` and the planner/validator provider lists because no template
   implemented it.
+- [post-2.1] `apix add account`: refused in 2.1 ("not available in this
+  version"). Implementing it means an AccountCreateTransaction utility and a
+  server route (M).
+- [post-2.1] JavaScript projects: every integration is refused in 2.1
+  ("TypeScript projects only"). Supporting them means real JS branches in the
+  templates (several are stubs today) and .js/.jsx output paths (L).
+- [post-2.1] Plain React/Vite: hts, smart-contract and consensus are refused
+  (they need a server to hold the operator key); wallet is allowed and marked
+  experimental. Supporting the others needs a backend story (e.g. generated
+  server functions) (L).
 
 ## Decisions

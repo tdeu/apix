@@ -18,6 +18,7 @@ import {
   import { HEDERA_SDK_VERSION_RANGE } from '../generation/dependency-versions';
   import { detectProjectLayout, ProjectLayout } from '../analysis/project-layout';
   import { apiRouteFile, moduleFile } from '../generation/module-paths';
+  import { checkIntegrationSupport } from './support-policy';
   
   export class IntegrationPlanner {
     
@@ -73,6 +74,12 @@ import {
         logger.progress(`Creating ${integrationType} integration plan...`);
 
       const type = integrationType as IntegrationType;
+
+      // Same rules as the CLI, for any other caller of the planner
+      const support = checkIntegrationSupport(type, context);
+      if (support.error) {
+        throw new Error(support.error);
+      }
 
       const plan: IntegrationPlan = {
         type,

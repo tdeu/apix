@@ -13,6 +13,7 @@ import { IntegrationValidator } from '../validation/integration-validator';
 import { IntegrationOptions, AnalysisOptions, ProjectContext } from '../types';
 import { hederaOperations, TokenCreationOptions } from '../services/hedera-operations';
 import { EnvironmentValidator } from '../utils/environment-validator';
+import { checkIntegrationSupport } from '../planning/support-policy';
 import { EnterpriseClassifier } from '../ai/classifiers/enterprise-classifier';
 import { ConversationEngine } from '../ai/conversation/conversation-engine';
 import { AICodeCompositionEngine } from '../ai/composition/ai-code-composition-engine';
@@ -196,6 +197,15 @@ export class APIxCLI {
         validTypes: ['hts', 'wallet', 'smart-contract', 'hcs']
       });
       throw new Error(`Unknown integration type: ${integration}`);
+    }
+
+    // Refuse unsupported integrations before anything is written
+    const support = checkIntegrationSupport(integration, await this.analyzer.analyzeProject('.'));
+    if (support.error) {
+      throw new Error(support.error);
+    }
+    if (support.notice) {
+      console.log(chalk.yellow(`⚠️  ${support.notice}`));
     }
 
     // Fail before generating anything if --create-token can't be honoured

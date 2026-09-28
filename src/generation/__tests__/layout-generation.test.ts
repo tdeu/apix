@@ -65,7 +65,9 @@ const NEXT_PACKAGE = {
   dependencies: { next: '16.3.6', react: '19.0.0', 'react-dom': '19.0.0' },
 };
 
-async function nextFixture(layout: 'src-app' | 'root-app' | 'pages'): Promise<string> {
+type FixtureKind = 'src-app' | 'root-app' | 'pages' | 'react-vite' | 'next-js';
+
+async function nextFixture(layout: FixtureKind): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), `apix-gen-${layout}-`));
   await fs.writeJSON(path.join(root, 'package.json'), NEXT_PACKAGE, { spaces: 2 });
   if (layout === 'src-app') {
@@ -74,8 +76,18 @@ async function nextFixture(layout: 'src-app' | 'root-app' | 'pages'): Promise<st
   } else if (layout === 'root-app') {
     await fs.outputFile(path.join(root, 'app/page.tsx'), 'export default function Page() { return null; }\n');
     await fs.writeJSON(path.join(root, 'tsconfig.json'), { compilerOptions: { paths: { '@/*': ['./*'] } } });
-  } else {
+  } else if (layout === 'pages') {
     await fs.outputFile(path.join(root, 'src/pages/index.tsx'), 'export default function Home() { return null; }\n');
+    await fs.writeJSON(path.join(root, 'tsconfig.json'), { compilerOptions: {} });
+  } else if (layout === 'react-vite') {
+    await fs.writeJSON(path.join(root, 'package.json'), {
+      name: 'app', version: '1.0.0', dependencies: { react: '19.0.0', 'react-dom': '19.0.0' }, devDependencies: { vite: '7.0.0' },
+    }, { spaces: 2 });
+    await fs.outputFile(path.join(root, 'src/main.tsx'), 'export {};\n');
+    await fs.writeJSON(path.join(root, 'tsconfig.json'), { compilerOptions: {} });
+  } else {
+    // Next.js in JavaScript: no tsconfig.json, no typescript dependency
+    await fs.outputFile(path.join(root, 'src/app/page.js'), 'export default function Page() { return null; }\n');
   }
   return root;
 }
@@ -218,9 +230,14 @@ describe('a failed `apix add` leaves the project byte-for-byte unchanged', () =>
   });
 
   it.each([
-    ['consensus on a Pages Router project', 'pages' as const, 'consensus', {}],
-    ['hts on a Pages Router project', 'pages' as const, 'hts', { name: 'MyToken', symbol: 'MTK' }],
-  ])('%s', async (_name, layout, integration, options) => {
+    ['consensus on a Pages Router project', 'pages' as const, 'consensus', {}, /only generated for the Next\.js App Router/],
+    ['hts on a Pages Router project', 'pages' as const, 'hts', { name: 'MyToken', symbol: 'MTK' }, /only generated for the Next\.js App Router/],
+    ['account', 'src-app' as const, 'account', {}, /^`apix add account` is not available in this version\.$/],
+    ['hts on React/Vite', 'react-vite' as const, 'hts', { name: 'MyToken', symbol: 'MTK' }, /^`apix add hts` needs a server-side runtime; use Next\.js\./],
+    ['smart-contract on React/Vite', 'react-vite' as const, 'smart-contract', {}, /needs a server-side runtime; use Next\.js/],
+    ['consensus on React/Vite', 'react-vite' as const, 'consensus', {}, /needs a server-side runtime; use Next\.js/],
+    ['wallet in a JavaScript project', 'next-js' as const, 'wallet', {}, /^TypeScript projects only in this version\./],
+  ])('%s', async (_name, layout, integration, options, expected) => {
     root = await nextFixture(layout);
     const before = await treeSnapshot(root);
     process.chdir(root);
@@ -229,7 +246,7 @@ describe('a failed `apix add` leaves the project byte-for-byte unchanged', () =>
     const cli = new APIxCLI();
     await cli.initialize();
 
-    await expect(cli.addIntegration(integration, options)).rejects.toThrow();
+    await expect(cli.addIntegration(integration, options)).rejects.toThrow(expected);
 
     process.chdir(cwd);
     expect(await treeSnapshot(root)).toEqual(before);
