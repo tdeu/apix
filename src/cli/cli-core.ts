@@ -12,6 +12,7 @@ import { HealthChecker } from '../validation/health-checker';
 import { IntegrationValidator } from '../validation/integration-validator';
 import { IntegrationOptions, AnalysisOptions, ProjectContext } from '../types';
 import { hederaOperations, TokenCreationOptions } from '../services/hedera-operations';
+import { EnvironmentValidator } from '../utils/environment-validator';
 import { EnterpriseClassifier } from '../ai/classifiers/enterprise-classifier';
 import { ConversationEngine } from '../ai/conversation/conversation-engine';
 import { AICodeCompositionEngine } from '../ai/composition/ai-code-composition-engine';
@@ -197,6 +198,17 @@ export class APIxCLI {
       throw new Error(`Unknown integration type: ${integration}`);
     }
 
+    // Fail before generating anything if --create-token can't be honoured
+    if (options.createToken) {
+      if (integration !== 'hts') {
+        throw new Error('--create-token only applies to "apix add hts"');
+      }
+      if (!options.name || !options.symbol) {
+        throw new Error('--create-token requires --name and --symbol');
+      }
+      EnvironmentValidator.requireHederaCredentials();
+    }
+
     // Select appropriate progress steps based on integration type
     const progressType = integration.toUpperCase() as keyof typeof INTEGRATION_STEPS;
     const steps = INTEGRATION_STEPS[progressType] || INTEGRATION_STEPS.HTS; // Default to HTS steps
@@ -307,63 +319,8 @@ export class APIxCLI {
           const plan = await this.planner.createIntegrationPlan(integration, options, context);
           const result = await this.generator.generateIntegration(plan, context);
 
-          // If this is an HTS integration and user provided token details, offer to create real token
           if (integration === 'hts' && options.name && options.symbol) {
-            try {
-              console.log(chalk.blue('\n💡 Optional: Create Real Token on Hedera Testnet'));
-              console.log(chalk.gray(`   Token: ${options.name} (${options.symbol})`));
-              console.log(chalk.gray('   This will create an actual token on Hedera blockchain'));
-
-              // Only offer if we have basic setup
-              await hederaOperations.initialize();
-              if (hederaOperations.getCurrentAccountId()) {
-                const { createRealToken } = await inquirer.prompt([{
-                  type: 'confirm',
-                  name: 'createRealToken',
-                  message: 'Create real token on Hedera testnet?',
-                  default: false
-                }]);
-
-                if (createRealToken) {
-                  const tokenSpinner = ora('Creating token on Hedera testnet...').start();
-                  try {
-                    const tokenResult = await hederaOperations.createToken({
-                      name: options.name,
-                      symbol: options.symbol,
-                      decimals: 8,
-                      initialSupply: 1000000
-                    });
-
-                    if (tokenResult.success) {
-                      tokenSpinner.succeed(chalk.green('✅ Real token created on Hedera!'));
-                      console.log(chalk.blue(`   Token ID: ${chalk.bold(tokenResult.tokenId)}`));
-                      console.log(chalk.blue(`   Transaction: ${chalk.bold(tokenResult.transactionId)}`));
-
-                      if (tokenResult.explorerUrl) {
-                        console.log(chalk.blue(`   Explorer: ${chalk.underline(tokenResult.explorerUrl)}`));
-                      }
-
-                      // Add token info to next steps
-                      if (result && typeof result === 'object' && 'nextSteps' in result) {
-                        const steps = result.nextSteps as string[];
-                        steps.unshift(`Use Token ID: ${tokenResult.tokenId} in your application`);
-                        steps.unshift(`Token created on Hedera testnet: ${options.name} (${options.symbol})`);
-                      }
-                    } else {
-                      tokenSpinner.fail(chalk.yellow('⚠️  Token creation failed'));
-                      console.log(chalk.gray(`   ${tokenResult.error}`));
-                      console.log(chalk.gray('   You can create it later with: apix create-token'));
-                    }
-                  } catch (tokenError: any) {
-                    tokenSpinner.fail(chalk.yellow('⚠️  Token creation failed'));
-                    console.log(chalk.gray(`   ${tokenError.message}`));
-                  }
-                }
-              }
-            } catch (error: any) {
-              // Don't fail the entire integration if token creation fails
-              logger.warn('Token creation prompt failed:', error);
-            }
+            await this.offerRealTokenCreation(options, result);
           }
 
           return result;
@@ -444,6 +401,65 @@ export class APIxCLI {
       }
       
       throw error;
+    }
+  }
+
+  /**
+   * After `apix add hts`, create the token on Hedera only when credentials are
+   * present AND the user confirms (or passed --create-token). Without
+   * credentials no network call is made.
+   */
+  private async offerRealTokenCreation(options: IntegrationOptions, result: any): Promise<void> {
+    if (!EnvironmentValidator.hasHederaCredentials()) {
+      console.log(chalk.gray('\nℹ️  Files generated only. To also create this token on Hedera, set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY in .env and re-run with --create-token.'));
+      return;
+    }
+
+    const network = hederaOperations.getNetwork();
+    let createRealToken = !!options.createToken;
+    if (!createRealToken) {
+      if (!process.stdin.isTTY) {
+        console.log(chalk.gray(`\nℹ️  Hedera credentials found. Re-run with --create-token to also create this token on ${network}.`));
+        return;
+      }
+      console.log(chalk.blue(`\n💡 Optional: create ${options.name} (${options.symbol}) on Hedera ${network}`));
+      ({ createRealToken } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'createRealToken',
+        message: `Create this token on Hedera ${network} now? (uses your account's HBAR)`,
+        default: false
+      }]));
+      if (!createRealToken) return;
+    }
+
+    const tokenSpinner = ora(`Creating token on Hedera ${network}...`).start();
+    let tokenResult;
+    try {
+      tokenResult = await hederaOperations.createToken({
+        name: options.name!,
+        symbol: options.symbol!,
+        decimals: 8,
+        initialSupply: 1000000
+      });
+    } catch (error: any) {
+      tokenResult = { success: false, error: error.message } as const;
+    }
+
+    if (!tokenResult.success) {
+      tokenSpinner.fail(chalk.red('❌ Token creation failed'));
+      throw new Error(`Files were generated, but token creation failed: ${tokenResult.error}`);
+    }
+
+    tokenSpinner.succeed(chalk.green(`✅ Token created on Hedera ${network}`));
+    console.log(chalk.blue(`   Token ID: ${chalk.bold(tokenResult.tokenId)}`));
+    console.log(chalk.blue(`   Transaction: ${chalk.bold(tokenResult.transactionId)}`));
+    if (tokenResult.explorerUrl) {
+      console.log(chalk.blue(`   Explorer: ${chalk.underline(tokenResult.explorerUrl)}`));
+    }
+
+    if (result && typeof result === 'object' && Array.isArray(result.nextSteps)) {
+      result.nextSteps.unshift(`Use Token ID: ${tokenResult.tokenId} in your application`);
+      result.nextSteps.unshift(`Token created on Hedera ${network}: ${options.name} (${options.symbol})`);
     }
   }
 
@@ -1005,81 +1021,33 @@ export class APIxCLI {
   }
 
   async comprehensiveValidation(options: any): Promise<void> {
+    console.log(chalk.blue.bold('\n🔍 Comprehensive Hedera Validation\n'));
+    console.log(chalk.cyan(`Network: Hedera ${hederaOperations.getNetwork()} (from HEDERA_NETWORK)`));
+
+    const spinner = ora('Initializing Hedera validation...').start();
+
     try {
-      console.log(chalk.blue.bold('\n🔍 Comprehensive Hedera Validation\n'));
+      await hederaOperations.initialize();
 
-      if (options.testnet) {
-        console.log(chalk.cyan('Network: Hedera Testnet'));
-      } else if (options.mainnet) {
-        console.log(chalk.cyan('Network: Hedera Mainnet'));
-      } else {
-        console.log(chalk.cyan('Network: Hedera Testnet (default)'));
+      spinner.text = 'Validating Hedera client configuration...';
+      if (!(await this.validateHederaConnection())) {
+        throw new Error('Hedera client has no operator account after initialization');
       }
+      spinner.succeed(chalk.green('✅ Hedera client configured'));
 
-      const spinner = ora('Initializing Hedera validation...').start();
+      console.log(chalk.blue('\n📋 Validation Results:'));
+      console.log(chalk.green(`   ✅ Network: ${hederaOperations.getNetwork().toUpperCase()}`));
+      console.log(chalk.green(`   ✅ Account: ${hederaOperations.getCurrentAccountId()}`));
+      console.log(chalk.green(`   ✅ Mode: ${hederaOperations.isUsingAgentKit() ? 'AgentKit' : 'Direct SDK'}`));
+      console.log(chalk.gray('   No network call was made; credentials are checked on your first transaction.'));
 
-      try {
-        // Initialize Hedera operations for validation
-        await hederaOperations.initialize();
-
-        spinner.text = 'Validating Hedera network connection...';
-        const connectionValid = await this.validateHederaConnection();
-
-        if (connectionValid) {
-          spinner.succeed(chalk.green('✅ Hedera network connection validated'));
-
-          console.log(chalk.blue('\n📋 Validation Results:'));
-          console.log(chalk.green(`   ✅ Network: ${hederaOperations.getNetwork().toUpperCase()}`));
-          console.log(chalk.green(`   ✅ Account: ${hederaOperations.getCurrentAccountId()}`));
-          console.log(chalk.green('   ✅ SDK Integration: Working'));
-
-          if (hederaOperations.isFallbackMode()) {
-            console.log(chalk.yellow('   ⚠️  Mode: Development (using test accounts)'));
-            console.log(chalk.gray('   💡 Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY for live validation'));
-          } else if (hederaOperations.isUsingAgentKit()) {
-            console.log(chalk.green('   ✅ Mode: Live blockchain operations (AgentKit)'));
-          } else {
-            console.log(chalk.green('   ✅ Mode: Live blockchain operations (Direct SDK)'));
-          }
-
-          // Additional validations based on options
-          if (options.enterprise) {
-            console.log(chalk.blue('\n🏢 Enterprise Validation:'));
-            console.log(chalk.green('   ✅ Security patterns: Implemented'));
-            console.log(chalk.green('   ✅ Error handling: Robust'));
-            console.log(chalk.green('   ✅ Logging: Comprehensive'));
-          }
-
-          if (options.performance) {
-            console.log(chalk.blue('\n⚡ Performance Check:'));
-            console.log(chalk.green('   ✅ Client initialization: Optimized'));
-            console.log(chalk.green('   ✅ Connection pooling: Enabled'));
-            console.log(chalk.green('   ✅ Caching: Active'));
-          }
-
-        } else {
-          spinner.fail(chalk.red('❌ Hedera network validation failed'));
-          console.log(chalk.yellow('\n🔧 Troubleshooting:'));
-          console.log(chalk.gray('   • Check internet connection'));
-          console.log(chalk.gray('   • Verify Hedera credentials (if using live mode)'));
-          console.log(chalk.gray('   • Try: npm run validate:env'));
-        }
-
-      } catch (error: any) {
-        spinner.fail(chalk.red('❌ Validation failed'));
-        console.log(chalk.red('\n🚨 Validation Error:'));
-        console.log(chalk.yellow(`   ${error.message}`));
-
-        console.log(chalk.cyan('\n💡 Next Steps:'));
-        console.log(chalk.gray('   • Run basic health check: apix health --quick'));
-        console.log(chalk.gray('   • Check configuration: apix status'));
-        console.log(chalk.gray('   • Validate environment: npm run validate:env'));
+      if (options.enterprise || options.performance || options.security || options.compliance) {
+        console.log(chalk.yellow('\n⚠️  --enterprise, --performance, --security and --compliance checks are not implemented yet; nothing was checked.'));
       }
-
     } catch (error: any) {
-      logger.error('Comprehensive validation failed:', error);
-      console.log(chalk.red('\n🚨 System Error:'));
-      console.log(chalk.yellow(`   ${error.message}`));
+      spinner.fail(chalk.red('❌ Validation failed'));
+      console.log(chalk.yellow(`\n${error.message}`));
+      throw error;
     }
   }
 
@@ -1884,27 +1852,13 @@ export class APIxCLI {
   }
 
   /**
-   * Validate Hedera network connection
+   * Check the Hedera client is configured with an operator account.
+   * This does not contact the network.
    */
   private async validateHederaConnection(): Promise<boolean> {
     try {
       await hederaOperations.initialize();
-
-      // Try to get current account info as a connection test
-      const accountId = hederaOperations.getCurrentAccountId();
-      if (!accountId) {
-        return false;
-      }
-
-      // If we're not in fallback mode, we have a real connection
-      if (!hederaOperations.isFallbackMode()) {
-        // TODO: Could add more comprehensive connection tests here
-        return true;
-      }
-
-      // Fallback mode available for development (uses test accounts)
-      return true;
-
+      return !!hederaOperations.getCurrentAccountId();
     } catch (error: any) {
       logger.error('Hedera connection validation failed:', error);
       return false;
@@ -1912,87 +1866,52 @@ export class APIxCLI {
   }
 
   /**
-   * Create a token on Hedera blockchain (real blockchain operation)
+   * Create a token on Hedera blockchain (real blockchain operation).
+   * Throws on any failure so the command exits non-zero.
    */
-  async createTokenOnBlockchain(options: TokenCreationOptions & { testMode?: boolean }): Promise<void> {
+  async createTokenOnBlockchain(options: TokenCreationOptions): Promise<void> {
+    console.log(chalk.blue.bold('\n🚀 Creating Token on Hedera Blockchain\n'));
+
+    console.log(chalk.cyan('Token Details:'));
+    console.log(chalk.white(`   Name: ${chalk.bold(options.name)}`));
+    console.log(chalk.white(`   Symbol: ${chalk.bold(options.symbol)}`));
+    console.log(chalk.white(`   Decimals: ${chalk.bold(options.decimals || 8)}`));
+    console.log(chalk.white(`   Initial Supply: ${chalk.bold((options.initialSupply || 1000000).toLocaleString())}`));
+    console.log(chalk.white(`   Network: ${chalk.bold(hederaOperations.getNetwork().toUpperCase())}\n`));
+
+    const spinner = ora('Initializing Hedera client...').start();
+
     try {
-      console.log(chalk.blue.bold('\n🚀 Creating Token on Hedera Blockchain\n'));
+      await hederaOperations.initialize();
+      const accountId = hederaOperations.getCurrentAccountId();
 
-      // Show what we're creating
-      console.log(chalk.cyan('Token Details:'));
-      console.log(chalk.white(`   Name: ${chalk.bold(options.name)}`));
-      console.log(chalk.white(`   Symbol: ${chalk.bold(options.symbol)}`));
-      console.log(chalk.white(`   Decimals: ${chalk.bold(options.decimals || 8)}`));
-      console.log(chalk.white(`   Initial Supply: ${chalk.bold((options.initialSupply || 1000000).toLocaleString())}`));
-      console.log(chalk.white(`   Network: ${chalk.bold(hederaOperations.getNetwork().toUpperCase())}`));
+      spinner.text = `Creating token on ${hederaOperations.getNetwork()}...`;
+      spinner.color = 'blue';
 
-      console.log(chalk.green('\n✅ Live Blockchain Mode'));
-      console.log(chalk.gray('   Connected to Hedera ' + hederaOperations.getNetwork() + '\n'));
-
-      // Create spinner for blockchain operation
-      const spinner = ora('Initializing Hedera connection...').start();
-
-      try {
-        // Initialize Hedera operations
-        await hederaOperations.initialize();
-        const accountId = hederaOperations.getCurrentAccountId();
-
-        spinner.text = `Creating token on ${hederaOperations.getNetwork()}...`;
-        spinner.color = 'blue';
-
-        // Create the token
-        const result = await hederaOperations.createToken(options);
-
-        if (result.success) {
-          spinner.succeed(chalk.green('✅ Token created successfully!'));
-          console.log(chalk.green.bold('\n🎉 Token Creation Complete!\n'));
-          console.log(chalk.blue('Token Information:'));
-          console.log(chalk.white(`   Token ID: ${chalk.bold(result.tokenId)}`));
-          console.log(chalk.white(`   Transaction ID: ${chalk.bold(result.transactionId)}`));
-          console.log(chalk.white(`   Treasury Account: ${chalk.bold(accountId)}`));
-
-          if (result.explorerUrl) {
-            console.log(chalk.white(`   Explorer: ${chalk.blue.underline(result.explorerUrl)}`));
-          }
-
-          console.log(chalk.cyan('\n💡 Next Steps:'));
-          console.log(chalk.white('   • Use this token ID in your application'));
-          console.log(chalk.white('   • Transfer tokens to other accounts'));
-          console.log(chalk.white('   • Integrate with your frontend'));
-          console.log(chalk.white(`   • Run: ${chalk.cyan('apix add hts --name "' + options.name + '" --symbol ' + options.symbol)}`));
-        } else {
-          spinner.fail(chalk.red('❌ Token creation failed'));
-          console.log(chalk.red('\n🚨 Token Creation Failed'));
-          console.log(chalk.yellow('Error: ' + result.error));
-
-          if (result.error?.includes('insufficient')) {
-            console.log(chalk.cyan('\n💡 Troubleshooting:'));
-            console.log(chalk.white('   • Check account balance (need ~30 HBAR for token creation)'));
-            console.log(chalk.white('   • Verify account has sufficient funds'));
-            console.log(chalk.white('   • Try with a testnet account first'));
-          }
-        }
-
-      } catch (error: any) {
-        spinner.fail(chalk.red('❌ Blockchain operation failed'));
-        console.log(chalk.red('\n🚨 Blockchain Operation Failed'));
-        console.log(chalk.yellow('Error: ' + error.message));
-
-        console.log(chalk.cyan('\n💡 Troubleshooting:'));
-        console.log(chalk.white('   • Check your Hedera credentials'));
-        console.log(chalk.white('   • Verify network connectivity'));
-        console.log(chalk.white('   • Ensure account has sufficient HBAR balance'));
-        console.log(chalk.white('   • Try running: apix health --quick'));
-
-        if (!hederaOperations.isFallbackMode()) {
-          console.log(chalk.gray('\n   For testing, you can also run without credentials to use fallback mode.'));
-        }
+      const result = await hederaOperations.createToken(options);
+      if (!result.success) {
+        throw new Error(result.error || 'Token creation failed');
       }
 
+      spinner.succeed(chalk.green('✅ Token created successfully!'));
+      console.log(chalk.blue('\nToken Information:'));
+      console.log(chalk.white(`   Token ID: ${chalk.bold(result.tokenId)}`));
+      console.log(chalk.white(`   Transaction ID: ${chalk.bold(result.transactionId)}`));
+      console.log(chalk.white(`   Treasury Account: ${chalk.bold(accountId)}`));
+      if (result.explorerUrl) {
+        console.log(chalk.white(`   Explorer: ${chalk.blue.underline(result.explorerUrl)}`));
+      }
+
+      console.log(chalk.cyan('\n💡 Next Steps:'));
+      console.log(chalk.white('   • Use this token ID in your application'));
+      console.log(chalk.white(`   • Run: ${chalk.cyan('apix add hts --name "' + options.name + '" --symbol ' + options.symbol)}`));
     } catch (error: any) {
-      logger.error('Token creation command failed:', error);
-      console.log(chalk.red('\n🚨 Command Failed'));
-      console.log(chalk.yellow('Error: ' + error.message));
+      spinner.fail(chalk.red('❌ Token creation failed'));
+      console.log(chalk.yellow(`\n${error.message}`));
+      if (error.message?.toLowerCase().includes('insufficient')) {
+        console.log(chalk.gray('   Token creation costs HBAR; check your account balance.'));
+      }
+      throw error;
     }
   }
 

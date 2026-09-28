@@ -6,13 +6,6 @@ jest.mock('../hedera-agent-kit-service', () => ({
   HederaAgentKitService: jest.fn()
 }));
 jest.mock('../../utils/logger');
-// Factory mock: automocking would load the real module, whose module-level
-// TestAccountManager opens a Hedera Client and keeps the test process alive.
-jest.mock('../../utils/test-accounts', () => ({
-  getTestAccount: jest.fn(),
-  validateTestAccount: jest.fn(),
-  getTestClient: jest.fn()
-}));
 
 describe('HederaOperationsService', () => {
   let service: HederaOperationsService;
@@ -184,9 +177,7 @@ describe('HederaOperationsService', () => {
       const capabilities = service.getCapabilities();
 
       expect(capabilities).toHaveProperty('agentKit');
-      expect(capabilities).toHaveProperty('directSDK');
-      expect(capabilities).toHaveProperty('testAccounts');
-      expect(typeof capabilities.agentKit).toBe('boolean');
+      expect(capabilities).toEqual({ agentKit: false, directSDK: false });
     });
 
     // SKIP(phase-3): asserts fake behaviour

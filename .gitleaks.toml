@@ -9,7 +9,3 @@ commits = [
   # Revoked OpenAI key committed to .env.example (see SECURITY_INCIDENT_REPORT.md)
   "096009e63dd49ea5a6867d70e3cfa9827c0da325",
 ]
-paths = [
-  # Well-known/fake test account keys; file is removed in Phase 3
-  '''^src/utils/test-accounts\.ts$''',
-]

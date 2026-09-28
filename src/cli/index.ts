@@ -165,6 +165,7 @@ program
   .option('-p, --provider <provider>', 'Wallet provider')
   .option('-t, --type <type>', 'Contract type')
   .option('-f, --force', 'Force overwrite existing files')
+  .option('--create-token', 'HTS only: also create the token on Hedera (needs HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY)')
   .action(async (integration, options) => {
     const globalOptions = program.opts();
     const allOptions = { ...options, ...globalOptions };
@@ -189,7 +190,8 @@ program
         options: allOptions,
         stack: error?.stack
       });
-      console.error(chalk.red(`❌ Integration '${integration}' failed. Use --debug for detailed error information.`));
+      console.error(chalk.red(`❌ Integration '${integration}' failed: ${error?.message ?? error}`));
+      console.error(chalk.gray('   Use --debug for detailed error information.'));
       process.exit(1);
     }
   });

@@ -15,6 +15,7 @@ export interface IntegrationOptions {
   provider?: string;
   type?: string;
   force?: boolean;
+  createToken?: boolean;
 }
 
 // Project Analysis Types

@@ -3,6 +3,10 @@ import chalk from 'chalk';
 import { logger } from './logger';
 import { validateAccountId, validateNetwork } from './errors';
 
+export const HEDERA_CREDENTIALS_HELP =
+  'Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY in your .env file (HEDERA_NETWORK defaults to testnet).\n' +
+  'Get a free testnet account at https://portal.hedera.com/faucet';
+
 export interface EnvironmentValidationResult {
   valid: boolean;
   errors: string[];
@@ -33,7 +37,7 @@ export class EnvironmentValidator {
     // Check Hedera credentials
     const hederaValidation = this.validateHederaCredentials();
     if (requirements.requireHedera && !hederaValidation.valid) {
-      errors.push(...hederaValidation.errors);
+      errors.push(...hederaValidation.errors, ...hederaValidation.warnings);
       errors.push('Hedera credentials required for blockchain operations');
       errors.push('Get testnet credentials from: https://portal.hedera.com/faucet');
     } else if (!hederaValidation.valid) {
@@ -62,6 +66,40 @@ export class EnvironmentValidator {
       warnings,
       mode
     };
+  }
+
+  /**
+   * True when both Hedera credential variables are set (format not checked).
+   */
+  static hasHederaCredentials(): boolean {
+    return !!(process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY);
+  }
+
+  /**
+   * Return the Hedera credentials, or throw an error that says which
+   * variables to set and where to get a testnet account.
+   */
+  static requireHederaCredentials(): { accountId: string; privateKey: string } {
+    const accountId = process.env.HEDERA_ACCOUNT_ID;
+    const privateKey = process.env.HEDERA_PRIVATE_KEY;
+
+    if (!accountId || !privateKey) {
+      throw new Error(
+        'Hedera credentials are not configured.\n' +
+        `${HEDERA_CREDENTIALS_HELP}`
+      );
+    }
+
+    const validation = this.validateHederaCredentials();
+    if (!validation.valid) {
+      throw new Error(
+        'Hedera credentials are invalid:\n' +
+        validation.errors.map(error => `  ${error}`).join('\n') + '\n' +
+        `${HEDERA_CREDENTIALS_HELP}`
+      );
+    }
+
+    return { accountId, privateKey };
   }
 
   /**

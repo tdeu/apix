@@ -1,6 +1,6 @@
 import { Client, AccountId, PrivateKey, TokenCreateTransaction, TokenType, TokenSupplyType, Hbar, TransactionResponse, TransactionReceipt, TokenAssociateTransaction, TransferTransaction, TokenId, ContractCreateTransaction, ContractExecuteTransaction, FileCreateTransaction, FileAppendTransaction, TopicCreateTransaction, TopicMessageSubmitTransaction, TopicId } from '@hashgraph/sdk';
 import { logger } from '../utils/logger';
-import { getTestAccount, validateTestAccount, getTestClient, TestAccount } from '../utils/test-accounts';
+import { EnvironmentValidator } from '../utils/environment-validator';
 import { HederaAgentKitService } from './hedera-agent-kit-service';
 
 /**
@@ -72,7 +72,7 @@ export class HederaOperationsService {
   private client: Client | null = null;
   private agentKitService: HederaAgentKitService | null = null;
   private network: 'testnet' | 'mainnet';
-  private testAccount: TestAccount | null = null;
+  private operatorKey: PrivateKey | null = null;
   private initialized: boolean = false;
 
   constructor(network: 'testnet' | 'mainnet' = 'testnet') {
@@ -80,29 +80,21 @@ export class HederaOperationsService {
   }
 
   /**
-   * Initialize the service with credentials or test account
+   * Initialize the service from HEDERA_ACCOUNT_ID / HEDERA_PRIVATE_KEY.
+   * Throws if the credentials are missing or invalid; there is no fallback.
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    try {
-      // Try to use environment credentials first
-      const accountId = process.env.HEDERA_ACCOUNT_ID;
-      const privateKey = process.env.HEDERA_PRIVATE_KEY;
+    const { accountId, privateKey } = EnvironmentValidator.requireHederaCredentials();
 
-      if (accountId && privateKey) {
-        await this.initializeWithCredentials(accountId, privateKey);
-        await this.initializeAgentKit(accountId, privateKey);
-        logger.internal('info', 'Hedera Operations initialized with environment credentials', {
-          network: this.network,
-          agentKitAvailable: this.agentKitService?.isAvailable() || false
-        });
-      } else {
-        await this.initializeWithTestAccount();
-        logger.internal('info', 'Hedera Operations initialized with test account', {
-          network: this.network
-        });
-      }
+    try {
+      await this.initializeWithCredentials(accountId, privateKey);
+      await this.initializeAgentKit(accountId, privateKey);
+      logger.internal('info', 'Hedera Operations initialized with environment credentials', {
+        network: this.network,
+        agentKitAvailable: this.agentKitService?.isAvailable() || false
+      });
 
       this.initialized = true;
     } catch (error: any) {
@@ -147,10 +139,16 @@ export class HederaOperationsService {
       this.client = Client.forTestnet();
     }
 
-    this.client.setOperator(
-      AccountId.fromString(accountId),
-      PrivateKey.fromString(privateKey)
-    );
+    try {
+      this.operatorKey = PrivateKey.fromString(privateKey);
+      this.client.setOperator(AccountId.fromString(accountId), this.operatorKey);
+    } catch (error) {
+      // Don't leak the Client (and its network timers) on bad credentials
+      this.client.close();
+      this.client = null;
+      this.operatorKey = null;
+      throw error;
+    }
 
     // AgentKit is now handled separately in the initialization phase
     logger.internal('info', 'Direct SDK client configured successfully');
@@ -162,46 +160,12 @@ export class HederaOperationsService {
   }
 
   /**
-   * Initialize with test account
-   */
-  private async initializeWithTestAccount(): Promise<void> {
-    try {
-      // Get test account
-      this.testAccount = await getTestAccount();
-
-      // Validate test account
-      const isValid = await validateTestAccount(this.testAccount);
-      if (!isValid) {
-        throw new Error('Test account validation failed');
-      }
-
-      // Get client configured with test account
-      this.client = getTestClient(this.testAccount);
-
-      // AgentKit is now handled separately in the initialization phase
-      logger.internal('info', 'Test account client configured successfully');
-
-      logger.info('Initialized with test account', {
-        network: this.network,
-        accountId: this.testAccount.accountId
-      });
-
-    } catch (error: any) {
-      logger.error('Test account initialization failed:', error);
-      throw error;
-    }
-  }
-
-  /**
    * Create a new token using Agent Kit
    */
   async createToken(options: TokenCreationOptions): Promise<TokenOperationResult> {
     if (!this.initialized) {
       await this.initialize();
     }
-
-    // Check if we have real credentials vs test accounts
-    const hasRealCredentials = process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY;
 
     // Try AgentKit first if available
     if (this.agentKitService && this.agentKitService.isAvailable()) {
@@ -314,17 +278,7 @@ export class HederaOperationsService {
         throw new Error('No operator account configured');
       }
 
-      // For token creation, we'll use the operator key from the test account or environment
-      let operatorKey: PrivateKey;
-      if (this.testAccount) {
-        operatorKey = PrivateKey.fromString(this.testAccount.privateKey);
-      } else {
-        const privateKeyString = process.env.HEDERA_PRIVATE_KEY;
-        if (!privateKeyString) {
-          throw new Error('No private key available for signing');
-        }
-        operatorKey = PrivateKey.fromString(privateKeyString);
-      }
+      const operatorKey = this.requireOperatorKey();
 
       // Create token transaction
       const tokenCreateTx = new TokenCreateTransaction()
@@ -510,9 +464,7 @@ export class HederaOperationsService {
 
       // Add keys if specified
       if (options.adminKey) {
-        const operatorKey = this.testAccount
-          ? PrivateKey.fromString(this.testAccount.privateKey)
-          : PrivateKey.fromString(process.env.HEDERA_PRIVATE_KEY!);
+        const operatorKey = this.requireOperatorKey();
         fileCreateTx.setKeys([operatorKey.publicKey]);
       }
 
@@ -700,9 +652,7 @@ export class HederaOperationsService {
 
       // Add keys if specified
       if (options.adminKey || options.submitKey) {
-        const operatorKey = this.testAccount
-          ? PrivateKey.fromString(this.testAccount.privateKey)
-          : PrivateKey.fromString(process.env.HEDERA_PRIVATE_KEY!);
+        const operatorKey = this.requireOperatorKey();
 
         if (options.adminKey) {
           topicCreateTx.setAdminKey(operatorKey.publicKey);
@@ -833,6 +783,13 @@ export class HederaOperationsService {
     }
   }
 
+  private requireOperatorKey(): PrivateKey {
+    if (!this.operatorKey) {
+      throw new Error('No operator key configured; call initialize() first');
+    }
+    return this.operatorKey;
+  }
+
   /**
    * Get Hedera Explorer URL for transaction or entity
    */
@@ -868,11 +825,10 @@ export class HederaOperationsService {
   /**
    * Get available capabilities
    */
-  getCapabilities(): { agentKit: boolean; directSDK: boolean; testAccounts: boolean } {
+  getCapabilities(): { agentKit: boolean; directSDK: boolean } {
     return {
       agentKit: this.agentKitService?.isAvailable() || false,
-      directSDK: this.client !== null,
-      testAccounts: this.testAccount !== null
+      directSDK: this.client !== null
     };
   }
 
@@ -887,9 +843,6 @@ export class HederaOperationsService {
    * Get current account ID
    */
   getCurrentAccountId(): string | null {
-    if (this.testAccount) {
-      return this.testAccount.accountId;
-    }
     return this.client?.operatorAccountId?.toString() || null;
   }
 
@@ -901,7 +854,8 @@ export class HederaOperationsService {
       this.client.close();
       this.client = null;
     }
-    
+    this.operatorKey = null;
+
     // Clean up AgentKit service
     this.agentKitService = null;
     this.initialized = false;
