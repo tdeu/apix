@@ -37,6 +37,30 @@ jobs:
           echo "expected=$expected actual=$actual"
           test "$actual" = "$expected"
 
+  # Does `apix add` produce code that installs, type-checks and builds in a
+  # fresh create-next-app project? (scripts/e2e-generate.ts)
+  e2e-generate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run e2e:generate -- --framework next --case baseline,all --out "$RUNNER_TEMP/apix-e2e"
+      - name: Upload e2e logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-generate-logs
+          path: |
+            ${{ runner.temp }}/apix-e2e/logs
+            ${{ runner.temp }}/apix-e2e/results.json
+          if-no-files-found: ignore
+
   secrets:
     runs-on: ubuntu-latest
     permissions:

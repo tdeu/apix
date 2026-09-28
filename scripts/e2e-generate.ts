@@ -2,20 +2,26 @@
  * Generation e2e harness: does `apix add <type>` produce code that installs,
  * type-checks and builds in a fresh project, with no manual fixes?
  *
- * Usage: npm run e2e:generate -- [--framework next|vite|all] [--case baseline,hts,all]
- *                                [--out <dir>] [--no-build-apix] [--min-free-mb 1536]
+ * Usage: npm run e2e:generate -- [--framework next|next-pages|vite|all]
+ *                                [--case baseline,hts,all] [--out <dir>]
+ *                                [--no-build-apix] [--min-free-mb 1536]
  *
  * Defaults: --framework next, every case. Rerun one case cheaply with e.g.
- *   npm run e2e:generate -- --framework vite --case all
+ *   npm run e2e:generate -- --framework vite --case wallet
+ *
+ * Frameworks: next (create-next-app, App Router, src/), next-pages (the same
+ * app converted to the Pages Router) and vite (create-vite react-ts).
  *
  * For each framework it scaffolds one fresh app (pinned scaffolder version),
  * then, strictly one case at a time (a no-op "baseline" control, each
- * advertised integration on its own copy, plus all of them together on one
- * copy), it:
+ * type `apix add` accepts on its own copy, and "all": every integration the
+ * framework supports on one copy), it:
  *   1. copies the app (without node_modules)
  *   2. runs `apix add <type>` for each type in the case (non-interactive, no
  *      Hedera/AI keys, so no network calls to Hedera)
  *   3. runs npm install, the type check and the production build
+ * A type the framework must refuse (see `refused`) passes only if `add`
+ * fails and the project is byte-for-byte unchanged; it shows as "refused".
  * and prints a pass/fail table. Logs for every step are kept under the output
  * directory (printed at the end), and results.json is rewritten after every
  * case. Before each case it checks free memory and stops if it is below
@@ -23,6 +29,7 @@
  * and the results are meaningless. Exits 1 if any step failed or it stopped.
  */
 import { spawnSync } from 'child_process';
+import crypto from 'crypto';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
@@ -31,39 +38,67 @@ import path from 'path';
 const CREATE_NEXT_APP_VERSION = '16.3.6';
 const CREATE_VITE_VERSION = '9.2.1';
 
-// Every type `apix add` accepts (APIxCLI.isValidIntegration), including aliases.
+// Every type `apix add` accepts, including aliases and refused ones.
 const ADVERTISED_TYPES = ['hts', 'wallet', 'smart-contract', 'consensus', 'account', 'hcs', 'contract'];
-// Distinct integrations applied together in the "all" case (aliases excluded).
-const ALL_TOGETHER = ['hts', 'wallet', 'smart-contract', 'consensus', 'account'];
+const ALIASES: Record<string, string> = { hcs: 'consensus', contract: 'smart-contract' };
+const canonical = (type: string) => ALIASES[type] ?? type;
+// Integrations that can be supported somewhere; "all" adds the ones a framework supports
+const INTEGRATIONS = ['hts', 'wallet', 'smart-contract', 'consensus'];
 
 const STEP_TIMEOUT_MS = 15 * 60 * 1000;
 const REPO_ROOT = path.resolve(__dirname, '..');
 const APIX_BIN = path.join(REPO_ROOT, 'dist', 'cli', 'index.js');
 
-type Framework = 'next' | 'vite';
-type StepStatus = 'pass' | 'FAIL' | '-';
+type Framework = 'next' | 'next-pages' | 'vite';
+// 'refused': an expected refusal (add failed and the project is unchanged)
+type StepStatus = 'pass' | 'FAIL' | 'refused' | '-';
 
 interface FrameworkConfig {
   // Called with a bare directory name (create-vite mangles absolute Windows paths)
   scaffold: (name: string) => string;
+  // Adjusts the scaffolded app (in place)
+  postScaffold?: (dir: string) => Promise<void>;
   typecheck: string;
   build: string;
+  // Integrations `apix add` must refuse on this framework (canonical names)
+  refused: string[];
 }
+
+const nextScaffold = (name: string) =>
+  `npx -y create-next-app@${CREATE_NEXT_APP_VERSION} ${name} --ts --app --eslint --tailwind ` +
+  '--src-dir --import-alias "@/*" --use-npm --yes --skip-install --disable-git';
 
 const FRAMEWORKS: Record<Framework, FrameworkConfig> = {
   next: {
-    scaffold: name =>
-      `npx -y create-next-app@${CREATE_NEXT_APP_VERSION} ${name} --ts --app --eslint --tailwind ` +
-      '--src-dir --import-alias "@/*" --use-npm --yes --skip-install --disable-git',
+    scaffold: nextScaffold,
     // Next 16 generates route types (LayoutProps, PageProps) with typegen/build
     typecheck: 'npx next typegen && npx tsc --noEmit',
     build: 'npx next build',
+    refused: ['account'],
+  },
+  // create-next-app has no Pages Router option: convert the App Router scaffold
+  'next-pages': {
+    scaffold: nextScaffold,
+    postScaffold: async dir => {
+      await fs.remove(path.join(dir, 'src', 'app'));
+      await fs.outputFile(path.join(dir, 'src', 'pages', '_app.tsx'),
+        "import type { AppProps } from 'next/app';\n\n" +
+        'export default function App({ Component, pageProps }: AppProps) {\n  return <Component {...pageProps} />;\n}\n');
+      await fs.outputFile(path.join(dir, 'src', 'pages', 'index.tsx'),
+        'export default function Home() {\n  return <main>Home</main>;\n}\n');
+    },
+    typecheck: 'npx next typegen && npx tsc --noEmit',
+    build: 'npx next build',
+    // API route templates are App Router only
+    refused: ['account', 'hts', 'consensus'],
   },
   vite: {
     scaffold: name => `npx -y create-vite@${CREATE_VITE_VERSION} ${name} --template react-ts --no-interactive --no-immediate`,
     // The react-ts template's root tsconfig only has project references
     typecheck: 'npx tsc -b',
     build: 'npx vite build',
+    // They need a server to hold the operator key
+    refused: ['account', 'hts', 'smart-contract', 'consensus'],
   },
 };
 
@@ -92,8 +127,8 @@ function parseArgs(argv: string[]): Args {
     return i >= 0 ? argv[i + 1] : undefined;
   };
   const fw = get('--framework') ?? 'next';
-  if (!['next', 'vite', 'all'].includes(fw)) {
-    throw new Error(`--framework must be next, vite or all (got "${fw}")`);
+  if (!['next', 'next-pages', 'vite', 'all'].includes(fw)) {
+    throw new Error(`--framework must be next, next-pages, vite or all (got "${fw}")`);
   }
   // --only is the original name of --case
   const cases = (get('--case') ?? get('--only'))?.split(',').map(s => s.trim()).filter(Boolean) ?? null;
@@ -106,7 +141,7 @@ function parseArgs(argv: string[]): Args {
     throw new Error('--min-free-mb must be a non-negative number');
   }
   return {
-    frameworks: fw === 'all' ? ['next', 'vite'] : [fw as Framework],
+    frameworks: fw === 'all' ? ['next', 'next-pages', 'vite'] : [fw as Framework],
     cases,
     out: path.resolve(get('--out') ?? path.join(os.tmpdir(), `apix-e2e-${Date.now()}`)),
     buildApix: !argv.includes('--no-build-apix'),
@@ -151,6 +186,31 @@ async function copyProject(from: string, to: string): Promise<void> {
   });
 }
 
+/** Hash of every file under dir (node_modules excluded), by relative path */
+async function hashTree(dir: string): Promise<Map<string, string>> {
+  const hashes = new Map<string, string>();
+  const walk = async (current: string) => {
+    for (const entry of await fs.readdir(current, { withFileTypes: true })) {
+      if (entry.name === 'node_modules') continue;
+      const full = path.join(current, entry.name);
+      const rel = path.relative(dir, full).split(path.sep).join('/');
+      if (entry.isDirectory()) {
+        hashes.set(`${rel}/`, 'dir');
+        await walk(full);
+      } else {
+        hashes.set(rel, crypto.createHash('sha256').update(await fs.readFile(full)).digest('hex'));
+      }
+    }
+  };
+  await walk(dir);
+  return hashes;
+}
+
+function diffTrees(before: Map<string, string>, after: Map<string, string>): string[] {
+  const paths = new Set([...before.keys(), ...after.keys()]);
+  return [...paths].filter(p => before.get(p) !== after.get(p)).sort();
+}
+
 async function runCase(framework: Framework, base: string, caseName: string, types: string[], outDir: string): Promise<CaseResult> {
   const config = FRAMEWORKS[framework];
   const dir = path.join(outDir, framework, caseName);
@@ -160,6 +220,26 @@ async function runCase(framework: Framework, base: string, caseName: string, typ
   const result: CaseResult = {
     framework, name: caseName, add: types.length > 0 ? 'pass' : '-', addDetail: '', install: '-', typecheck: '-', build: '-', typeErrors: [],
   };
+
+  // Expected refusal: `add` must fail and leave the project byte-for-byte unchanged
+  if (types.length === 1 && config.refused.includes(canonical(types[0]))) {
+    const before = await hashTree(dir);
+    log(`${framework}/${caseName}: apix add ${types[0]} (must be refused)`);
+    const add = run(`node "${APIX_BIN}" add ${types[0]} --name E2EToken --symbol ETOK`, dir, path.join(logs, `1-add-${types[0]}.log`));
+    const changed = diffTrees(before, await hashTree(dir));
+    if (add.ok) {
+      result.add = 'FAIL';
+      result.addDetail = 'expected a refusal, but add succeeded';
+    } else if (changed.length > 0) {
+      result.add = 'FAIL';
+      result.addDetail = `refused, but changed: ${changed.join(', ')}`;
+    } else {
+      result.add = 'refused';
+      const message = add.output.split('\n').find(line => line.includes(`Integration '`) && line.includes('failed:'));
+      result.addDetail = `project unchanged; ${message ? message.replace(/\x1b\[[0-9;]*m/g, '').replace(/^.*failed: /, '') : 'refused'}`; // eslint-disable-line no-control-regex
+    }
+    return result;
+  }
 
   const failedAdds: string[] = [];
   for (const type of types) {
@@ -218,7 +298,8 @@ async function main(): Promise<void> {
     // Control: the untouched app must pass, so failures elsewhere are APIX's
     ['baseline', []],
     ...ADVERTISED_TYPES.map((type): [string, string[]] => [type, [type]]),
-    ['all', ALL_TOGETHER],
+    // Every integration the framework supports, on one project
+    ['all', []],
   ];
   const cases = allCases.filter(([name]) => !args.cases || args.cases.includes(name));
 
@@ -236,6 +317,7 @@ async function main(): Promise<void> {
       console.error(`[e2e] ${framework}: scaffolding failed, see logs/${framework}/scaffold.log; skipping`);
       continue;
     }
+    await FRAMEWORKS[framework].postScaffold?.(base);
     for (const [name, types] of cases) {
       const freeMb = Math.round(os.freemem() / 1024 / 1024);
       if (freeMb < args.minFreeMb) {
@@ -244,7 +326,8 @@ async function main(): Promise<void> {
         break frameworks;
       }
       log(`${framework}/${name}: starting (${freeMb} MB free)`);
-      results.push(await runCase(framework, base, name, types, args.out));
+      const caseTypes = name === 'all' ? INTEGRATIONS.filter(t => !FRAMEWORKS[framework].refused.includes(t)) : types;
+      results.push(await runCase(framework, base, name, caseTypes, args.out));
       await fs.writeJSON(resultsFile, results, { spaces: 2 });
     }
   }
@@ -253,6 +336,7 @@ async function main(): Promise<void> {
   printTable(results);
   console.log(`\nLogs and generated projects: ${args.out}`);
 
+  // 'refused' is a pass: the refusal was expected and the project unchanged
   const failed = results.some(r => [r.add, r.install, r.typecheck, r.build].includes('FAIL'));
   process.exit(failed || stopped || results.length === 0 ? 1 : 0);
 }
