@@ -1,5 +1,6 @@
 {{!-- META: {"name": "Smart Contract Operations", "description": "Hedera smart contract integration", "language": "typescript"} --}}
-{{#ifLanguage language "typescript"}}import {
+{{#ifFramework framework "next.js"}}import 'server-only';
+{{/ifFramework}}{{#ifLanguage language "typescript"}}import {
   Client,
   ContractCreateTransaction,
   ContractCallQuery,
@@ -41,10 +42,15 @@ export interface ContractInfo {
 }
 
 export class SmartContractManager {
-  private client: Client;
+  private readonly injectedClient?: Client;
 
   constructor(client?: Client) {
-    this.client = client || createDefaultClient().getClient();
+    this.injectedClient = client;
+  }
+
+  // Created on first use, never at import time (so `next build` needs no credentials)
+  private get client(): Client {
+    return this.injectedClient ?? createDefaultClient().getClient();
   }
 
   /**
@@ -202,7 +208,12 @@ const { createDefaultClient } = require('{{importFrom "hedera-client"}}');
 
 class SmartContractManager {
   constructor(client) {
-    this.client = client || createDefaultClient().getClient();
+    this.injectedClient = client;
+  }
+
+  // Created on first use, never at import time
+  get client() {
+    return this.injectedClient || createDefaultClient().getClient();
   }
 
   // JavaScript implementation would go here

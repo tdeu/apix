@@ -1,4 +1,6 @@
 {{!-- META: {"name": "Wallet Connect Component", "description": "React component for connecting Hedera wallets", "language": "typescript"} --}}
+'use client';
+
 {{#ifLanguage language "typescript"}}import React, { useState, useCallback } from 'react';
 import { useWallet } from '{{importFrom "use-wallet"}}';
 

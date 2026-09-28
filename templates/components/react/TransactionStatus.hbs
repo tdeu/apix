@@ -1,4 +1,6 @@
 {{!-- META: {"name": "Transaction Status Component", "description": "React component for displaying transaction status and details", "language": "typescript"} --}}
+'use client';
+
 {{#ifLanguage language "typescript"}}import React, { useState } from 'react';
 import { TransactionResult } from '{{importFrom "hedera-types"}}';
 import { Button } from '{{importFrom "ui-button"}}';

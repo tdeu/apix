@@ -299,8 +299,9 @@ import {
         adminKey: true
       };
       
-      // Add dependencies
-      plan.dependencies = ['@hashgraph/sdk'];
+      // Add dependencies (server-only makes a client-side import of the
+      // operator key a build error)
+      plan.dependencies = context.framework === 'next.js' ? ['@hashgraph/sdk', 'server-only'] : ['@hashgraph/sdk'];
       
       // Select templates based on framework
       plan.templates = this.selectHTSTemplates(context.framework, htsConfig, plan.layout!);
@@ -374,6 +375,13 @@ import {
       plan.type = 'smart-contract';
       plan.templates = [
         {
+          templateId: 'utils/common/hedera-client',
+          templateType: 'utility',
+          framework: plan.context.framework as any,
+          outputPath: moduleFile(plan.layout!, 'hedera-client', '.ts'),
+          variables: { network: 'testnet' }
+        },
+        {
           templateId: 'utils/common/smart-contract-operations',
           templateType: 'utility',
           framework: plan.context.framework as any,
@@ -386,6 +394,9 @@ import {
       ];
 
       plan.dependencies.push('@hashgraph/sdk');
+      if (plan.context.framework === 'next.js') {
+        plan.dependencies.push('server-only');
+      }
       plan.newFiles = this.newFilesFor(plan.templates);
       return plan;
     }
@@ -441,31 +452,25 @@ import {
 
       // Framework-specific templates
       switch (framework) {
-        case 'next.js':
+        case 'next.js': {
+          // Everything the routes and TokenManager import, so the output builds as-is
+          const module = (templateId: string, templateType: TemplateSelection['templateType'], outputPath: string): TemplateSelection =>
+            ({ templateId, templateType, framework: 'next.js', outputPath, variables: { ...config } });
           templates.push(
-            {
-              templateId: 'api/nextjs/tokens/create',
-              templateType: 'api',
-              framework: 'next.js',
-              outputPath: apiRouteFile(layout, 'tokens/create'),
-              variables: { tokenName: config.name, symbol: config.symbol }
-            },
-            {
-              templateId: 'api/nextjs/tokens/info',
-              templateType: 'api',
-              framework: 'next.js',
-              outputPath: apiRouteFile(layout, 'tokens/info'),
-              variables: { tokenName: config.name, symbol: config.symbol }
-            },
-            {
-              templateId: 'components/react/TokenManager',
-              templateType: 'component',
-              framework: 'next.js',
-              outputPath: moduleFile(layout, 'token-manager', '.tsx'),
-              variables: { ...config }
-            }
+            module('utils/common/hedera-client', 'utility', moduleFile(layout, 'hedera-client', '.ts')),
+            module('types/common/hedera-types', 'utility', moduleFile(layout, 'hedera-types', '.ts')),
+            ...['create', 'info', 'mint', 'transfer'].map(route =>
+              module(`api/nextjs/tokens/${route}`, 'api', apiRouteFile(layout, `tokens/${route}`))),
+            module('hooks/react/useTokens', 'hook', moduleFile(layout, 'use-tokens', '.ts')),
+            module('hooks/react/useWallet', 'hook', moduleFile(layout, 'use-wallet', '.ts')),
+            module('components/ui/Button', 'component', moduleFile(layout, 'ui-button', '.tsx')),
+            module('components/ui/Input', 'component', moduleFile(layout, 'ui-input', '.tsx')),
+            module('components/ui/Card', 'component', moduleFile(layout, 'ui-card', '.tsx')),
+            module('components/react/TransactionStatus', 'component', moduleFile(layout, 'transaction-status', '.tsx')),
+            module('components/react/TokenManager', 'component', moduleFile(layout, 'token-manager', '.tsx'))
           );
           break;
+        }
 
         case 'react':
           templates.push(

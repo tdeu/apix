@@ -1,5 +1,6 @@
 {{!-- META: {"name": "HTS Operations", "description": "Hedera Token Service operations utility", "language": "typescript"} --}}
-{{#ifLanguage language "typescript"}}import { 
+{{#ifFramework framework "next.js"}}import 'server-only';
+{{/ifFramework}}{{#ifLanguage language "typescript"}}import {
   Client, 
   TokenCreateTransaction, 
   TokenMintTransaction,
@@ -72,10 +73,15 @@ export interface TransferTokenParams {
 }
 
 export class HTSManager {
-  private client: Client;
+  private readonly injectedClient?: Client;
 
   constructor(client?: Client) {
-    this.client = client || createDefaultClient().getClient();
+    this.injectedClient = client;
+  }
+
+  // Created on first use, never at import time (so `next build` needs no credentials)
+  private get client(): Client {
+    return this.injectedClient ?? createDefaultClient().getClient();
   }
 
   /**
@@ -375,7 +381,12 @@ const { createDefaultClient } = require('{{importFrom "hedera-client"}}');
 
 class HTSManager {
   constructor(client) {
-    this.client = client || createDefaultClient().getClient();
+    this.injectedClient = client;
+  }
+
+  // Created on first use, never at import time
+  get client() {
+    return this.injectedClient || createDefaultClient().getClient();
   }
 
   async createToken(params) {

@@ -319,16 +319,15 @@ export interface UseWalletReturn {
   getBalance: (accountId?: string) => Promise<string>;
 }
 
+// Matches the generated routes: create, mint, transfer and info
 export interface UseTokensReturn {
   createToken: (params: CreateTokenParams) => Promise<TokenOperationResult>;
   mintToken: (params: MintTokenParams) => Promise<TokenOperationResult>;
-  burnToken: (params: BurnTokenParams) => Promise<TokenOperationResult>;
   transferToken: (params: TransferTokenParams) => Promise<TokenOperationResult>;
   getTokenInfo: (tokenId: string) => Promise<TokenInfo>;
-  getTokenBalances: (accountId: string) => Promise<TokenBalance[]>;
-  associateToken: (params: TokenAssociateParams) => Promise<TransactionResult>;
   isLoading: boolean;
   error: string | null;
+  clearError: () => void;
 }
 
 // ==========================
