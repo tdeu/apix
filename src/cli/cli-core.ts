@@ -8,7 +8,7 @@ import { ConfigurationManager } from '../utils/config-manager';
 import { logger, LogLevel } from '../utils/logger';
 import { debugLogger } from '../utils/debug-logger';
 import { createProgressManager, INTEGRATION_STEPS, trackSteps } from '../utils/progress';
-import { HealthChecker } from '../validation/health-checker';
+import { HealthChecker, HealthArea } from '../validation/health-checker';
 import { IntegrationValidator } from '../validation/integration-validator';
 import { IntegrationOptions, AnalysisOptions, ProjectContext } from '../types';
 import { hederaOperations, TokenCreationOptions } from '../services/hedera-operations';
@@ -512,7 +512,7 @@ export class APIxCLI {
     }
   }
 
-  async health(options: { quick?: boolean; fix?: boolean }): Promise<void> {
+  async health(options: { quick?: boolean; fix?: boolean }): Promise<HealthArea[]> {
     try {
       const operations = [
         // Step 1: Analyze project
@@ -520,19 +520,17 @@ export class APIxCLI {
           return await this.analyzer.analyzeProject('.');
         },
 
-        // Step 2: Initialize health checker
+        // Step 2: Check each area (project, deps, SDK, credentials, keys)
         async () => {
           const context = await this.analyzer.analyzeProject('.');
-          return new HealthChecker(context);
+          return await new HealthChecker(context).checkAreas();
         },
 
-        // Step 3: Run health checks
+        // Step 3: Detailed project checks (skipped with --quick)
         async () => {
+          if (options.quick) return null;
           const context = await this.analyzer.analyzeProject('.');
-          const healthChecker = new HealthChecker(context);
-          return options.quick 
-            ? await healthChecker.runQuickHealthCheck() 
-            : await healthChecker.runCompleteHealthCheck();
+          return await new HealthChecker(context).runCompleteHealthCheck();
         },
 
         // Step 4: Display results
@@ -546,25 +544,13 @@ export class APIxCLI {
         operations,
         { showTimer: true, showSteps: true, compact: options.quick }
       );
-      
-      const report = results[2]; // Health report is at index 2
-      if (options.quick) {
-        const quickReport = report as { healthy: boolean; criticalIssues: string[] };
-        if (quickReport.healthy) {
-          console.log(chalk.green('\n✅ Project is healthy!'));
-        } else {
-          console.log(chalk.red('\n❌ Critical issues detected:'));
-          quickReport.criticalIssues.forEach(issue => {
-            console.log(chalk.red(`   • ${issue}`));
-          });
-          console.log(chalk.yellow('\nRun "apix health" for detailed analysis'));
-        }
-      } else {
-        const fullReport = report as any;
+
+      const areas = results[1] as HealthArea[];
+      const fullReport = results[2] as any;
+      if (fullReport) {
         const context = results[0] as ProjectContext;
-        const healthChecker = new HealthChecker(context);
-        console.log(healthChecker.formatHealthReport(fullReport));
-        
+        console.log(new HealthChecker(context).formatHealthReport(fullReport));
+
         // Show suggestions for fixes if requested
         if (options.fix && (fullReport.criticalIssues > 0 || fullReport.warnings > 0)) {
           console.log(chalk.cyan.bold('\n🔧 Auto-fix Suggestions:'));
@@ -574,6 +560,9 @@ export class APIxCLI {
           console.log(chalk.gray('   • Create .env.local with Hedera credentials'));
         }
       }
+
+      console.log(HealthChecker.formatAreas(areas));
+      return areas;
 
     } catch (error) {
       logger.error('Health check failed');

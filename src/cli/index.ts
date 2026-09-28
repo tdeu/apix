@@ -236,6 +236,7 @@ program
   .description('Run health checks on your project and integrations')
   .option('-q, --quick', 'Run quick health check')
   .option('--fix', 'Show auto-fix suggestions')
+  .option('--strict', 'Exit 1 unless every area is ok')
   .action(async (options) => {
     const globalOptions = program.opts();
     const allOptions = { ...options, ...globalOptions };
@@ -245,10 +246,10 @@ program
 
     try {
       await ensureCliInitialized(allOptions);
-      const result = await cli.health(options);
-      debugLogger.endCommand(true, result);
+      const areas = await cli.health(options);
+      debugLogger.endCommand(true, areas);
       debugLogger.success('Health check completed successfully');
-      process.exit(0);
+      process.exit(options.strict && areas.some(area => area.status !== 'ok') ? 1 : 0);
     } catch (error: any) {
       debugLogger.endCommand(false);
       debugLogger.error('Health check failed', error, {

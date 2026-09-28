@@ -195,8 +195,8 @@ describe('HederaOperationsService', () => {
     it('should close client connections', () => {
       service.close();
 
-      // After closing, should not be in fallback mode
-      expect(service.isFallbackMode()).toBe(true);
+      expect(service.getCapabilities().directSDK).toBe(false);
+      expect(service.getCurrentAccountId()).toBeNull();
     });
   });
 

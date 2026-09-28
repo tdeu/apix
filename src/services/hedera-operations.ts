@@ -859,13 +859,6 @@ export class HederaOperationsService {
   }
 
   /**
-   * Check if service is running in fallback mode (SDK only or limited capabilities)
-   */
-  isFallbackMode(): boolean {
-    return !this.agentKitService?.isAvailable() && this.client === null;
-  }
-
-  /**
    * Get available capabilities
    */
   getCapabilities(): { agentKit: boolean; directSDK: boolean } {
