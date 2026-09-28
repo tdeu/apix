@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     // Validation
     if (!body.name || !body.symbol) {
       return NextResponse.json(
-        { error: {{#if quotesStyle 'single'}}'Name and symbol are required'{{else}}"Name and symbol are required"{{/if}} },
+        { error: {{#ifEquals quotesStyle 'single'}}'Name and symbol are required'{{else}}"Name and symbol are required"{{/ifEquals}} },
         { status: 400 }
       ){{#if usesSemicolons}};{{/if}}
     }
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     // Validate symbol format
     if (!/^[A-Z]{2,6}$/.test(body.symbol)) {
       return NextResponse.json(
-        { error: {{#if quotesStyle 'single'}}'Symbol must be 2-6 uppercase letters'{{else}}"Symbol must be 2-6 uppercase letters"{{/if}} },
+        { error: {{#ifEquals quotesStyle 'single'}}'Symbol must be 2-6 uppercase letters'{{else}}"Symbol must be 2-6 uppercase letters"{{/ifEquals}} },
         { status: 400 }
       ){{#if usesSemicolons}};{{/if}}
     }
@@ -34,8 +34,8 @@ export async function POST(request: NextRequest) {
       initialSupply: body.initialSupply || {{#if options.defaultInitialSupply}}{{options.defaultInitialSupply}}{{else}}1000000{{/if}},
       maxSupply: body.maxSupply,
       treasuryAccountId: body.treasuryAccountId || process.env.HEDERA_ACCOUNT_ID,
-      tokenType: body.tokenType || {{#if quotesStyle 'single'}}'FUNGIBLE_COMMON'{{else}}"FUNGIBLE_COMMON"{{/if}},
-      supplyType: body.supplyType || {{#if quotesStyle 'single'}}'FINITE'{{else}}"FINITE"{{/if}},
+      tokenType: body.tokenType || {{#ifEquals quotesStyle 'single'}}'FUNGIBLE_COMMON'{{else}}"FUNGIBLE_COMMON"{{/ifEquals}},
+      supplyType: body.supplyType || {{#ifEquals quotesStyle 'single'}}'FINITE'{{else}}"FINITE"{{/ifEquals}},
       freezeDefault: body.freezeDefault || false
     }){{#if usesSemicolons}};{{/if}}
 
@@ -44,16 +44,16 @@ export async function POST(request: NextRequest) {
       tokenId: result.tokenId,
       transactionId: result.transactionId,
       status: result.status,
-      explorerUrl: `https://hashscan.io/${body.network || {{#if quotesStyle 'single'}}'testnet'{{else}}"testnet"{{/if}}}/transaction/${result.transactionId}`
+      explorerUrl: `https://hashscan.io/${body.network || {{#ifEquals quotesStyle 'single'}}'testnet'{{else}}"testnet"{{/ifEquals}} }/transaction/${result.transactionId}`
     }){{#if usesSemicolons}};{{/if}}
 
   } catch (error) {
-    console.error({{#if quotesStyle 'single'}}'Token creation error:'{{else}}"Token creation error:"{{/if}}, error){{#if usesSemicolons}};{{/if}}
+    console.error({{#ifEquals quotesStyle 'single'}}'Token creation error:'{{else}}"Token creation error:"{{/ifEquals}}, error){{#if usesSemicolons}};{{/if}}
     
     return NextResponse.json(
       { 
-        error: {{#if quotesStyle 'single'}}'Token creation failed'{{else}}"Token creation failed"{{/if}},
-        details: error instanceof Error ? error.message : {{#if quotesStyle 'single'}}'Unknown error'{{else}}"Unknown error"{{/if}}
+        error: {{#ifEquals quotesStyle 'single'}}'Token creation failed'{{else}}"Token creation failed"{{/ifEquals}},
+        details: error instanceof Error ? error.message : {{#ifEquals quotesStyle 'single'}}'Unknown error'{{else}}"Unknown error"{{/ifEquals}}
       },
       { status: 500 }
     ){{#if usesSemicolons}};{{/if}}
@@ -65,15 +65,15 @@ export async function OPTIONS() {
   return new NextResponse(null, {
     status: 200,
     headers: {
-      {{#if quotesStyle 'single'}}'Access-Control-Allow-Origin': '*',
+      {{#ifEquals quotesStyle 'single'}}'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type'{{else}}"Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "POST, OPTIONS", 
-      "Access-Control-Allow-Headers": "Content-Type"{{/if}}
+      "Access-Control-Allow-Headers": "Content-Type"{{/ifEquals}}
     }
   }){{#if usesSemicolons}};{{/if}}
-}{{else}}const { NextResponse } = require({{#if quotesStyle 'single'}}'next/server'{{else}}"next/server"{{/if}}){{#if usesSemicolons}};{{/if}}
-const { HTSManager } = require({{#if quotesStyle 'single'}}'{{importPath "lib/hedera/hts-operations"}}'{{else}}"{{importPath "lib/hedera/hts-operations"}}"{{/if}}){{#if usesSemicolons}};{{/if}}
+}{{else}}const { NextResponse } = require({{#ifEquals quotesStyle 'single'}}'next/server'{{else}}"next/server"{{/ifEquals}}){{#if usesSemicolons}};{{/if}}
+const { HTSManager } = require({{#ifEquals quotesStyle 'single'}}'{{importPath "lib/hedera/hts-operations"}}'{{else}}"{{importPath "lib/hedera/hts-operations"}}"{{/ifEquals}}){{#if usesSemicolons}};{{/if}}
 
 const htsManager = new HTSManager(){{#if usesSemicolons}};{{/if}}
 
@@ -83,7 +83,7 @@ async function POST(request) {
     
     if (!body.name || !body.symbol) {
       return NextResponse.json(
-        { error: {{#if quotesStyle 'single'}}'Name and symbol are required'{{else}}"Name and symbol are required"{{/if}} },
+        { error: {{#ifEquals quotesStyle 'single'}}'Name and symbol are required'{{else}}"Name and symbol are required"{{/ifEquals}} },
         { status: 400 }
       ){{#if usesSemicolons}};{{/if}}
     }
@@ -104,7 +104,7 @@ async function POST(request) {
 
   } catch (error) {
     return NextResponse.json(
-      { error: {{#if quotesStyle 'single'}}'Token creation failed'{{else}}"Token creation failed"{{/if}} },
+      { error: {{#ifEquals quotesStyle 'single'}}'Token creation failed'{{else}}"Token creation failed"{{/ifEquals}} },
       { status: 500 }
     ){{#if usesSemicolons}};{{/if}}
   }
@@ -138,17 +138,17 @@ export default async function handler(
   res: NextApiResponse<CreateTokenResponse>
 ) {
   // CORS headers
-  res.setHeader({{#if quotesStyle 'single'}}'Access-Control-Allow-Origin'{{else}}"Access-Control-Allow-Origin"{{/if}}, {{#if quotesStyle 'single'}}'*'{{else}}"*"{{/if}}){{#if usesSemicolons}};{{/if}}
-  res.setHeader({{#if quotesStyle 'single'}}'Access-Control-Allow-Methods'{{else}}"Access-Control-Allow-Methods"{{/if}}, {{#if quotesStyle 'single'}}'POST, OPTIONS'{{else}}"POST, OPTIONS"{{/if}}){{#if usesSemicolons}};{{/if}}
-  res.setHeader({{#if quotesStyle 'single'}}'Access-Control-Allow-Headers'{{else}}"Access-Control-Allow-Headers"{{/if}}, {{#if quotesStyle 'single'}}'Content-Type'{{else}}"Content-Type"{{/if}}){{#if usesSemicolons}};{{/if}}
+  res.setHeader({{#ifEquals quotesStyle 'single'}}'Access-Control-Allow-Origin'{{else}}"Access-Control-Allow-Origin"{{/ifEquals}}, {{#ifEquals quotesStyle 'single'}}'*'{{else}}"*"{{/ifEquals}}){{#if usesSemicolons}};{{/if}}
+  res.setHeader({{#ifEquals quotesStyle 'single'}}'Access-Control-Allow-Methods'{{else}}"Access-Control-Allow-Methods"{{/ifEquals}}, {{#ifEquals quotesStyle 'single'}}'POST, OPTIONS'{{else}}"POST, OPTIONS"{{/ifEquals}}){{#if usesSemicolons}};{{/if}}
+  res.setHeader({{#ifEquals quotesStyle 'single'}}'Access-Control-Allow-Headers'{{else}}"Access-Control-Allow-Headers"{{/ifEquals}}, {{#ifEquals quotesStyle 'single'}}'Content-Type'{{else}}"Content-Type"{{/ifEquals}}){{#if usesSemicolons}};{{/if}}
 
-  if (req.method === {{#if quotesStyle 'single'}}'OPTIONS'{{else}}"OPTIONS"{{/if}}) {
+  if (req.method === {{#ifEquals quotesStyle 'single'}}'OPTIONS'{{else}}"OPTIONS"{{/ifEquals}}) {
     res.status(200).end(){{#if usesSemicolons}};{{/if}}
     return{{#if usesSemicolons}};{{/if}}
   }
 
-  if (req.method !== {{#if quotesStyle 'single'}}'POST'{{else}}"POST"{{/if}}) {
-    res.status(405).json({ error: {{#if quotesStyle 'single'}}'Method not allowed'{{else}}"Method not allowed"{{/if}} }){{#if usesSemicolons}};{{/if}}
+  if (req.method !== {{#ifEquals quotesStyle 'single'}}'POST'{{else}}"POST"{{/ifEquals}}) {
+    res.status(405).json({ error: {{#ifEquals quotesStyle 'single'}}'Method not allowed'{{else}}"Method not allowed"{{/ifEquals}} }){{#if usesSemicolons}};{{/if}}
     return{{#if usesSemicolons}};{{/if}}
   }
 
@@ -157,13 +157,13 @@ export default async function handler(
 
     // Validation
     if (!name || !symbol) {
-      res.status(400).json({ error: {{#if quotesStyle 'single'}}'Name and symbol are required'{{else}}"Name and symbol are required"{{/if}} }){{#if usesSemicolons}};{{/if}}
+      res.status(400).json({ error: {{#ifEquals quotesStyle 'single'}}'Name and symbol are required'{{else}}"Name and symbol are required"{{/ifEquals}} }){{#if usesSemicolons}};{{/if}}
       return{{#if usesSemicolons}};{{/if}}
     }
 
     // Validate symbol format
     if (!/^[A-Z]{2,6}$/.test(symbol)) {
-      res.status(400).json({ error: {{#if quotesStyle 'single'}}'Symbol must be 2-6 uppercase letters'{{else}}"Symbol must be 2-6 uppercase letters"{{/if}} }){{#if usesSemicolons}};{{/if}}
+      res.status(400).json({ error: {{#ifEquals quotesStyle 'single'}}'Symbol must be 2-6 uppercase letters'{{else}}"Symbol must be 2-6 uppercase letters"{{/ifEquals}} }){{#if usesSemicolons}};{{/if}}
       return{{#if usesSemicolons}};{{/if}}
     }
 
@@ -175,8 +175,8 @@ export default async function handler(
       initialSupply: initialSupply || {{#if options.defaultInitialSupply}}{{options.defaultInitialSupply}}{{else}}1000000{{/if}},
       maxSupply,
       treasuryAccountId: treasuryAccountId || process.env.HEDERA_ACCOUNT_ID,
-      tokenType: tokenType || {{#if quotesStyle 'single'}}'FUNGIBLE_COMMON'{{else}}"FUNGIBLE_COMMON"{{/if}},
-      supplyType: supplyType || {{#if quotesStyle 'single'}}'FINITE'{{else}}"FINITE"{{/if}},
+      tokenType: tokenType || {{#ifEquals quotesStyle 'single'}}'FUNGIBLE_COMMON'{{else}}"FUNGIBLE_COMMON"{{/ifEquals}},
+      supplyType: supplyType || {{#ifEquals quotesStyle 'single'}}'FINITE'{{else}}"FINITE"{{/ifEquals}},
       freezeDefault: freezeDefault || false
     }){{#if usesSemicolons}};{{/if}}
 
@@ -189,20 +189,20 @@ export default async function handler(
     }){{#if usesSemicolons}};{{/if}}
 
   } catch (error) {
-    console.error({{#if quotesStyle 'single'}}'Token creation error:'{{else}}"Token creation error:"{{/if}}, error){{#if usesSemicolons}};{{/if}}
+    console.error({{#ifEquals quotesStyle 'single'}}'Token creation error:'{{else}}"Token creation error:"{{/ifEquals}}, error){{#if usesSemicolons}};{{/if}}
     
     res.status(500).json({
-      error: {{#if quotesStyle 'single'}}'Token creation failed'{{else}}"Token creation failed"{{/if}},
-      details: error instanceof Error ? error.message : {{#if quotesStyle 'single'}}'Unknown error'{{else}}"Unknown error"{{/if}}
+      error: {{#ifEquals quotesStyle 'single'}}'Token creation failed'{{else}}"Token creation failed"{{/ifEquals}},
+      details: error instanceof Error ? error.message : {{#ifEquals quotesStyle 'single'}}'Unknown error'{{else}}"Unknown error"{{/ifEquals}}
     }){{#if usesSemicolons}};{{/if}}
   }
-}{{else}}const { HTSManager } = require({{#if quotesStyle 'single'}}'{{importPath "lib/hedera/hts-operations"}}'{{else}}"{{importPath "lib/hedera/hts-operations"}}"{{/if}}){{#if usesSemicolons}};{{/if}}
+}{{else}}const { HTSManager } = require({{#ifEquals quotesStyle 'single'}}'{{importPath "lib/hedera/hts-operations"}}'{{else}}"{{importPath "lib/hedera/hts-operations"}}"{{/ifEquals}}){{#if usesSemicolons}};{{/if}}
 
 const htsManager = new HTSManager(){{#if usesSemicolons}};{{/if}}
 
 export default async function handler(req, res) {
-  if (req.method !== {{#if quotesStyle 'single'}}'POST'{{else}}"POST"{{/if}}) {
-    res.status(405).json({ error: {{#if quotesStyle 'single'}}'Method not allowed'{{else}}"Method not allowed"{{/if}} }){{#if usesSemicolons}};{{/if}}
+  if (req.method !== {{#ifEquals quotesStyle 'single'}}'POST'{{else}}"POST"{{/ifEquals}}) {
+    res.status(405).json({ error: {{#ifEquals quotesStyle 'single'}}'Method not allowed'{{else}}"Method not allowed"{{/ifEquals}} }){{#if usesSemicolons}};{{/if}}
     return{{#if usesSemicolons}};{{/if}}
   }
 
@@ -210,7 +210,7 @@ export default async function handler(req, res) {
     const { name, symbol, decimals, initialSupply } = req.body{{#if usesSemicolons}};{{/if}}
 
     if (!name || !symbol) {
-      res.status(400).json({ error: {{#if quotesStyle 'single'}}'Name and symbol are required'{{else}}"Name and symbol are required"{{/if}} }){{#if usesSemicolons}};{{/if}}
+      res.status(400).json({ error: {{#ifEquals quotesStyle 'single'}}'Name and symbol are required'{{else}}"Name and symbol are required"{{/ifEquals}} }){{#if usesSemicolons}};{{/if}}
       return{{#if usesSemicolons}};{{/if}}
     }
 
@@ -229,7 +229,7 @@ export default async function handler(req, res) {
     }){{#if usesSemicolons}};{{/if}}
 
   } catch (error) {
-    res.status(500).json({ error: {{#if quotesStyle 'single'}}'Token creation failed'{{else}}"Token creation failed"{{/if}} }){{#if usesSemicolons}};{{/if}}
+    res.status(500).json({ error: {{#ifEquals quotesStyle 'single'}}'Token creation failed'{{else}}"Token creation failed"{{/ifEquals}} }){{#if usesSemicolons}};{{/if}}
   }
 }{{/if}}
 {{/conditional}}

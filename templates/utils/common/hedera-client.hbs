@@ -39,24 +39,24 @@ class HederaClient {
     }
   }
 
-  {{#ifLanguage language "typescript"}}getClient(): Client {{{else}}getClient() {{{/ifLanguage}}
+  getClient(){{#ifLanguage language "typescript"}}: Client{{/ifLanguage}} {
     return this.client;
   }
 
-  {{#ifLanguage language "typescript"}}getOperatorAccountId(): AccountId | undefined {{{else}}getOperatorAccountId() {{{/ifLanguage}}
+  getOperatorAccountId(){{#ifLanguage language "typescript"}}: AccountId | undefined{{/ifLanguage}} {
     return this.operatorAccountId;
   }
 
-  {{#ifLanguage language "typescript"}}getOperatorPrivateKey(): PrivateKey | undefined {{{else}}getOperatorPrivateKey() {{{/ifLanguage}}
+  getOperatorPrivateKey(){{#ifLanguage language "typescript"}}: PrivateKey | undefined{{/ifLanguage}} {
     return this.operatorPrivateKey;
   }
 
-  {{#ifLanguage language "typescript"}}async close(): Promise<void> {{{else}}async close() {{{/ifLanguage}}
+  async close(){{#ifLanguage language "typescript"}}: Promise<void>{{/ifLanguage}} {
     this.client.close();
   }
 
   // Utility method to check if operator is set
-  {{#ifLanguage language "typescript"}}hasOperator(): boolean {{{else}}hasOperator() {{{/ifLanguage}}
+  hasOperator(){{#ifLanguage language "typescript"}}: boolean{{/ifLanguage}} {
     return !!(this.operatorAccountId && this.operatorPrivateKey);
   }
 }
@@ -83,6 +83,5 @@ module.exports = {
   createDefaultClient
 };
 {{else}}
-export { HederaClient, createDefaultClient };
 export default HederaClient;
 {{/ifLanguage}}
