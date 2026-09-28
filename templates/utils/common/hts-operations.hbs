@@ -66,7 +66,8 @@ export interface MintTokenParams {
 
 export interface TransferTokenParams {
   tokenId: string;
-  fromAccountId: string;
+  /** Defaults to the operator account; the generated routes never set it */
+  fromAccountId?: string;
   toAccountId: string;
   amount: number;
 }
@@ -120,8 +121,15 @@ export class HTSManager {
         transaction.setMaxSupply(maxSupply);
       }
 
+      // The server's operator account (HEDERA_ACCOUNT_ID) is the treasury and
+      // holds the supply key unless server code says otherwise, so the
+      // generated mint route works
+      const operatorAccountId = this.client.operatorAccountId;
+      const operatorPublicKey = this.client.operatorPublicKey;
       if (treasuryAccountId) {
         transaction.setTreasuryAccountId(AccountId.fromString(treasuryAccountId));
+      } else if (operatorAccountId) {
+        transaction.setTreasuryAccountId(operatorAccountId);
       }
 
       if (adminKey) {
@@ -130,6 +138,8 @@ export class HTSManager {
 
       if (supplyKey) {
         transaction.setSupplyKey(supplyKey);
+      } else if (operatorPublicKey) {
+        transaction.setSupplyKey(operatorPublicKey);
       }
 
       if (freezeKey) {
@@ -248,10 +258,15 @@ export class HTSManager {
    */
   async transferToken(params: TransferTokenParams): Promise<{ transactionId: string }> {
     try {
-      const { tokenId, fromAccountId, toAccountId, amount } = params;
+      const { tokenId, toAccountId, amount } = params;
+      // Only the operator's key signs, so by default the operator sends
+      const from = params.fromAccountId ? AccountId.fromString(params.fromAccountId) : this.client.operatorAccountId;
+      if (!from) {
+        throw new Error('No sender: the Hedera client has no operator account');
+      }
 
       const transaction = new TransferTransaction()
-        .addTokenTransfer(TokenId.fromString(tokenId), AccountId.fromString(fromAccountId), -amount)
+        .addTokenTransfer(TokenId.fromString(tokenId), from, -amount)
         .addTokenTransfer(TokenId.fromString(tokenId), AccountId.fromString(toAccountId), amount);
 
       const txResponse = await transaction.execute(this.client);

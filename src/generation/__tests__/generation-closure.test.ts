@@ -97,3 +97,46 @@ describe.each(['hts', 'smart-contract', 'consensus'])('`apix add %s` on a Next.j
     }
   });
 });
+
+describe('signing model and dependencies', () => {
+  let root: string;
+
+  const generate = async (integration: string): Promise<string[]> => {
+    const context = nextContext(root);
+    const plan = await new IntegrationPlanner().createIntegrationPlan(integration, { name: 'MyToken', symbol: 'MTK' }, context);
+    const generator = new IntegrationGenerator();
+    await generator.initialize();
+    await generator.generateIntegration(plan, context);
+    return plan.templates.map(t => t.outputPath);
+  };
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'apix-signing-'));
+    await fs.writeJSON(path.join(root, 'package.json'), { name: 'app', version: '1.0.0', dependencies: { next: '16.3.6' } });
+    await fs.outputFile(path.join(root, 'src/app/page.tsx'), 'export default function Page() { return null; }\n');
+    jest.spyOn(PackageManager.prototype, 'installDependencies').mockResolvedValue();
+  });
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await fs.remove(root);
+  });
+
+  it('never sends the wallet account as treasury or sender (hts)', async () => {
+    await generate('hts');
+    const tokenManager = await fs.readFile(path.join(root, 'src/components/TokenManager.tsx'), 'utf8');
+    expect(tokenManager).toMatch(/Signing model: every operation below is signed on the server by the\r?\n\/\/ operator account/);
+    expect(tokenManager).not.toMatch(/(fromAccountId|treasuryAccountId):\s*wallet/);
+
+    const transfer = await fs.readFile(path.join(root, 'src/app/api/tokens/transfer/route.ts'), 'utf8');
+    const create = await fs.readFile(path.join(root, 'src/app/api/tokens/create/route.ts'), 'utf8');
+    expect(transfer).not.toMatch(/body\.fromAccountId/);
+    expect(create).not.toMatch(/body\.treasuryAccountId|createToken\(body\)/);
+  }, 120_000);
+
+  it('declares @hashgraph/sdk for wallet', async () => {
+    await generate('wallet');
+    const pkg = await fs.readJSON(path.join(root, 'package.json'));
+    expect(pkg.dependencies['@hashgraph/sdk']).toBeDefined();
+  }, 120_000);
+});

@@ -334,6 +334,8 @@ import {
 
     private async createWalletPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
       plan.type = 'wallet';
+      // lib/hedera/wallet-service imports @hashgraph/sdk
+      plan.dependencies = ['@hashgraph/sdk'];
       plan.templates = [
         {
           templateId: 'utils/common/wallet-service',

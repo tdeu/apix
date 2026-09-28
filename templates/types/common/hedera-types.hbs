@@ -79,7 +79,8 @@ export interface BurnTokenParams {
 
 export interface TransferTokenParams {
   tokenId: string;
-  fromAccountId: string;
+  /** Defaults to the server's operator account; the generated routes never set it */
+  fromAccountId?: string;
   toAccountId: string;
   amount: number;
 }

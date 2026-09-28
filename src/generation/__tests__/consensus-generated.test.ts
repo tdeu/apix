@@ -7,6 +7,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import ts from 'typescript';
+import { PrivateKey } from '@hashgraph/sdk';
 import { IntegrationGenerator } from '../integration-generator';
 import { IntegrationPlanner } from '../../planning/integration-planner';
 import { PackageManager } from '../../utils/package-manager';
@@ -46,7 +47,7 @@ describe('generated consensus-operations', () => {
     };
     ConsensusInputError: new (...args: unknown[]) => Error;
   };
-  const savedEnv = { id: process.env.HEDERA_ACCOUNT_ID, key: process.env.HEDERA_PRIVATE_KEY };
+  const savedEnv = { id: process.env.HEDERA_ACCOUNT_ID, key: process.env.HEDERA_PRIVATE_KEY, mirror: process.env.HEDERA_MIRROR_NODE_URL };
 
   beforeAll(async () => {
     delete process.env.HEDERA_ACCOUNT_ID;
@@ -81,8 +82,12 @@ describe('generated consensus-operations', () => {
   }, 120_000);
 
   afterAll(async () => {
-    if (savedEnv.id !== undefined) process.env.HEDERA_ACCOUNT_ID = savedEnv.id;
-    if (savedEnv.key !== undefined) process.env.HEDERA_PRIVATE_KEY = savedEnv.key;
+    const restore = (name: string, value: string | undefined) => {
+      if (value === undefined) delete process.env[name]; else process.env[name] = value;
+    };
+    restore('HEDERA_ACCOUNT_ID', savedEnv.id);
+    restore('HEDERA_PRIVATE_KEY', savedEnv.key);
+    restore('HEDERA_MIRROR_NODE_URL', savedEnv.mirror);
     await fs.remove(root);
   });
 
@@ -105,5 +110,19 @@ describe('generated consensus-operations', () => {
   it('accepts a message of exactly 1024 bytes, then needs credentials to send it', async () => {
     await expect(mod.consensusManager.submitMessage({ topicId: '0.0.5', message: 'x'.repeat(1024) }))
       .rejects.toThrow(/HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY must be set/);
+  });
+
+  // Last: it creates (and caches) the default client
+  it('turns an https mirror node URL into the gRPC address the SDK expects', () => {
+    process.env.HEDERA_ACCOUNT_ID = '0.0.1234';
+    process.env.HEDERA_PRIVATE_KEY = PrivateKey.generateED25519().toStringDer();
+    process.env.HEDERA_MIRROR_NODE_URL = 'https://testnet.mirrornode.hedera.com';
+    const { createDefaultClient } = require(path.join(root, 'src/lib/hedera/client.js'));
+    const client = createDefaultClient();
+    try {
+      expect(client.getClient().mirrorNetwork).toEqual(['testnet.mirrornode.hedera.com:443']);
+    } finally {
+      client.getClient().close();
+    }
   });
 });

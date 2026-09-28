@@ -39,7 +39,7 @@ class HederaClient {
     this.client.setOperator(this.operatorAccountId, this.operatorPrivateKey);
 
     if (config.mirrorNodeUrl) {
-      this.client.setMirrorNetwork(config.mirrorNodeUrl);
+      this.client.setMirrorNetwork(toMirrorNetworkAddress(config.mirrorNodeUrl));
     }
   }
 
@@ -58,6 +58,18 @@ class HederaClient {
   async close(){{#ifLanguage language "typescript"}}: Promise<void>{{/ifLanguage}} {
     this.client.close();
   }
+}
+
+/**
+ * The SDK wants the mirror node's gRPC address ("host:443"), but .env files
+ * usually hold its REST URL ("https://testnet.mirrornode.hedera.com").
+ */
+function toMirrorNetworkAddress(value{{#ifLanguage language "typescript"}}: string{{/ifLanguage}}){{#ifLanguage language "typescript"}}: string{{/ifLanguage}} {
+  if (!/^[a-z]+:\/\//i.test(value)) {
+    return value;
+  }
+  const url = new URL(value);
+  return `${url.hostname}:${url.port || '443'}`;
 }
 
 let defaultClient{{#ifLanguage language "typescript"}}: HederaClient | null{{/ifLanguage}} = null;

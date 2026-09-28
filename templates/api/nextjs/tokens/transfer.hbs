@@ -4,19 +4,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { htsManager } from '{{importFrom "hts-operations"}}';
 import { TransferTokenParams } from '{{importFrom "hedera-types"}}';
 
+// POST /api/tokens/transfer  { "tokenId": "0.0.123", "toAccountId": "0.0.456", "amount": 100 }
+// The server's operator account (HEDERA_ACCOUNT_ID) is always the sender: only
+// its key signs here. A sender in the request body is ignored.
 export async function POST(request: NextRequest) {
   try {
     const body: TransferTokenParams = await request.json();
-    
-    // Validate required fields
-    if (!body.tokenId || !body.fromAccountId || !body.toAccountId || !body.amount) {
+
+    if (!body.tokenId || !body.toAccountId || body.amount === undefined) {
       return NextResponse.json(
-        { error: 'Token ID, from account ID, to account ID, and amount are required' },
+        { error: 'Token ID, recipient account ID and amount are required' },
         { status: 400 }
       );
     }
 
-    // Validate token ID format
     if (!/^\d+\.\d+\.\d+$/.test(body.tokenId)) {
       return NextResponse.json(
         { error: 'Invalid token ID format. Expected format: 0.0.123' },
@@ -24,22 +25,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate account ID formats
-    if (!/^\d+\.\d+\.\d+$/.test(body.fromAccountId)) {
-      return NextResponse.json(
-        { error: 'Invalid from account ID format. Expected format: 0.0.123' },
-        { status: 400 }
-      );
-    }
-
     if (!/^\d+\.\d+\.\d+$/.test(body.toAccountId)) {
       return NextResponse.json(
-        { error: 'Invalid to account ID format. Expected format: 0.0.123' },
+        { error: 'Invalid recipient account ID format. Expected format: 0.0.123' },
         { status: 400 }
       );
     }
 
-    // Validate amount
     if (body.amount <= 0 || !Number.isInteger(body.amount)) {
       return NextResponse.json(
         { error: 'Amount must be a positive integer' },
@@ -47,16 +39,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Prevent self-transfer
-    if (body.fromAccountId === body.toAccountId) {
+    if (body.toAccountId === process.env.HEDERA_ACCOUNT_ID) {
       return NextResponse.json(
-        { error: 'Cannot transfer tokens to the same account' },
+        { error: 'The recipient is the operator account, which is also the sender' },
         { status: 400 }
       );
     }
 
-    const result = await htsManager.transferToken(body);
-    
+    const result = await htsManager.transferToken({
+      tokenId: body.tokenId,
+      toAccountId: body.toAccountId,
+      amount: body.amount
+    });
+
     return NextResponse.json({
       success: true,
       data: result
@@ -64,9 +59,9 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Token transfer error:', error);
-    
+
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to transfer token',
         details: error instanceof Error ? error.message : 'Unknown error'
       },

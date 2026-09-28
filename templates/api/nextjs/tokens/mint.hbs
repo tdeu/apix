@@ -32,7 +32,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await htsManager.mintToken(body);
+    // Minted by the operator account (it holds the supply key)
+    const result = await htsManager.mintToken({ tokenId: body.tokenId, amount: body.amount });
     
     return NextResponse.json({
       success: true,
