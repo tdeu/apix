@@ -13,6 +13,26 @@ export interface GenerationResult {
   installedDependencies: string[];
   modifiedFiles: string[];
   nextSteps: string[];
+  /** Existing files that differed and were replaced (only with force) */
+  overwrittenFiles: string[];
+  /** Existing files already identical to what would be generated (left alone) */
+  unchangedFiles: string[];
+}
+
+export interface GenerationOptions {
+  /** Overwrite existing files that differ from what would be generated */
+  force?: boolean;
+}
+
+/** Thrown when generation would overwrite existing files and force is off */
+export class FileConflictError extends Error {
+  constructor(readonly conflicts: string[]) {
+    super(
+      `These files already exist and differ from what APIX would generate:\n` +
+      conflicts.map(file => `  - ${file}`).join('\n') +
+      '\nNothing was written. Re-run with --force to overwrite them.'
+    );
+  }
 }
 
 export class IntegrationGenerator {
@@ -35,13 +55,16 @@ export class IntegrationGenerator {
 
   async generateIntegration(
     plan: IntegrationPlan,
-    context: ProjectContext
+    context: ProjectContext,
+    options: GenerationOptions = {}
   ): Promise<GenerationResult> {
     const result: GenerationResult = {
       generatedFiles: [],
       installedDependencies: [],
       modifiedFiles: [],
-      nextSteps: []
+      nextSteps: [],
+      overwrittenFiles: [],
+      unchangedFiles: []
     };
 
     try {
@@ -70,6 +93,26 @@ export class IntegrationGenerator {
         ));
       }
 
+      // Existing files: identical ones are left alone (e.g. lib/hedera/client.ts
+      // from an earlier `apix add`); different ones are only replaced with force
+      const toWrite: GeneratedFile[] = [];
+      const conflicts: string[] = [];
+      for (const file of rendered) {
+        const fullPath = path.join(context.rootPath, file.path);
+        if (!await fs.pathExists(fullPath)) {
+          toWrite.push(file);
+        } else if ((await fs.readFile(fullPath, 'utf8')) === file.content) {
+          result.unchangedFiles.push(file.path);
+        } else {
+          conflicts.push(file.path);
+          toWrite.push(file);
+        }
+      }
+      if (conflicts.length > 0 && !options.force) {
+        throw new FileConflictError(conflicts);
+      }
+      result.overwrittenFiles = conflicts;
+
       // Step 2: Install dependencies
       if (plan.dependencies.length > 0) {
         logger.info(`Installing ${plan.dependencies.length} dependencies...`);
@@ -84,9 +127,9 @@ export class IntegrationGenerator {
         logger.success('✅ Dependencies installed successfully');
       }
 
-      // Step 3: Write the rendered files
-      for (const [index, generatedFile] of rendered.entries()) {
-        logger.info(`📝 Writing ${index + 1}/${rendered.length}: ${generatedFile.path}`);
+      // Step 3: Write the rendered files (new ones, plus conflicts under force)
+      for (const [index, generatedFile] of toWrite.entries()) {
+        logger.info(`📝 Writing ${index + 1}/${toWrite.length}: ${generatedFile.path}`);
         const fullPath = path.join(context.rootPath, generatedFile.path);
         await fs.ensureDir(path.dirname(fullPath));
         await fs.writeFile(fullPath, generatedFile.content, 'utf8');
@@ -308,7 +351,9 @@ export class IntegrationGenerator {
         generatedFiles: [generatedFile],
         installedDependencies: [],
         modifiedFiles: [],
-        nextSteps: [`Generated file from template: ${templateId}`]
+        nextSteps: [`Generated file from template: ${templateId}`],
+        overwrittenFiles: [],
+        unchangedFiles: []
       };
     } catch (error) {
       logger.error(`Failed to generate from template ${templateId}:`, error);

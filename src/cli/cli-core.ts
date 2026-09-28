@@ -328,7 +328,7 @@ export class APIxCLI {
 
           const context = await this.analyzer.analyzeProject('.');
           const plan = await this.planner.createIntegrationPlan(integration, options, context);
-          const result = await this.generator.generateIntegration(plan, context);
+          const result = await this.generator.generateIntegration(plan, context, { force: options.force });
 
           if (integration === 'hts' && options.name && options.symbol) {
             await this.offerRealTokenCreation(options, result);
@@ -381,7 +381,19 @@ export class APIxCLI {
           formatter.list(fileList);
           formatter.blank();
         }
-        
+
+        if (result.overwrittenFiles?.length > 0) {
+          formatter.subheader('Overwritten (--force)');
+          formatter.list(result.overwrittenFiles);
+          formatter.blank();
+        }
+
+        if (result.unchangedFiles?.length > 0) {
+          formatter.subheader('Already up to date (not rewritten)');
+          formatter.list(result.unchangedFiles);
+          formatter.blank();
+        }
+
         if (result.installedDependencies?.length > 0) {
           formatter.subheader('Installed Dependencies');
           formatter.list(result.installedDependencies);
