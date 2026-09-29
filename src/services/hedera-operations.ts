@@ -10,8 +10,7 @@ import { InputSanitizer } from '../utils/input-sanitizer';
 /**
  * Hedera Operations Service
  *
- * Real Hedera operations through the Hedera SDK. hedera-agent-kit is not
- * initialised (nothing uses it). Every operation that reports
+ * Real Hedera operations through the Hedera SDK. Every operation that reports
  * success carries the entity and/or transaction ID from the network's
  * receipt; if the receipt lacks one, the operation fails instead.
  */
@@ -707,18 +706,9 @@ export class HederaOperationsService {
     return `https://hashscan.io/${this.network}/${page}/${path}`;
   }
 
-  /** hedera-agent-kit is not initialised, so never fully enabled */
-  isFullyEnabled(): boolean {
-    return false;
-  }
-
-  /** Always false: every operation uses the Hedera SDK directly */
-  isUsingAgentKit(): boolean {
-    return false;
-  }
-
-  getCapabilities(): { agentKit: boolean; directSDK: boolean } {
-    return { agentKit: false, directSDK: this.client !== null };
+  /** Whether initialize() has configured an SDK client */
+  getCapabilities(): { directSDK: boolean } {
+    return { directSDK: this.client !== null };
   }
 
   /**

@@ -1,6 +1,5 @@
 import { AIClient, createAIClient } from '../provider';
 import { parseAIJson } from '../json';
-import { PromptTemplate } from '@langchain/core/prompts';
 import { z } from 'zod';
 import { logger } from '../../utils/logger';
 import { 
@@ -24,13 +23,11 @@ import {
 export class LimitationHandler {
   private client: AIClient | null;
   private readonly command?: string;
-  private assessmentPrompt!: PromptTemplate;
   private capabilityKnowledgeBase!: Map<string, CapabilityAssessment>;
 
   constructor(options: { client?: AIClient; command?: string } = {}) {
     this.client = options.client ?? null;
     this.command = options.command;
-    this.initializePrompts();
     this.initializeCapabilityKnowledge();
   }
 
@@ -417,26 +414,6 @@ export class LimitationHandler {
     const intentAdjustment = intentMultiplier[userIntent.primaryIntent] || 0.7;
 
     return Math.min(1.0, baseConfidence * complexityAdjustment * intentAdjustment);
-  }
-
-  /**
-   * Initialize assessment prompts
-   */
-  private initializePrompts(): void {
-    this.assessmentPrompt = PromptTemplate.fromTemplate(`
-      Assess AI limitations for this enterprise requirement:
-      
-      Requirement: {requirement}
-      Classification: {classification}
-      
-      Provide honest assessment of:
-      1. Areas of high confidence (>80%)
-      2. Areas of medium confidence (50-80%)
-      3. Areas of low confidence (<50%)
-      4. Recommended approach and fallback strategies
-      
-      Be transparent about limitations while providing constructive guidance.
-    `);
   }
 
   /**

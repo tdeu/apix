@@ -1,6 +1,6 @@
 import { AIClient, createAIClient } from '../provider';
 import { parseAIJson } from '../json';
-import { PromptTemplate } from '@langchain/core/prompts';
+import { PromptTemplate } from '../prompt';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../../utils/logger';
@@ -54,8 +54,6 @@ export class AICodeCompositionEngine {
   private client: AIClient | null = null;
   private readonly command?: string;
   private codeGenerationPrompt: PromptTemplate | null = null;
-  private qualityValidationPrompt: PromptTemplate | null = null;
-  private patternCreationPrompt: PromptTemplate | null = null;
   private templateCombiner: TemplateCombiner;
   private qualityAssessment: CodeQualityAssessment;
 
@@ -462,45 +460,6 @@ Provide detailed composition strategy with:
 Analyze and provide composition strategy:
     `);
 
-    this.qualityValidationPrompt = PromptTemplate.fromTemplate(`
-# Code Quality Validation
-
-## Generated Code
-{generatedCode}
-
-## Enterprise Requirements
-{requirements}
-
-## Validation Criteria
-Assess the generated code across these enterprise dimensions:
-
-1. **Code Quality (0-100)**
-   - Syntax correctness and compilation
-   - Code structure and organization
-   - TypeScript type safety
-   - Error handling completeness
-   - Performance optimization
-
-2. **Business Logic Accuracy (0-100)**
-   - Requirements fulfillment
-   - Business rule implementation
-   - Edge case handling
-   - Data validation and integrity
-
-3. **Security Compliance (0-100)**
-   - Input validation and sanitization
-   - Access control implementation
-   - Cryptographic best practices
-   - Vulnerability prevention
-
-4. **Enterprise Standards (0-100)**
-   - Regulatory compliance adherence
-   - Audit trail implementation
-   - Logging and monitoring
-   - Documentation completeness
-
-Provide detailed quality assessment with specific scores and recommendations:
-    `);
   }
 
   /**
@@ -922,8 +881,7 @@ Improve the code addressing these quality issues while maintaining functionality
           title: 'Dependencies Installation',
           description: 'Install required packages',
           commands: [
-            'npm install',
-            'npm install hedera-agent-kit'
+            'npm install @hashgraph/sdk'
           ]
         },
         {

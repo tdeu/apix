@@ -9,8 +9,8 @@ them and re-ran everything below that the fixes touched. The history is in
 - APIX: branch `phase-4b/testnet-fixes`. The library proof script is
   `scripts/testnet-proof.ts` (`npm run proof:testnet`), and its raw output
   is [`testnet-proof.json`](testnet-proof.json).
-- `@hashgraph/sdk` 2.80.0 (APIX and the generated apps). No operation uses
-  hedera-agent-kit 3.8.2 since 4b.
+- `@hashgraph/sdk` 2.80.0 (APIX and the generated apps). The Phase 4 runs
+  still had hedera-agent-kit 3.8.2 installed; it was removed in Phase 5a.
 - Network: testnet. Operator `0.0.10780747` (ECDSA); demo recipient
   `0.0.10777128` (ED25519, unlimited automatic associations).
 - Mirror node: `https://testnet.mirrornode.hedera.com/api/v1`

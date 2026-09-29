@@ -14,7 +14,6 @@ jest.mock('../../services/hedera-operations', () => ({
     initialize: jest.fn(),
     getNetwork: () => 'testnet',
     getCurrentAccountId: () => '0.0.1234',
-    isUsingAgentKit: () => false,
     createToken: jest.fn(),
   },
 }));

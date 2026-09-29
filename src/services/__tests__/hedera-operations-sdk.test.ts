@@ -8,7 +8,6 @@ import {
 } from '@hashgraph/sdk';
 import { HederaOperationsService, buildContractParameters } from '../hedera-operations';
 
-jest.mock('../hedera-agent-kit-service', () => ({ HederaAgentKitService: jest.fn() }));
 jest.mock('../../utils/logger');
 
 const OPERATOR = '0.0.1234';

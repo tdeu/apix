@@ -1,8 +1,7 @@
 import { AIClient, ChatTurn, createAIClient } from '../provider';
 import { logger } from '../../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
-import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
-import { ConversationResponse, ConversationSession, ConversationContext } from '../../types/conversation';
+import { ChatMessage, ConversationResponse, ConversationSession, ConversationContext } from '../../types/conversation';
 
 /**
  * ConversationEngine: chat, explain and compare. Every reply comes from the
@@ -78,7 +77,7 @@ export class ConversationEngine {
     // updated once a real reply exists
     const aiResponse = await this.generateAIResponse(message, session);
 
-    session.messages.push(new HumanMessage(message), new AIMessage(aiResponse.content));
+    session.messages.push({ role: 'user', content: message }, { role: 'assistant', content: aiResponse.content });
     session.lastActivity = new Date();
 
     return aiResponse;
@@ -92,12 +91,9 @@ export class ConversationEngine {
     session: ConversationSession
   ): Promise<ConversationResponse> {
     const history: ChatTurn[] = session.messages
-      .filter(msg => msg._getType() === 'human' || msg._getType() === 'ai')
+      .filter((msg): msg is ChatMessage & { role: 'user' | 'assistant' } => msg.role === 'user' || msg.role === 'assistant')
       .slice(-8)
-      .map(msg => ({
-        role: msg._getType() === 'human' ? 'user' as const : 'assistant' as const,
-        content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-      }));
+      .map(msg => ({ role: msg.role, content: msg.content }));
 
     const content = await this.getClient().complete({
       system: this.buildSystemPrompt(session.context),

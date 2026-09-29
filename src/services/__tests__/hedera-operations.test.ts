@@ -3,9 +3,6 @@ import { Client, PrivateKey } from '@hashgraph/sdk';
 import { HederaOperationsService, TokenCreationOptions } from '../hedera-operations';
 
 // Mock dependencies
-jest.mock('../hedera-agent-kit-service', () => ({
-  HederaAgentKitService: jest.fn()
-}));
 jest.mock('../../utils/logger');
 
 describe('HederaOperationsService', () => {
@@ -68,7 +65,7 @@ describe('HederaOperationsService', () => {
       await service.initialize();
 
       expect(service.getCurrentAccountId()).toBe('0.0.1234');
-      expect(service.getCapabilities()).toEqual({ agentKit: false, directSDK: true });
+      expect(service.getCapabilities()).toEqual({ directSDK: true });
     });
   });
 
@@ -119,7 +116,7 @@ describe('HederaOperationsService', () => {
     });
 
     it('should report no capabilities before initialization', () => {
-      expect(service.getCapabilities()).toEqual({ agentKit: false, directSDK: false });
+      expect(service.getCapabilities()).toEqual({ directSDK: false });
       expect(service.getCurrentAccountId()).toBeNull();
     });
   });

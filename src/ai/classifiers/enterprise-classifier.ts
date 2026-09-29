@@ -1,6 +1,6 @@
 import { AIClient, createAIClient } from '../provider';
 import { parseAIJson } from '../json';
-import { PromptTemplate } from '@langchain/core/prompts';
+import { PromptTemplate } from '../prompt';
 import { z } from 'zod';
 import { logger } from '../../utils/logger';
 import {

@@ -73,16 +73,20 @@ run on testnet and verified on the mirror node
   is diagnosis only.
 - Groq, the telemetry setting and the unused `AI_*` settings in `.env.example`.
 - Hard-coded contract bytecode and the fake contract deploy.
-- Unused dependencies: `@hashgraph/hedera-wallet-snap`,
-  `@langchain/anthropic`, `@langchain/openai`.
+- hedera-agent-kit and LangChain (`@langchain/core`, `@langchain/anthropic`,
+  `@langchain/openai`): nothing needed them once token creation used the
+  SDK directly, and APIX's prompt templates are its own few lines of code.
+  This removed 10 of the 21 production audit advisories and about 195
+  production packages.
+- Unused dependencies: `@hashgraph/hedera-wallet-snap`.
 - The testnet IDs published with the hackathon submission, which were never
   created.
 
 ### Fixed
 
 - Token creation through hedera-agent-kit reported success without a token
-  ID and ignored the requested supply and keys. It no longer uses the kit,
-  and the kit is no longer initialised.
+  ID and ignored the requested supply and keys. Tokens are now created with
+  the SDK, and the kit was removed.
 - `callSmartContract` sent no function data, so calls reverted.
 - Generated token creation without `maxSupply` failed with
   `INVALID_TOKEN_MAX_SUPPLY`.
@@ -99,8 +103,8 @@ run on testnet and verified on the mirror node
   client is closed when the credentials are invalid.
 - Vulnerable dependencies were upgraded or overridden: no critical or high
   advisories in production dependencies (`npm audit --omit=dev`). Upgrades:
-  LangChain 1.x, `@hashgraph/sdk` 2.80.0, hedera-agent-kit 3.8.2, and
-  WalletConnect v2 in APIX's own wallet service.
+  `@hashgraph/sdk` 2.80.0, with `protobufjs` and `@grpc/grpc-js` overridden
+  (without the overrides, a critical and two high advisories return).
 - CI runs gitleaks, and the `.env.example` API key exposed in October 2025
   was removed (see `docs/archive/SECURITY_INCIDENT_REPORT.md`).
 

@@ -87,7 +87,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
     "@hashgraph/sdk": "2.80.0",
-    "@langchain/core": "^1.2.13",
     "@walletconnect/sign-client": "^2.21.8",
     "@walletconnect/utils": "^2.21.8",
     "axios": "^1.20.0",
@@ -100,7 +99,6 @@
     "fs-extra": "^11.1.1",
     "fuzzysort": "^3.1.0",
     "handlebars": "^4.7.9",
-    "hedera-agent-kit": "3.8.2",
     "inquirer": "^9.2.12",
     "lodash": "^4.18.1",
     "lru-cache": "^10.0.0",
@@ -137,16 +135,7 @@
     "typescript-eslint": "^8.70.1"
   },
   "overrides": {
-    "hedera-agent-kit": {
-      "@langchain/core": "1.2.13"
-    },
     "protobufjs": "7.6.6",
-    "@grpc/grpc-js": "1.12.7",
-    "ethers": {
-      "ws": "^8.22.0"
-    },
-    "@elizaos/core": {
-      "pdfjs-dist": "^6.3.289"
-    }
+    "@grpc/grpc-js": "1.12.7"
   }
 }
