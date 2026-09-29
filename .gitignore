@@ -47,3 +47,6 @@ temp/
 
 # Local task notes
 note.md
+
+# Claude Code local settings (per machine)
+.claude/settings.local.json

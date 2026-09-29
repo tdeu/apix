@@ -14,6 +14,8 @@ explain Hedera concepts and help you choose an integration.
 testnet and verified on the mirror node. The IDs, links and fees are in
 [docs/TESTNET_PROOF.md](docs/TESTNET_PROOF.md).
 
+What changed in 2.1 and why: [docs/REVIVAL_2.1.md](docs/REVIVAL_2.1.md).
+
 Repository: [github.com/0xfishbone/apix](https://github.com/0xfishbone/apix)
 
 ## Support matrix

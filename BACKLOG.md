@@ -10,27 +10,40 @@ cheap. [post-2.1] new feature or deep refactor. Sizes: S, M, L.
 
 ### [blocker-2.1] Release steps
 
+The order and the full checklist are in
+[docs/REVIVAL_2.1.md](docs/REVIVAL_2.1.md#release-checklist).
+
+- [blocker-2.1] **GitHub Actions.** Actions isn't enabled on the repo, so CI
+  has never run. *Who can unblock:* the repo owner (enable Actions; add the
+  `HEDERA_ACCOUNT_ID` / `HEDERA_PRIVATE_KEY` secrets for the nightly testnet
+  smoke, from any testnet account).
 - [blocker-2.1] **Jest on Linux.** Confirm the suite passes on Linux: the CI
-  workflow runs it on Node 20 and 22 on the first pull request to `master`.
-  `npm ci` and `build:check` already passed on Linux; the Jest run never
-  completed there (the local Docker engine failed).
+  workflow runs it on Node 20 and 22. `npm ci` and `build:check` already
+  passed on Linux; the Jest run never completed there (the local Docker
+  engine failed). *Who can unblock:* the repo owner (once Actions is enabled,
+  CI runs it), or anyone with a Linux machine or Docker.
 - [blocker-2.1] **Full e2e matrix.** Run `npm run e2e:generate -- --framework all`
-  green (the nightly e2e workflow does this on GitHub; it hasn't run yet).
-  Check the first run's timing, npm cache and log artifact.
+  green (the nightly e2e workflow does this on GitHub; it hasn't run yet),
+  and check the first run's timing, npm cache and log artifact. *Who can
+  unblock:* the repo owner (via Actions), or anyone with a machine with
+  about 1.5 GB of free RAM (no keys needed).
 - [blocker-2.1] **Vite wallet.** Confirm the experimental `wallet` case on
   React/Vite + TypeScript installs, type-checks and builds (part of the e2e
   matrix), or drop Vite from the support matrix in README.md and
-  docs/integrations.md.
+  docs/integrations.md. *Who can unblock:* anyone (a local e2e run, no keys).
 - [blocker-2.1] **OpenAI model.** Verify the default OpenAI model
   `gpt-4o-mini` (`src/ai/models.ts`, override `APIX_OPENAI_MODEL`) is still
-  offered. A retired ID breaks every AI command for OpenAI-only users. It is
-  unverified because no OpenAI key was available.
-- [blocker-2.1] **npm access and publish.** Confirm who can publish
-  `apix-ai` (npm still serves 2.0.3). At release: replace
-  `DISCORD_INVITE_URL` in README.md, date the 2.1.0 entry in CHANGELOG.md,
-  update the "install from source" note in README.md and
-  docs/getting-started.md, and check the `npm pack --dry-run` file list (71
-  files, 162.7 kB at the end of Phase 5a).
+  offered. A retired ID breaks every AI command for OpenAI-only users. *Who
+  can unblock:* anyone with an OpenAI key (run e.g. `apix explain "What is
+  HTS?"` with only `OPENAI_API_KEY` set).
+- [blocker-2.1] **npm access and publish.** npm still serves 2.0.3. *Who can
+  unblock:* an npm owner of `apix-ai` (add maintainers with `npm owner add`,
+  then publish from master after CI is green). At release, anyone with
+  write access: replace `DISCORD_INVITE_URL` in README.md, date the 2.1.0
+  entry in CHANGELOG.md, update the "until 2.1.0 is published" notes in
+  README.md and docs/getting-started.md, and check `npm pack --dry-run` (71
+  files, 162.7 kB at the end of Phase 5a). The repo owner makes the
+  repository public and creates the v2.1.0 GitHub release.
 
 ### [2.1-nice]
 
@@ -42,8 +55,8 @@ CLI and repo:
   testnet account) and check the first run.
 - Decide: keep or delete `scripts/test-with-claude.ts` (`npm run test:claude`)
   and `scripts/test-cli.sh`, old dev helpers that still run.
-- Decide: `.claude/settings.local.json` is committed, with another machine's
-  paths and command allowlists; untrack it (and gitignore it) or keep it.
+- Repo owner: delete the stale branch `hackathon-readme-updates` (fully
+  contained in master).
 - The repo mixes CRLF and LF files with no `.gitattributes`.
 - ESLint: 409 warnings (0 errors) after Phase 5a; `no-async-promise-executor`
   in `utils/progress.ts` (2) is a possible real bug.
@@ -169,5 +182,7 @@ Library and inputs:
   - legacy scripts and `.env.example` variables removed;
   - 31 flags that did nothing removed, the working ones documented;
   - LICENSE holder confirmed (Emtée Studio);
+  - `.claude/settings.local.json` untracked and git-ignored (the local file
+    stays); handover in docs/REVIVAL_2.1.md;
   - generated `@hashgraph/sdk` range aligned to `~2.80.0` (was `^2.80.0`, which
     resolved to 2.81.0) and the library proof re-run on 2.80.0.

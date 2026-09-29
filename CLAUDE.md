@@ -1,4 +1,9 @@
 # APIX: working rules (v2.1 revival, Sep 2026)
+
+## Current status
+v2.1.0 revival complete, pending release. Read docs/REVIVAL_2.1.md first,
+then BACKLOG.md.
+
 This file supersedes docs/archive/CLAUDE.md, which is kept for history only.
 Do not follow docs/archive/CLAUDE.md, and treat everything in docs/archive/
 as outdated hackathon material, not a spec. The maintained docs are README.md,
@@ -27,9 +32,10 @@ CONTRIBUTING.md and the guides in docs/.
 - We work in phases. Stay inside the current phase's scope. If you find
   something outside it, list it in your report instead of fixing it.
 - Canonical repo: github.com/0xfishbone/apix (origin).
-  Default branch: master. Work happens on revive/2.1 (or per-phase branches
-  off it) and is merged into master by PR only.
-- Branch: revive/2.1. Conventional commit messages (fix:, chore:, feat:...).
+  Default branch: master. The revival's phase branches (revive/2.1 through
+  phase-5a/docs-release-prep) are merged into master. New work branches off
+  master and goes back into master by PR only.
+- Conventional commit messages (fix:, chore:, feat:...).
 - Never push, publish to npm or rewrite git history without explicit instruction.
 - Before committing (once available): npm run build:check, npm test and
   npm run lint must all pass.
