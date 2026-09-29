@@ -1,306 +1,284 @@
-# APIX AI - AI-Powered Hedera Integration CLI
+# APIX
 
-**Hedera Africa Hackathon 2025 | Developer Tools & Infrastructure Track**
+**A CLI that adds working Hedera integrations to a Next.js app.**
+Hedera Africa Hackathon 2025, Developer Tools & Infrastructure track.
 
-> Transform Hedera integration from 8 hours to 90 seconds with intelligent code generation.
+APIX analyses your project and writes Hedera Token Service, Consensus
+Service, smart contract and wallet code into it: server-side modules, API
+routes, React hooks and components that build and run as generated. The
+code signs with your operator account on the server, and the private key
+never reaches the browser. Optional AI commands (Anthropic or OpenAI)
+explain Hedera concepts and help you choose an integration.
 
----
+**Status: v2.1.0, testnet-proven.** Every Hedera operation below was run on
+testnet and verified on the mirror node. The IDs, links and fees are in
+[docs/TESTNET_PROOF.md](docs/TESTNET_PROOF.md).
 
-## 📌 Problem Statement
+Repository: [github.com/0xfishbone/apix](https://github.com/0xfishbone/apix)
 
-**The Challenge:** African developers face critical barriers adopting Hedera due to steep learning curves and integration complexity.
+## Support matrix
 
-**Quantifiable Impact:**
-- Average integration time: **6-8 hours** for production-ready HTS + Wallet setup
-- Documentation complexity: **200+ pages** across multiple Hedera services
-- Integration failures: **60%** of developers encounter critical errors
-- Project abandonment: **40%** of new developers give up during initial setup
+| Project | `apix add` |
+|---|---|
+| Next.js, App Router, TypeScript | Supported: `hts`, `consensus`, `smart-contract`, `wallet` |
+| React/Vite, TypeScript | `wallet` only, experimental |
+| Anything else (Pages Router routes, JavaScript, Vue, Angular, Express, plain Node) | Refused with a message; the project is left unchanged |
 
-**Why This Matters for Africa:** Limited internet connectivity for documentation research, precious developer time, and lack of production-ready templates create insurmountable barriers.
+The Pages Router is supported for `wallet` and `smart-contract`, which
+generate no routes. Tested with Next.js 16.3.6.
 
----
+## Quick start
 
-## 🎯 Solution: AI-Powered Hedera CLI
+The measured part (the app's install, then `apix add hts` through
+`next build`) took about 6 minutes on a laptop; installing APIX from source
+adds its own `npm ci`. You need Node.js 20+, git, and a free Hedera
+testnet account from [portal.hedera.com](https://portal.hedera.com/faucet)
+(its account ID and DER-encoded private key).
 
-APIX AI provides **intelligent, automated Hedera integration** in under 90 seconds through:
+1. Install APIX. Until 2.1.0 is published to npm, install from source (npm
+   still serves the 2.0.3 hackathon release):
 
-- **AI-Powered Analysis**: Detects your framework (Next.js, React, Vite) and project structure
-- **Zero-Config Integration**: Generates production-ready TypeScript code automatically
-- **Live Blockchain Validation**: Real-time testing against Hedera Testnet
-- **Complete Code Generation**: 8+ files including React hooks, API routes, wallet integration
+   ```bash
+   git clone https://github.com/0xfishbone/apix.git
+   cd apix
+   npm ci
+   npm run build
+   npm link
+   ```
 
----
+2. Create a Next.js app and add HTS:
 
-## 🔗 Hedera Integration Summary
+   ```bash
+   npx create-next-app@latest my-hedera-app --ts --app --src-dir --eslint --tailwind --import-alias "@/*" --use-npm --yes
+   cd my-hedera-app
+   apix add hts
+   ```
+
+3. Put your testnet account in `.env.local` (server-side only; never
+   `NEXT_PUBLIC_`):
+
+   ```bash
+   HEDERA_NETWORK=testnet
+   HEDERA_ACCOUNT_ID=0.0.xxxxx
+   HEDERA_PRIVATE_KEY=302e...
+   ```
+
+4. Build and start it (or use `npx next dev`):
+
+   ```bash
+   npx next build
+   npx next start
+   ```
+
+5. Call the four generated routes. Replace `0.0.TOKEN` with the ID from the
+   first response, and `0.0.RECIPIENT` with an account that can receive the
+   token:
+
+   ```bash
+   curl -X POST http://localhost:3000/api/tokens/create -H "content-type: application/json" -d '{"name":"My Token","symbol":"MYT","decimals":2,"initialSupply":100000}'
+   curl "http://localhost:3000/api/tokens/info?tokenId=0.0.TOKEN"
+   curl -X POST http://localhost:3000/api/tokens/mint -H "content-type: application/json" -d '{"tokenId":"0.0.TOKEN","amount":5000}'
+   curl -X POST http://localhost:3000/api/tokens/transfer -H "content-type: application/json" -d '{"tokenId":"0.0.TOKEN","toAccountId":"0.0.RECIPIENT","amount":1000}'
+   ```
+
+The full walk-through is in [docs/getting-started.md](docs/getting-started.md).
+
+### Measured timings
+
+From one run in Phase 4 of the revival, on a Windows 10 laptop with about
+1.3 GB of free RAM
+([details](docs/TESTNET_PROOF.md#timings-phase-4-one-run-windows-10-laptop-about-12-to-14-gb-free-ram)):
+
+- the fresh app's own `npm install`: 107.7 s;
+- from the start of `apix add hts` to a successful `next build`: 246.6 s
+  (about 4 minutes). This includes `add hts` installing its packages
+  (94.6 s), `apix add consensus` (14.2 s) and `next build` (107.5 s).
+
+## Commands
+
+Full reference: [docs/commands.md](docs/commands.md).
+
+**No keys needed:** `apix analyze`, `apix add <integration>`, `apix init`,
+`apix status`, `apix health`, `apix logs`, `apix last-error`,
+`apix debug-info`, `apix --help`, `apix --version`.
+
+**Needs Hedera credentials** (`HEDERA_ACCOUNT_ID`, `HEDERA_PRIVATE_KEY`):
+`apix validate` (a local check, no network call), `apix create-token`, and
+`apix add hts --create-token`. The last two submit transactions and cost
+HBAR.
+
+**Needs an AI key** (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`):
+`apix explain`, `apix compare`, `apix recommend`, `apix confidence`,
+`apix debug`, `apix generate`, `apix chat`. Without a key they exit 1 with a
+message saying which key to set.
+
+**Experimental:** `apix compose --experimental`. It is hidden from `--help`
+unless `APIX_EXPERIMENTAL=1` is set, needs an AI key, and lists the files it
+composed (with any unimplemented stubs) without writing them.
+
+## Hedera integration summary
+
+What each `apix add` generates is in
+[docs/integrations.md](docs/integrations.md). Every ID below is from the
+testnet proof and links to HashScan.
 
 ### Hedera Token Service (HTS)
 
-**Implementation:** APIX integrates HTS through `@hashgraph/sdk` v2.40.0 with comprehensive TypeScript wrappers for token creation, minting, transfer, and querying. Generated code includes React components, custom hooks, and Next.js API routes.
+Tokens are the most common first step on Hedera. HTS creates them natively,
+without deploying a contract, so the generated code is a thin, auditable
+layer over the SDK.
 
-**Why HTS:** Token operations represent the most common Hedera entry point for developers. HTS's predictable $0.0001 fee per transaction enables risk-free onboarding demonstrations without significant HBAR funding - critical for African developers with limited crypto budgets.
+- **Transactions:** TokenCreateTransaction, TokenMintTransaction,
+  TransferTransaction, TokenInfoQuery (plus TokenAssociateTransaction and
+  TokenBurnTransaction in the generated module).
+- **Proven on testnet:**
+  - token [0.0.10782448](https://hashscan.io/testnet/token/0.0.10782448):
+    created, minted and transferred through APIX's library;
+  - token [0.0.10782464](https://hashscan.io/testnet/token/0.0.10782464):
+    created by `apix create-token` with admin and supply keys;
+  - token [0.0.10782086](https://hashscan.io/testnet/token/0.0.10782086):
+    created, minted and transferred through a generated app's routes;
+  - token [0.0.10782603](https://hashscan.io/testnet/token/0.0.10782603):
+    created by a generated app without `maxSupply` (infinite supply).
+- **Observed fees (testnet):** token create 12.94 ℏ, mint 0.013 ℏ, and a
+  first transfer to an auto-associating account 0.65 ℏ.
 
-**Economic Justification:** Hedera's fixed sub-cent fees ($0.0001/transaction) provide cost certainty essential for developer education. APIX can demonstrate 100 token operations for $0.01 in HBAR, enabling:
-- **Risk-free testing:** Experiment without fear of unexpected costs
-- **Sustainable education:** Fixed training budgets remain affordable
-- **Production scalability:** Cost models stay stable as usage grows
-- **African market fit:** Low-cost operations align with emerging market economics
+### Hedera Consensus Service (HCS)
 
-**Transaction Types:**
-- `TokenCreateTransaction` - Create fungible/non-fungible tokens
-- `TokenMintTransaction` - Mint additional supply
-- `TokenAssociateTransaction` - Associate tokens with accounts
-- `TokenTransferTransaction` - Transfer tokens between accounts
-- `AccountCreateTransaction` - Create new Hedera accounts
-- `AccountBalanceQuery` - Query HBAR and token balances
-- Mirror Node REST API queries for transaction verification
+HCS gives an ordered, timestamped log without running a contract. That
+makes it a simple way for an app to record events.
 
-### Why Hedera's Unique Features Enable APIX
+- **Transactions:** TopicCreateTransaction, TopicMessageSubmitTransaction.
+- **Proven on testnet:**
+  - topic [0.0.10782451](https://hashscan.io/testnet/topic/0.0.10782451)
+    with two messages (library);
+  - topic [0.0.10782081](https://hashscan.io/testnet/topic/0.0.10782081)
+    (generated `/api/consensus/*` routes).
+- **Observed fees (testnet):** topic create 0.13 ℏ, message submit
+  0.002 ℏ.
 
-**ABFT Consensus Finality:** 3-5 second finality provides real-time developer feedback during integration testing - superior learning experience vs. probabilistic finality chains requiring 10+ block confirmations.
+### Smart contracts
 
-**Predictable Fees:** Fixed $0.0001 fees enable accurate cost estimates during code generation. APIX confidently tells developers "this integration will cost $0.50/month for 5,000 operations" - impossible on variable gas networks.
+For logic that HTS and HCS don't cover, the generated module deploys
+Solidity bytecode and calls it with ABI-encoded arguments.
 
-**ESG Credentials:** Carbon-negative status aligns with African sustainability priorities and enables positioning as environmentally responsible technology.
+- **Transactions:** ContractCreateFlow (FileCreateTransaction,
+  ContractCreateTransaction, FileDeleteTransaction),
+  ContractExecuteTransaction, ContractCallQuery.
+- **Proven on testnet:**
+  - contract [0.0.10782455](https://hashscan.io/testnet/contract/0.0.10782455)
+    (library);
+  - contract [0.0.10782597](https://hashscan.io/testnet/contract/0.0.10782597)
+    (generated `smartContractManager`).
+  In both, `set(...)` wrote a string and `get()` read the same string back.
+- **Observed fees (testnet):** deploy 14.80 ℏ in total (1.64 + 13.07 +
+  0.09 ℏ), `set` call 0.05 ℏ.
 
----
+### Accounts and fees
 
-## 🏗️ Architecture
+- Operator account: `0.0.10780747` (ECDSA). Demo recipient: `0.0.10777128`
+  (ED25519, unlimited automatic associations).
+- The whole library proof (token create, mint and transfer, topic with two
+  messages, contract deploy and call) cost 28.59 ℏ of testnet HBAR, which
+  the testnet faucet provides for free.
+- Hedera fees are fixed in USD, so costs are predictable when planning an
+  app. The HBAR amounts above vary with the HBAR price and with each
+  transaction's options (see the
+  [fees table](docs/TESTNET_PROOF.md#fees-observed)).
 
-```
-APIX CLI (Commander.js + AI Analysis)
-    │
-    ├─→ Project Analysis (Framework Detection, Dependency Scan)
-    │
-    ├─→ Template Generation (Handlebars, TypeScript/JavaScript)
-    │
-    └─→ Generated Files
-         ├─→ Frontend (React Hooks, Components, Context)
-         ├─→ Backend (Next.js API Routes, HTS Operations)
-         └─→ Hedera Layer (SDK Client, Transaction Wrappers)
-              │
-              ├─→ Hedera Testnet/Mainnet (Consensus Nodes)
-              └─→ Mirror Nodes (Transaction History, Queries)
-```
+## Architecture
 
-**Data Flow:** CLI → Analysis → Template Engine → Generated App Files → Hedera SDK → Blockchain → Mirror Nodes
-
----
-
-## 🚀 Quick Start (Under 10 Minutes)
-
-### Prerequisites
-- Node.js 18.0+ ([Download](https://nodejs.org/))
-- npm/yarn/pnpm (comes with Node.js)
-- Git ([Download](https://git-scm.com/))
-
-### Installation
-
-**Option 1: Install from npm (Recommended)**
-```bash
-# Install globally from npm
-npm install -g apix-ai
-
-# Verify installation
-apix --version  # Shows: 2.0.0
-apix --help
-```
-
-**Option 2: Install from source**
-```bash
-# Clone repository
-git clone https://github.com/tdeu/apix.git
-cd apix
-
-# Install dependencies
-npm install
-
-# Build and link globally
-npm run build
-npm link
-
-# Verify installation
-apix --version
+```mermaid
+flowchart LR
+  dev[Developer] -->|apix add hts| cli[APIX CLI]
+  subgraph APIX
+    cli --> analyzer[Project analyzer<br/>framework, layout]
+    analyzer --> policy[Support policy]
+    policy --> planner[Integration planner]
+    planner --> templates[Handlebars templates]
+    templates --> generator[Generator<br/>overwrite check, rollback]
+  end
+  generator -->|writes files, npm install| app
+  subgraph app[Generated Next.js app]
+    ui[React UI<br/>hooks, components] -->|HTTP| routes[API routes<br/>server-only]
+    routes --> sdk[Hedera SDK client<br/>operator key]
+  end
+  sdk -->|signed transactions| hedera[(Hedera network<br/>HTS, HCS, contracts)]
+  hedera -->|receipts: IDs, status| sdk
+  hedera -->|records| mirror[(Mirror node / HashScan)]
+  mirror -->|verification| dev
 ```
 
-### Configuration
+`apix create-token` and `apix validate` use APIX's own SDK layer
+(`src/services/hedera-operations.ts`) directly, without generating code.
 
-**Development Mode** (No credentials required):
-```bash
-# Works immediately with mock implementations
-apix --help
-apix analyze
-```
+## Security
 
-**Production Mode** (Live blockchain):
-```bash
-# Create .env file
-cp .env.example .env
+- **Keys stay on the server.** The generated Hedera modules start with
+  `import 'server-only'`, so importing them from client code fails the
+  build. Credentials are read from server environment variables; the
+  generated code never uses `NEXT_PUBLIC_` for them.
+- **No fallbacks.** Missing credentials or AI keys are errors with a clear
+  message. APIX never uses mock data, test accounts or canned AI replies,
+  and never reports success without an ID from the network's receipt.
+- **Secrets are masked** (first 6 characters at most) in console output,
+  log files, `apix logs` / `apix last-error` and error messages.
+- **Mainnet needs confirmation:** with `HEDERA_NETWORK=mainnet`,
+  `create-token` and `add hts --create-token` ask before spending, or need
+  `--yes`.
+- `.env` files are git-ignored. Start from [.env.example](.env.example).
 
-# Add credentials:
-HEDERA_NETWORK=testnet
-HEDERA_ACCOUNT_ID=0.0.YOUR_ACCOUNT_ID
-HEDERA_PRIVATE_KEY=YOUR_KEY
-```
+## AI features
 
-### 90-Second Demo
+The AI commands use Anthropic when `ANTHROPIC_API_KEY` is set, otherwise
+OpenAI when `OPENAI_API_KEY` is set. There is no silent failover between
+providers; a failed request is an error with the provider's message.
 
-```bash
-# Navigate to any Next.js/React project
-cd my-nextjs-app
+| Provider | Default model | Override |
+|---|---|---|
+| Anthropic | `claude-sonnet-5` | `APIX_ANTHROPIC_MODEL` (`APIX_ANTHROPIC_FAST_MODEL` for the fast tier) |
+| OpenAI | `gpt-4o-mini` | `APIX_OPENAI_MODEL` |
 
-# Initialize APIX
-apix init
+If the provider rejects a model, the error names the variable to set.
 
-# Analyze project
-apix analyze --verbose
+## Changes since the October 2025 hackathon submission
 
-# Add HTS integration
-apix add hts --name "DemoToken" --symbol "DEMO"
+- Simulation mode, mock responses and test-account fallbacks were removed;
+  commands fail with a clear error instead.
+- The testnet IDs published in the hackathon README were never created on
+  testnet. They are replaced by real, mirror-verified IDs.
+- Generated code now installs, type-checks and builds in a fresh Next.js
+  app, and works on testnet.
+- AI commands no longer return canned replies without a key; the default
+  models were updated.
+- Token creation no longer goes through hedera-agent-kit (it lost token
+  IDs); contract calls now encode their arguments.
+- Dependencies were patched (no critical or high `npm audit` advisories in
+  production dependencies).
+- Commands that did nothing real (`deploy`, several `validate` flags) were
+  removed.
 
-# Add wallet integration
-apix add wallet --provider hashpack
+Details: [CHANGELOG.md](CHANGELOG.md).
 
-# Verify health
-apix health --quick
+## Documentation
 
-# Start development server
-npm run dev
+- [Getting started](docs/getting-started.md)
+- [Commands](docs/commands.md)
+- [Integrations](docs/integrations.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Testnet proof](docs/TESTNET_PROOF.md)
+- [Contributing](CONTRIBUTING.md)
+- [Hackathon-era documents](docs/archive/README.md) (not maintained)
 
-# 🎉 Open http://localhost:3000 and connect wallet!
-```
-**Usage Instructions:**
-1. Clone repository
-2. Run `apix health` to verify connectivity
-3. Execute `apix create-token --name "JudgeTest" --symbol "TEST"`
-4. View transaction on [HashScan Testnet](https://hashscan.io/testnet)
+## Team
 
-**Alternative:** Run `apix create-test-account` to generate new test account automatically.
+- **Moustapha Diop**: Lead Developer ([@0xfishbone](https://github.com/0xfishbone))
+- **Thomas De Rouck**: Blockchain Specialist ([@tdeu](https://github.com/tdeu))
 
-**Note:** Provided credentials for demo only - will be deactivated after judging period.
+## Community
 
----
+Discord: DISCORD_INVITE_URL
 
-## 📊 Deployed Hedera IDs (Testnet)
+## License
 
-### Test Accounts
-- **Primary:** `0.0.4912345` (Demo operations, 100 ℏ)
-- **Secondary:** `0.0.4912346` (Transfer testing, 50 ℏ)
-
-### Demo Tokens (HTS)
-- **APIX Token:** `0.0.4923456` | Name: "APIX Demo Token" | Symbol: "APIX" | [View](https://hashscan.io/testnet/token/0.0.4923456)
-- **NFT Collection:** `0.0.4923457` | Name: "APIX Demo NFTs" | Type: Non-fungible | [View](https://hashscan.io/testnet/token/0.0.4923457)
-
-### Smart Contracts
-- **Token Factory:** `0.0.4934567` | Automated token creation | [View](https://hashscan.io/testnet/contract/0.0.4934567)
-
-### Consensus Topics (HCS)
-- **Integration Events:** `0.0.4945678` | Logs APIX events | [View](https://hashscan.io/testnet/topic/0.0.4945678)
-
-### Mirror Nodes
-- **Primary:** `https://testnet.mirrornode.hedera.com`
-- **Account API:** `/api/v1/accounts/0.0.4912345`
-- **Token API:** `/api/v1/tokens/0.0.4923456`
----
-
-## 📁 Documentation
-
-Comprehensive documentation in `/docs`:
-
-- **[DEVELOPMENT.md](./docs/DEVELOPMENT.md)** - Development workflow
-- **[TECHNICAL_ARCHITECTURE.md](./docs/TECHNICAL_ARCHITECTURE.md)** - Architecture deep dive
-- **[API_REFERENCE.md](./docs/API_REFERENCE.md)** - Complete CLI reference
-- **[TESTING_GUIDE.md](./docs/TESTING_GUIDE.md)** - Testing documentation
-- **[HEDERA_INTEGRATION_GUIDE.md](./docs/HEDERA_INTEGRATION_GUIDE.md)** - Integration patterns
-- **[ROADMAP.md](./docs/ROADMAP.md)** - Post-hackathon roadmap & business plan
-- **[TEAM.md](./docs/TEAM.md)** - Team information & contact
-
----
-
-## 🎯 Implementation Status
-
-**✅ Production-Ready:**
-- CLI with 16+ commands
-- Framework detection (Next.js, React, Vite)
-- HTS integration (create, mint, transfer, query)
-- Wallet integration (HashPack, Blade, WalletConnect)
-- 8+ production files generated per integration
-- TypeScript-first with full type safety
-- Automatic dependency management
-- Comprehensive health checks
-
-**🔄 Active Development:**
-- AI confidence assessment (70%)
-- Smart Contract templates (40%)
-- Consensus Service integration (50%)
-
-**📊 Key Metrics:**
-- Integration speed: 70s average ✅
-- File generation: 8-12 files ✅
-- TypeScript coverage: 100% ✅
-
----
-
-## 🏆 Technology Readiness Level
-
-**Current TRL: Level 6 - Prototype / Working Core Feature**
-
-**Evidence:**
-- ✅ End-to-end live blockchain integration
-- ✅ Real HTS token creation on Hedera Testnet
-- ✅ Production-ready code generation
-- ✅ Sub-90-second integration workflow
-- ✅ Transaction verification on HashScan
-
-**Repository Quality:**
-- Public repository with complete source
-- Professional documentation (10+ files)
-- Clear commit history
-- TypeScript best practices
-- ESLint configuration
-
----
-
-## 🤝 Team & Contact
-
-**Team:** Moustapha Diop & Thomas De Rouck
-**Hedera Certified:**1/2 members https://drive.google.com/file/d/1mtL32q84vTGLEaYCy9loGsKMaQ-3re9P/view?usp=sharing
-
-**Lead Developer:** Thomas - CLI architecture, Hedera SDK integration
-**GitHub:** https://github.com/tdeu
-**Telegram** @tderouck - Discord thomas898487 
----
-
-## 📈 Roadmap & Ask
-
-**Post-Hackathon (3-6 Months):**
-- Month 1: Test coverage 90%+, community beta (50+ devs)
-- Month 2: Framework expansion (Vue, Angular, Express)
-- Month 3: Advanced services (Smart Contracts, HCS)
-- Month 4: Mainnet launch, enterprise features
-- Month 5: AI enhancement (GPT-4, natural language)
-- Month 6: Plugin marketplace, community templates
-
-**Market Opportunity:**
-- TAM: $2.6B (26M blockchain developers)
-- SAM: $300M (5M active Web3 CLI users)
-- SOM: $500K Year 1 (5,000 Hedera developers)
-
-**The Ask:**
-- **Technical Mentorship:** Architecture review, security audit
-- **Grant Funding:** $50K for 6-month runway (2 FTE engineers)
-- **Strategic Partnerships:** Hedera portal integration, ecosystem collaboration
-- **Market Access:** African enterprise connections, speaking opportunities
-
-**Success Metrics (6 months):**
-- 5,000+ CLI installations
-- 10,000+ projects using APIX
-- 500+ GitHub stars
-- 5 African enterprise pilots
-- $50K MRR
-
-**Full roadmap & business model:** [ROADMAP.md](./docs/ROADMAP.md)
-
----
-
-**Last Updated:** October 2025
-**Hedera Africa Hackathon 2025** | Developer Tools & Infrastructure Track
+MIT, see [LICENSE](LICENSE).
