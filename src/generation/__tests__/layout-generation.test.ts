@@ -65,7 +65,7 @@ const NEXT_PACKAGE = {
   dependencies: { next: '16.3.6', react: '19.0.0', 'react-dom': '19.0.0' },
 };
 
-type FixtureKind = 'src-app' | 'root-app' | 'pages' | 'react-vite' | 'next-js';
+type FixtureKind = 'src-app' | 'root-app' | 'pages' | 'react-vite' | 'next-js' | 'vue-ts';
 
 async function nextFixture(layout: FixtureKind): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), `apix-gen-${layout}-`));
@@ -84,6 +84,12 @@ async function nextFixture(layout: FixtureKind): Promise<string> {
       name: 'app', version: '1.0.0', dependencies: { react: '19.0.0', 'react-dom': '19.0.0' }, devDependencies: { vite: '7.0.0' },
     }, { spaces: 2 });
     await fs.outputFile(path.join(root, 'src/main.tsx'), 'export {};\n');
+    await fs.writeJSON(path.join(root, 'tsconfig.json'), { compilerOptions: {} });
+  } else if (layout === 'vue-ts') {
+    await fs.writeJSON(path.join(root, 'package.json'), {
+      name: 'app', version: '1.0.0', dependencies: { vue: '3.5.0' }, devDependencies: { typescript: '5.9.0' },
+    }, { spaces: 2 });
+    await fs.outputFile(path.join(root, 'src/main.ts'), 'export {};\n');
     await fs.writeJSON(path.join(root, 'tsconfig.json'), { compilerOptions: {} });
   } else {
     // Next.js in JavaScript: no tsconfig.json, no typescript dependency
@@ -236,7 +242,9 @@ describe('a failed `apix add` leaves the project byte-for-byte unchanged', () =>
     ['hts on React/Vite', 'react-vite' as const, 'hts', { name: 'MyToken', symbol: 'MTK' }, /^`apix add hts` needs a server-side runtime; use Next\.js\./],
     ['smart-contract on React/Vite', 'react-vite' as const, 'smart-contract', {}, /needs a server-side runtime; use Next\.js/],
     ['consensus on React/Vite', 'react-vite' as const, 'consensus', {}, /needs a server-side runtime; use Next\.js/],
-    ['wallet in a JavaScript project', 'next-js' as const, 'wallet', {}, /^TypeScript projects only in this version\./],
+    ['wallet in a JavaScript project', 'next-js' as const, 'wallet', {}, /^`apix add wallet` doesn't support Next\.js with JavaScript in this version\./],
+    ['hts on Vue', 'vue-ts' as const, 'hts', { name: 'MyToken', symbol: 'MTK' },
+      /^`apix add hts` doesn't support Vue in this version\. Supported: Next\.js \(App Router, TypeScript\)\. Experimental: wallet on React\/Vite\.$/],
   ])('%s', async (_name, layout, integration, options, expected) => {
     root = await nextFixture(layout);
     const before = await treeSnapshot(root);

@@ -14,6 +14,22 @@ export class ProjectAnalyzer {
   private analysisCache: Map<string, { context: ProjectContext, timestamp: number }> = new Map();
   private cacheTimeout = 5000; // 5 seconds cache
 
+  /**
+   * Just the framework and language, without analyzeProject's compatibility
+   * gate, so `apix add` can apply its own support policy (and message) to any
+   * project. Null when there is no package.json.
+   */
+  async detectStack(directory: string): Promise<Pick<ProjectContext, 'framework' | 'language'> | null> {
+    const projectPath = path.resolve(directory);
+    const packagePath = path.join(projectPath, 'package.json');
+    if (!await fs.pathExists(packagePath)) return null;
+    const packageJson = await fs.readJSON(packagePath);
+    return {
+      framework: this.detectFramework(packageJson),
+      language: this.detectLanguage(projectPath, this.analyzeDevDependencies(packageJson)),
+    };
+  }
+
   async analyzeProject(directory: string): Promise<ProjectContext> {
     try {
       const projectPath = path.resolve(directory);

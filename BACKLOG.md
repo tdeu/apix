@@ -102,8 +102,8 @@ refactor.
 - Found in Phase 3c step 2, not fixed:
   - [done 3c] deployERC20Token() and all hard-coded bytecode removed; contract
     helpers take validated bytecode (57d1c50).
-  - [done 3c] JavaScript projects are refused, "TypeScript projects only"
-    (3a3432a); supporting them is post-2.1.
+  - [done 3c] JavaScript projects are refused (3a3432a, now part of the
+    support allowlist); supporting them is post-2.1.
   - [done 3c] TokenManager/routes: the operator is treasury and sender; the
     wallet is only shown and used as recipient (1dffb08).
   - [done 3c] https mirror node URLs are converted to host:443 (1dffb08).
@@ -128,9 +128,9 @@ refactor.
     root paths (components/, lib/), so it never fires for src/ projects; the
     overwrite check is what protects files there. Align it with the
     detected layout or drop it. S.
-  - [2.1-nice] Decide what `apix add` does on frameworks other than Next.js and
-    React/Vite (Vue, Angular, Express, plain Node, unknown): today they are
-    not refused and get lib/ files without routes. S to refuse, M+ to support.
+  - [done 3c] `apix add` support is an allowlist: Next.js + TypeScript gets every
+    integration, React/Vite + TypeScript gets wallet (experimental), anything
+    else is refused naming the detected framework (phase 3c closeout).
   - [2.1-nice] The e2e CI job (ci.yml) and the nightly workflow have not run on
     GitHub yet; check the first PR run (timing, npm cache, artifact).
   - [2.1-nice] When `apix add` runs `npm install` and it fails, the user only
@@ -192,8 +192,11 @@ refactor.
   version"). Implementing it means an AccountCreateTransaction utility and a
   server route (M).
 - [post-2.1] JavaScript projects: every integration is refused in 2.1
-  ("TypeScript projects only"). Supporting them means real JS branches in the
+  ("doesn't support <framework> with JavaScript"). Supporting them means real JS branches in the
   templates (several are stubs today) and .js/.jsx output paths (L).
+- [post-2.1] Widen the `apix add` allowlist beyond Next.js: Vue, Angular,
+  Express, plain Node and unknown projects are refused in 2.1. Each needs its
+  own layout/route templates and an e2e harness framework (M-L each).
 - [post-2.1] Plain React/Vite: hts, smart-contract and consensus are refused
   (they need a server to hold the operator key); wallet is allowed and marked
   experimental. Supporting the others needs a backend story (e.g. generated

@@ -200,8 +200,10 @@ export class APIxCLI {
       throw new Error(`Unknown integration type: ${integration}. Available: ${describeIntegrations()}`);
     }
 
-    // Refuse unsupported integrations before anything is written
-    const support = checkIntegrationSupport(integration, await this.analyzer.analyzeProject('.'));
+    // Refuse unsupported integrations before anything is written. Without a
+    // package.json, analyzeProject (below) reports that instead.
+    const stack = await this.analyzer.detectStack('.');
+    const support = stack ? checkIntegrationSupport(integration, stack) : {};
     if (support.error) {
       throw new Error(support.error);
     }
