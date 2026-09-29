@@ -6,12 +6,12 @@ import {
 import { logger } from '../utils/logger';
 import { EnvironmentValidator } from '../utils/environment-validator';
 import { InputSanitizer } from '../utils/input-sanitizer';
-import { HederaAgentKitService } from './hedera-agent-kit-service';
 
 /**
  * Hedera Operations Service
  *
- * Real Hedera operations through the Hedera SDK. Every operation that reports
+ * Real Hedera operations through the Hedera SDK. hedera-agent-kit is not
+ * initialised (nothing uses it). Every operation that reports
  * success carries the entity and/or transaction ID from the network's
  * receipt; if the receipt lacks one, the operation fails instead.
  */
@@ -243,7 +243,6 @@ function failure(operation: string, error: any, details: Record<string, unknown>
 
 export class HederaOperationsService {
   private client: Client | null = null;
-  private agentKitService: HederaAgentKitService | null = null;
   private network: 'testnet' | 'mainnet';
   private operatorKey: PrivateKey | null = null;
   private initialized: boolean = false;
@@ -263,42 +262,12 @@ export class HederaOperationsService {
 
     try {
       await this.initializeWithCredentials(accountId, privateKey);
-      await this.initializeAgentKit(accountId, privateKey);
-      logger.internal('info', 'Hedera Operations initialized with environment credentials', {
-        network: this.network,
-        agentKitAvailable: this.agentKitService?.isAvailable() || false
-      });
+      logger.internal('info', 'Hedera Operations initialized with environment credentials', { network: this.network });
 
       this.initialized = true;
     } catch (error: any) {
       logger.error('Failed to initialize Hedera Operations:', error);
       throw new Error(`Hedera Operations initialization failed: ${error.message}`);
-    }
-  }
-
-  /**
-   * Initialize HederaAgentKit service. No operation uses it since Phase 4b
-   * (token creation goes through the SDK); kept pending a decision.
-   */
-  private async initializeAgentKit(accountId: string, privateKey: string): Promise<void> {
-    try {
-      this.agentKitService = new HederaAgentKitService({
-        accountId,
-        privateKey,
-        network: this.network
-      });
-
-      await this.agentKitService.initialize();
-
-      if (this.agentKitService.isAvailable()) {
-        logger.internal('info', 'HederaAgentKit service initialized successfully');
-      } else {
-        logger.internal('info', 'HederaAgentKit not available');
-      }
-
-    } catch (error) {
-      logger.internal('warn', 'Failed to initialize HederaAgentKit service', error);
-      this.agentKitService = null;
     }
   }
 
@@ -738,28 +707,18 @@ export class HederaOperationsService {
     return `https://hashscan.io/${this.network}/${page}/${path}`;
   }
 
-  /**
-   * Check if service is running with full capabilities (AgentKit + SDK)
-   */
+  /** hedera-agent-kit is not initialised, so never fully enabled */
   isFullyEnabled(): boolean {
-    return this.agentKitService?.isAvailable() || false;
+    return false;
   }
 
-  /**
-   * Check if hedera-agent-kit initialised (no operation uses it)
-   */
+  /** Always false: every operation uses the Hedera SDK directly */
   isUsingAgentKit(): boolean {
-    return this.agentKitService?.isAvailable() || false;
+    return false;
   }
 
-  /**
-   * Get available capabilities
-   */
   getCapabilities(): { agentKit: boolean; directSDK: boolean } {
-    return {
-      agentKit: this.agentKitService?.isAvailable() || false,
-      directSDK: this.client !== null
-    };
+    return { agentKit: false, directSDK: this.client !== null };
   }
 
   /**
@@ -785,9 +744,6 @@ export class HederaOperationsService {
       this.client = null;
     }
     this.operatorKey = null;
-
-    // Clean up AgentKit service
-    this.agentKitService = null;
     this.initialized = false;
   }
 }
