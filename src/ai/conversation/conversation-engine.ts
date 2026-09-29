@@ -209,10 +209,10 @@ Keep responses concise but comprehensive.`;
     return `Hello! I'm APIX AI, your intelligent Hedera development assistant${industryContext}.
 
 I can help you with:
-• Enterprise Integration - Analyze your business needs and recommend optimal Hedera services
-• Code Generation - Create production-ready implementations with AI-powered customization  
-• Live Validation - Test your integrations on the Hedera network in real-time
-• Solution Architecture - Design scalable, compliant blockchain solutions
+• Choosing Hedera services - HTS, HCS and smart contracts for your use case
+• Integrations - which `apix add` command fits, and what it generates
+• Hedera concepts - accounts, keys, fees, tokens and topics
+• Troubleshooting - reading Hedera errors and what to try next
 
 What blockchain challenge can I help you solve today?`;
   }

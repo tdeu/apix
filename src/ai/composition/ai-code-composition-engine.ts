@@ -308,7 +308,7 @@ ${logicRequirement}
 - Security Requirements: Enterprise security standards
 
 ## Code Generation Requirements
-Generate production-ready TypeScript code that:
+Generate complete, working TypeScript code that:
 1. Implements the specific business logic requirement
 2. Integrates properly with Hedera services (HTS, HCS, Smart Contracts)
 3. Follows enterprise coding standards and patterns
@@ -487,7 +487,7 @@ Focus on practical, enterprise-grade solutions that can be implemented reliably 
 5. Performance optimization and scalability design
 6. Integration with enterprise systems (ERP, CRM, MES, etc.)
 
-Generate production-ready code that meets enterprise standards for security, performance, compliance, and maintainability.`;
+Generate complete, working code with input validation and error handling; mark anything you cannot implement with `TODO: Implement`.`;
   }
 
   private getNovelDesignSystemPrompt(): string {

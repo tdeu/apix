@@ -203,7 +203,7 @@ export class LimitationHandler {
       return [{
         approach: 'template-based',
         description: 'Use proven templates with AI enhancements',
-        pros: ['Fast implementation', 'High reliability', 'Production-ready'],
+        pros: ['Fast implementation', 'Tested templates', 'Builds as generated'],
         cons: ['Limited customization'],
         estimatedEffort: '1-2 days',
         successProbability: 0.95

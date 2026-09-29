@@ -71,7 +71,12 @@ run on testnet and verified on the mirror node
   from `HEDERA_NETWORK`.
 - The error-recovery "retry", which decided outcomes at random. `apix debug`
   is diagnosis only.
-- Groq, the telemetry setting and the unused `AI_*` settings in `.env.example`.
+- Groq, telemetry and every other variable APIX doesn't read from
+  `.env.example`; each remaining variable has a one-line comment.
+- Hackathon-era dev scripts: `scripts/setup-apix.js` (a v1 bootstrap that
+  overwrote package.json), `demo-verify.js`, `test-workflow.js` (superseded
+  by the e2e harness) and `test-all-apix.sh` (ran every command unattended,
+  including token creation).
 - Hard-coded contract bytecode and the fake contract deploy.
 - hedera-agent-kit and LangChain (`@langchain/core`, `@langchain/anthropic`,
   `@langchain/openai`): nothing needed them once token creation used the

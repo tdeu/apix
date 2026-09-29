@@ -34,7 +34,7 @@
     "proof:testnet": "ts-node --transpile-only scripts/testnet-proof.ts",
     "audit:mocks": "./scripts/audit-mocks.sh",
     "precommit": "npm run build:check && npm run lint && npm test",
-    "validate:env": "node -e \"console.log('Environment check:'); ['OPENAI_API_KEY', 'HEDERA_ACCOUNT_ID', 'HEDERA_PRIVATE_KEY'].forEach(key => console.log(key + ':', process.env[key] ? '✅ Set' : '❌ Missing'));\"",
+    "validate:env": "node -e \"require('dotenv').config(); console.log('Environment check (values not shown):'); ['HEDERA_ACCOUNT_ID', 'HEDERA_PRIVATE_KEY', 'HEDERA_NETWORK', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY'].forEach(key => console.log(key + ':', process.env[key] ? 'set' : 'missing'));\"",
     "apix": "npx ts-node src/cli/index.ts",
     "apix:help": "npm run apix -- --help",
     "apix:health": "npm run apix -- health --quick",
