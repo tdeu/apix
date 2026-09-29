@@ -104,6 +104,26 @@ and `next build` 94.1 s. These were not measured as one continuous run.
 Route latencies were 0.9 to 1.7 s per transaction. The contract route took
 8.0 s for deploy + set + get.
 
+## Fees observed
+
+The fees charged to the operator for the Phase 4b library transactions,
+read from the mirror node (`charged_tx_fee`). These are testnet fees in HBAR
+at the time of the run; fees are set in USD and vary with the HBAR price,
+the network, and the transaction's size and options.
+
+| Transaction | Hedera type | Charged fee |
+|---|---|---|
+| Create token (admin + supply key) | TokenCreateTransaction | 12.94 ℏ |
+| Mint | TokenMintTransaction | 0.013 ℏ |
+| Transfer to 0.0.10777128 (first transfer, recipient auto-associated) | TransferTransaction | 0.65 ℏ |
+| Create topic | TopicCreateTransaction | 0.13 ℏ |
+| Submit topic message | TopicMessageSubmitTransaction | 0.002 ℏ |
+| Deploy StringStore via ContractCreateFlow: bytecode file (FileCreateTransaction), contract (ContractCreateTransaction), file cleanup (FileDeleteTransaction) | 3 transactions | 1.64 + 13.07 + 0.09 = 14.80 ℏ |
+| Call `set(...)` (gas 100000) | ContractExecuteTransaction | 0.05 ℏ |
+
+`get()` is a ContractCallQuery (a paid query, not a transaction), so it has
+no transaction record.
+
 ## Issues found and fixed in 4b
 
 The Phase 4 proof found these. All are fixed, and the rows above are the

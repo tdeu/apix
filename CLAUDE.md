@@ -1,14 +1,16 @@
 # APIX: working rules (v2.1 revival, Sep 2026)
-This file supersedes docs/CLAUDE.md, which is kept for history only. Do not
-follow docs/CLAUDE.md, and treat everything in docs/ as outdated hackathon
-material, not a spec.
+This file supersedes docs/archive/CLAUDE.md, which is kept for history only.
+Do not follow docs/archive/CLAUDE.md, and treat everything in docs/archive/
+as outdated hackathon material, not a spec. The maintained docs are README.md,
+CONTRIBUTING.md and the guides in docs/.
 
 ## Non-negotiables
 - Never fake success: no mock responses, random outcomes, simulated
   transactions or test-account fallbacks. Real failures surface as errors
   with a clear, actionable message.
-- Hedera commands (create-token, validate, deploy) require real credentials
-  (see src/utils/environment-validator.ts) and fail fast without them.
+- Hedera commands (create-token, validate, `add hts --create-token`) require
+  real credentials (see src/utils/environment-validator.ts) and fail fast
+  without them. Spending on mainnet needs an explicit confirmation or --yes.
 - AI commands (chat, generate, recommend, explain, compare, confidence,
   debug) require ANTHROPIC_API_KEY or OPENAI_API_KEY. If missing, they exit
   with a clear error. Never return canned replies. `compose` is experimental:
