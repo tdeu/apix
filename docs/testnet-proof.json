@@ -1,0 +1,113 @@
+{
+  "startedAt": "2026-09-29T20:27:56.604Z",
+  "finishedAt": "2026-09-29T20:28:44.286Z",
+  "network": "testnet",
+  "operator": "0.0.10780747",
+  "recipient": "0.0.10777128",
+  "agentKit": true,
+  "sdkVersion": "2.80.0",
+  "smoke": false,
+  "steps": [
+    {
+      "operation": "Create fungible token (APIX Proof / APIXP)",
+      "status": "failed",
+      "mirrorVerified": false,
+      "notes": [
+        "created via HederaAgentKit"
+      ],
+      "entityId": "0.0.10781945",
+      "transactionId": "0.0.10780747-1790713674-355152205",
+      "hashscan": "https://hashscan.io/testnet/token/0.0.10781945",
+      "error": "createToken reported success but returned no token ID (the mirror node shows token 0.0.10781945 created by 0.0.10780747-1790713674-355152205, result SUCCESS)"
+    },
+    {
+      "operation": "Mint APIXP",
+      "status": "unavailable",
+      "mirrorVerified": false,
+      "notes": [
+        "hedera-operations has no mint method (only create, transfer, contract deploy/call, topic create/submit); not worked around"
+      ]
+    },
+    {
+      "operation": "Transfer 10.00 APIXP to 0.0.10777128",
+      "status": "failed",
+      "mirrorVerified": false,
+      "notes": [],
+      "error": "skipped: createToken returned no token ID"
+    },
+    {
+      "operation": "Create HCS topic",
+      "status": "ok",
+      "mirrorVerified": true,
+      "notes": [
+        "library explorerUrl: https://hashscan.io/testnet/account/0.0.10781947",
+        "mirror: topic memo \"APIX testnet proof\"",
+        "mirror: transaction result SUCCESS, consensus 1790713689.314113332"
+      ],
+      "entityId": "0.0.10781947",
+      "transactionId": "0.0.10780747@1790713683.348618473",
+      "hashscan": "https://hashscan.io/testnet/topic/0.0.10781947"
+    },
+    {
+      "operation": "Submit topic message 1",
+      "status": "ok",
+      "mirrorVerified": true,
+      "notes": [
+        "mirror: transaction result SUCCESS, consensus 1790713697.759223421",
+        "mirror: sequence 1 = \"APIX testnet proof: message 1\""
+      ],
+      "entityId": "0.0.10781947",
+      "transactionId": "0.0.10780747@1790713690.529897674",
+      "hashscan": "https://hashscan.io/testnet/transaction/1790713697.759223421"
+    },
+    {
+      "operation": "Submit topic message 2",
+      "status": "ok",
+      "mirrorVerified": true,
+      "notes": [
+        "mirror: transaction result SUCCESS, consensus 1790713705.786089826",
+        "mirror: sequence 2 = \"APIX testnet proof: message 2\""
+      ],
+      "entityId": "0.0.10781947",
+      "transactionId": "0.0.10780747@1790713695.555980689",
+      "hashscan": "https://hashscan.io/testnet/transaction/1790713705.786089826"
+    },
+    {
+      "operation": "Deploy StringStore contract (solc)",
+      "status": "ok",
+      "mirrorVerified": true,
+      "notes": [
+        "compiled with solc 0.8.37+commit.f401782d.Emscripten.clang, 861 bytes",
+        "bytecode file 0.0.10781958; library explorerUrl: https://hashscan.io/testnet/account/0.0.10781959",
+        "mirror: contract 0.0.10781959, evm 0x0000000000000000000000000000000000a48507, file 0.0.10781958",
+        "mirror: transaction result SUCCESS, consensus 1790713716.839306349"
+      ],
+      "entityId": "0.0.10781959",
+      "transactionId": "0.0.10780747@1790713707.495222023",
+      "hashscan": "https://hashscan.io/testnet/contract/0.0.10781959"
+    },
+    {
+      "operation": "Call set(\"hello from APIX\")",
+      "status": "failed",
+      "mirrorVerified": false,
+      "notes": [
+        "callSmartContract ignores functionName and parameters: it sends a ContractExecute with no function data",
+        "mirror: transaction result CONTRACT_REVERT_EXECUTED"
+      ],
+      "entityId": "0.0.10781959",
+      "transactionId": "0.0.10780747@1790713714.712466286",
+      "error": "Smart contract call failed: receipt for transaction 0.0.10780747@1790713714.712466286 contained error status CONTRACT_REVERT_EXECUTED",
+      "hashscan": "https://hashscan.io/testnet/transaction/1790713721.426691673"
+    },
+    {
+      "operation": "Call get() and check the round trip",
+      "status": "unavailable",
+      "mirrorVerified": false,
+      "notes": [
+        "hedera-operations has no read/query method for contracts; not worked around",
+        "independent check via mirror node eth_call: get() returns \"\" (expected \"hello from APIX\")"
+      ],
+      "entityId": "0.0.10781959"
+    }
+  ]
+}
