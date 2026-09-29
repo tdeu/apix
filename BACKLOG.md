@@ -25,47 +25,57 @@ cheap. [post-2.1] new feature or deep refactor. Sizes: S, M, L.
   `gpt-4o-mini` (`src/ai/models.ts`, override `APIX_OPENAI_MODEL`) is still
   offered. A retired ID breaks every AI command for OpenAI-only users. It is
   unverified because no OpenAI key was available.
-- [blocker-2.1] **hedera-agent-kit decision.** Decide removal of
-  hedera-agent-kit, pending the Hedera milestone clause. It is no longer
-  initialised and no operation uses it; the package stays in
-  `package.json`, and `src/validation/agent-kit/hedera-validator-simple.ts`
-  imports it (reached only from the unused
-  `src/testing/comprehensive-test-suite.ts`). Removing it would also drop
-  its `package.json` overrides and most of the remaining audit advisories.
 - [blocker-2.1] **npm access and publish.** Confirm who can publish
   `apix-ai` (npm still serves 2.0.3). At release: replace
   `DISCORD_INVITE_URL` in README.md, date the 2.1.0 entry in CHANGELOG.md,
   update the "install from source" note in README.md and
-  docs/getting-started.md, and check the `npm pack --dry-run` file list (92
-  files at the end of Phase 5a).
+  docs/getting-started.md, and check the `npm pack --dry-run` file list (71
+  files, 162.7 kB at the end of Phase 5a).
 
 ### [2.1-nice]
 
-CLI honesty and cleanup:
-- Declared flags whose effect is unverified. The docs only show verified
-  flags, so check or remove these: `generate --validate-live`,
-  `--custom-logic`, `--integration-type`, `--framework`; `debug
-  --suggest-fixes`, `--files`, `--logs` (the last two are printed as not
-  supported); `recommend --budget`, `--timeline`, `--interactive`; `add
-  --provider`, `--type`; `explain --detailed`, `--examples`,
-  `--regulations`. S-M.
-- Dead code in the npm package: `dist/testing/` (the unused
-  comprehensive-test-suite), `dist/validation/agent-kit/`, and unused
-  templates (`templates/api/adaptive/`, `templates/enterprise-variants/`).
-  Delete it, or exclude it in `files`. S.
-- Old dev scripts in `scripts/` (`test-workflow.js`, `demo-verify.js`,
-  `setup-apix.js`, `test-all-apix.sh`, `test-cli.sh`, `test-with-claude.ts`)
-  are unverified, and some reference removed file names. Delete or fix. S.
-- `.env.example` still lists variables nothing reads: `ENABLE_DEBUG_LOGGING`,
-  `CLI_INTERACTIVE_MODE`, `CLI_PROGRESS_INDICATORS`, `CLI_COLOR_OUTPUT`, and
-  the "enterprise security" ones (`ENCRYPTION_KEY`, `JWT_SECRET`). S.
-- `add hts --create-token` creates 1,000,000 tokens at 8 decimals with no
-  name, supply or decimals flags of its own. S.
+CLI and repo:
+- `add hts --create-token` creates 1,000,000 tokens at 8 decimals; it takes
+  `--name`/`--symbol` but no supply or decimals flags. S.
 - The nightly testnet smoke hasn't run on GitHub: add the
   `HEDERA_ACCOUNT_ID` / `HEDERA_PRIVATE_KEY` repo secrets (a dedicated
   testnet account) and check the first run.
-- Confirm the LICENSE copyright holder (Phase 5a used `package.json`'s
-  author, "Emtée Studio").
+- Decide: keep or delete `scripts/test-with-claude.ts` (`npm run test:claude`)
+  and `scripts/test-cli.sh`, old dev helpers that still run.
+- Decide: `.claude/settings.local.json` is committed, with another machine's
+  paths and command allowlists; untrack it (and gitignore it) or keep it.
+- The repo mixes CRLF and LF files with no `.gitattributes`.
+- ESLint: 409 warnings (0 errors) after Phase 5a; `no-async-promise-executor`
+  in `utils/progress.ts` (2) is a possible real bug.
+
+Health and analysis:
+- `apix health`'s "wallet-integration" check looks for
+  `src/services/wallet-integration.ts` in the user's project (APIX's own old
+  path, not the generated `lib/hedera/wallet-service.ts`) and lists
+  providers by string matching (it can report WalletConnect and MetaMask).
+  Point it at the generated file and the working providers, or drop it. S.
+- Existing-integration detection (project-analyzer) only looks at root paths
+  (components/, lib/), so `apix analyze` recommends `add hts` in a src/ app
+  that already has it (seen in the Phase 5a smoke). S.
+- The validator's "template-conflicts" warning counts files that are
+  byte-identical to what would be generated, which the generator skips. S.
+- A 5-second analyzer cache with no invalidation
+  (`src/analysis/project-analyzer.ts`).
+
+Generation:
+- IntegrationGenerator ignores `TemplateSelection.variables`, so planner
+  variables never reach the templates.
+- The generated wallet-service type lists `'metamask'` with no adapter (only
+  HashPack and Blade are implemented).
+- The generated `deployContract` defaults to 100000 gas. The testnet proof
+  needed 400000 for an 861-byte contract; raise the default or require
+  `gas`. S.
+- The template engine silently falls back to a basic context if
+  TemplateEnhancer throws (`src/templates/template-engine.ts`); make it an
+  error or prove the output is identical. S.
+- New apps resolve `@hashgraph/sdk ^2.80.0` to 2.81.0 (the Phase 5a smoke
+  built with it); the testnet proof used 2.80.0. Re-run the proof on 2.81 or
+  pin the generated range. S.
 
 AI:
 - The "fast" model tier (`claude-haiku-4-5-20251001`,
@@ -76,32 +86,9 @@ AI:
 - `confidence` "Estimated Time" is a rule of thumb from the score (labelled
   as such). Drop it or ask the AI. S.
 
-Generation and analysis:
-- IntegrationGenerator ignores `TemplateSelection.variables`, so planner
-  variables (e.g. `walletTypes`) never reach the templates.
-- The generated wallet-service lists `'metamask'` as a provider with no
-  adapter (only HashPack and Blade are implemented).
-- The validator's "template-conflicts" warning counts files that are
-  byte-identical to what would be generated, which the generator skips. S.
-- Existing-integration detection (project-analyzer) only looks at root paths
-  (components/, lib/), so it never fires for src/ projects. S.
-- The generated `deployContract` defaults to 100000 gas. The testnet proof
-  needed 400000 for an 861-byte contract; raise the default or require
-  `gas`. S.
-- A TODO at `src/planning/integration-planner.ts` ("Methods disabled due to
-  syntax issues"); a 5-second analyzer cache with no invalidation
-  (`src/analysis/project-analyzer.ts`).
-
 Library and inputs:
 - `hedera-operations.createTopic` doesn't validate the memo (100-byte limit).
 - `InputSanitizer.validateTokenCreation` silently upper-cases symbols.
-
-Repo:
-- The repo mixes CRLF and LF files with no `.gitattributes`.
-- Decide: delete `src/services/wallet-integration.ts`, or expose it as an
-  `apix wallet` command ([post-2.1]). It is unreachable from the CLI.
-- ESLint `no-async-promise-executor` in `utils/progress.ts` (2): a throw
-  inside an async executor doesn't reject the promise.
 
 ### [post-2.1]
 
@@ -109,9 +96,8 @@ Repo:
   submitted no transaction.
 - `compose` (experimental) lists composed files without writing or printing
   them, discards the AI's architecture design (`parseArchitectureDesign`
-  returns `{}`), reads options no flag sets, and declares unused flags
-  (`--templates`, `--novel-pattern`, `--validate-live`). Decide: write with
-  `add`'s overwrite protection, print, or remove. M.
+  returns `{}`) and reads options no flag sets. Decide: write with `add`'s
+  overwrite protection, print, or remove. M.
 - `apix add account` (AccountCreateTransaction utility and a server route). M.
 - Pages Router API routes for `hts` and `consensus`. M.
 - JavaScript projects (real JS template branches and .js/.jsx outputs). L.
@@ -128,17 +114,16 @@ Repo:
   TokenManagerEnhanced, api/adaptive, hts-wallet-operations (which also
   defaults to a FINITE supply without a max), transaction-signer. Delete or
   wire up.
-- `wallet-integration.ts` logs the WalletConnect project ID in full and uses
-  hedera.com's URL and logo as APIX's identity (decide with its delete/expose
-  item).
 - Opt-in telemetry: off by default and documented.
 - Dependencies:
-  - Remaining advisories: 0 critical, 0 high; 6 moderate and 15 low, all
-    transitive under @hashgraph/sdk and hedera-agent-kit, plus uuid 9.x.
-    npm's suggested fixes are downgrades.
-  - Drop `package.json` overrides when upstream catches up.
-  - Move to `@hashgraph/sdk` 2.81 together with hedera-agent-kit (or after
-    removing it), and bump `HEDERA_SDK_VERSION_RANGE`.
+  - Remaining advisories (Phase 5a): 0 critical, 0 high; 4 moderate and 7
+    low, transitive under @hashgraph/sdk (@ethersproject/*, elliptic, bn.js,
+    @hashgraph/cryptography) plus uuid 9.x. npm's suggested fixes are
+    downgrades.
+  - Drop the `protobufjs` / `@grpc/grpc-js` overrides when @hashgraph/sdk
+    catches up (without them: 1 critical, 2 high).
+  - Move APIX itself to `@hashgraph/sdk` 2.81 (nothing pins it to 2.80 now
+    that hedera-agent-kit is gone).
   - Majors not taken (chalk 6, commander 15, inquirer 14, ora 9, openai 7,
     zod 4, uuid 14, dotenv 18, typescript 7, jest 30, eslint 10, ...).
 - ESLint rules downgraded to "warn" in `eslint.config.js` (counts at
@@ -180,4 +165,10 @@ Repo:
   - CONTRIBUTING, CHANGELOG and LICENSE;
   - version 2.1.0 with a `files` allowlist;
   - doc checks (commands, flags, links) in the test suite;
-  - the stray root `lib/hedera/` deleted.
+  - the stray root `lib/hedera/` deleted;
+  - hedera-agent-kit and LangChain removed (audit 21 -> 11, 0 high/critical);
+  - dead code, 12 unused templates and 12 unused dependencies removed
+    (the four integrations' output byte-identical);
+  - legacy scripts and `.env.example` variables removed;
+  - 31 flags that did nothing removed, the working ones documented;
+  - LICENSE holder confirmed (Emtée Studio).

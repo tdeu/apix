@@ -269,7 +269,7 @@ program
 
 program
   .command('generate <integration>')
-  .description('Generate enterprise Hedera integration with AI-powered code composition')
+  .description('Classify your requirement with AI, then write the same files as apix add')
   .option('--industry <industry>', 'Target industry (pharmaceutical, financial-services, insurance, etc.)')
   .option('-f, --force', 'Force overwrite existing files')
   .action(async (integration, options) => {
