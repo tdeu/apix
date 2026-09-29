@@ -162,9 +162,7 @@ export class EnvironmentValidator {
 
     const openaiKey = process.env.OPENAI_API_KEY;
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    const groqKey = process.env.GROQ_API_KEY;
-
-    const hasAnyAI = openaiKey || anthropicKey || groqKey;
+    const hasAnyAI = openaiKey || anthropicKey;
 
     if (requirements.requireOpenAI && !openaiKey) {
       errors.push('OPENAI_API_KEY is required for this operation');
@@ -179,8 +177,8 @@ export class EnvironmentValidator {
     }
 
     if (requirements.requireAI && !hasAnyAI) {
-      errors.push('At least one AI API key is required (OpenAI, Anthropic, or Groq)');
-      errors.push('Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GROQ_API_KEY in your .env file');
+      errors.push('An AI API key is required (Anthropic or OpenAI)');
+      errors.push('Set ANTHROPIC_API_KEY (or OPENAI_API_KEY) in your .env file');
       return { valid: false, errors, warnings };
     }
 
@@ -279,7 +277,6 @@ export class EnvironmentValidator {
       'HEDERA_NETWORK': process.env.HEDERA_NETWORK || 'testnet (default)',
       'OPENAI_API_KEY': process.env.OPENAI_API_KEY ? '✅ Set' : '❌ Missing',
       'ANTHROPIC_API_KEY': process.env.ANTHROPIC_API_KEY ? '✅ Set' : '❌ Missing',
-      'GROQ_API_KEY': process.env.GROQ_API_KEY ? '✅ Set' : '❌ Missing',
     };
   }
 
