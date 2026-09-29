@@ -69,6 +69,18 @@ run on testnet and verified on the mirror node
 - `validate --enterprise/--performance/--security/--compliance/--testnet/--mainnet/--files`
   and `create-token --testnet/--mainnet`: they did nothing. The network comes
   from `HEDERA_NETWORK`.
+- 28 more flags that no code path read:
+  - `add --provider/--type`;
+  - `generate --regulation/--business-context/--business-goals/--integration-type/--framework/--custom-logic/--validate-live`;
+  - `recommend --business-goals/--current-systems/--regulations/--budget/--timeline/--interactive`;
+  - `explain --detailed/--examples/--regulations`;
+  - `compare --use-case/--criteria`;
+  - `confidence --industry/--complexity`;
+  - `debug --files/--logs/--suggest-fixes`;
+  - `compose --templates/--novel-pattern/--validate-live`.
+
+  Also the global `--json` (output was not JSON), `--log-file` (the path
+  was never used) and `--no-file-logging` (never took effect).
 - The error-recovery "retry", which decided outcomes at random. `apix debug`
   is diagnosis only.
 - Groq, telemetry and every other variable APIX doesn't read from

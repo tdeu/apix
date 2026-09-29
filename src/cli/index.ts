@@ -82,7 +82,6 @@ function setupLogging(options: any) {
   // Configure output formatter
   formatter.configure({
     quiet: options.quiet,
-    jsonMode: options.json,
     maxWidth: process.stdout.columns || 80
   });
 
@@ -96,23 +95,11 @@ function setupLogging(options: any) {
     debugLogger.setLevel(DebugLogLevel.INFO);
   }
 
-  // Handle file logging options
-  if (options.noFileLogging) {
-    debugLogger.setFileLogging(false);
-  }
-
-  // Handle custom log file path
-  if (options.logFile) {
-    debugLogger.info('Custom log file path specified', { path: options.logFile });
-  }
 
   // Internal debug logging only in debug mode
   if (options.debug) {
     debugLogger.debug('Logging configured', {
-      level: options.quiet ? 'QUIET' : options.debug ? 'DEBUG' : options.verbose ? 'VERBOSE' : 'INFO',
-      jsonMode: options.json,
-      fileLogging: !options.noFileLogging,
-      customLogFile: options.logFile || null
+      level: options.quiet ? 'QUIET' : options.debug ? 'DEBUG' : options.verbose ? 'VERBOSE' : 'INFO'
     });
   }
 }
@@ -124,17 +111,14 @@ program
   .option('-q, --quiet', 'Minimal output (errors only)')
   .option('-v, --verbose', 'Detailed output')
   .option('--debug', 'Debug output with internal details')
-  .option('--json', 'JSON output format')
   .option('--trace', 'Trace logging with stack traces')
-  .option('--log-file <path>', 'Custom log file path')
-  .option('--no-file-logging', 'Disable file logging')
   .hook('preAction', (thisCommand, actionCommand) => {
     // Setup logging and formatting based on global options
     const options = program.opts();
     setupLogging(options);
 
     // Show minimal header unless in quiet mode
-    if (!options.quiet && !options.json) {
+    if (!options.quiet) {
       console.log(chalk.bold('APIX AI'), chalk.gray(`v${packageJson.version}`));
       if (options.verbose) {
         console.log(chalk.gray('Enterprise Hedera Development Assistant\n'));
@@ -178,8 +162,6 @@ program
   .addHelpText('after', `\nIntegrations: ${describeIntegrations()}\nNext.js App Router + TypeScript only in this version.`)
   .option('-n, --name <n>', 'Integration name')
   .option('-s, --symbol <symbol>', 'Token symbol (for HTS)')
-  .option('-p, --provider <provider>', 'Wallet provider')
-  .option('-t, --type <type>', 'Contract type')
   .option('-f, --force', 'Force overwrite existing files')
   .option('--create-token', 'HTS only: also create the token on Hedera (needs HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY)')
   .option('-y, --yes', 'Skip the confirmation before spending HBAR on mainnet')
@@ -289,13 +271,6 @@ program
   .command('generate <integration>')
   .description('Generate enterprise Hedera integration with AI-powered code composition')
   .option('--industry <industry>', 'Target industry (pharmaceutical, financial-services, insurance, etc.)')
-  .option('--regulation <regulations...>', 'Applicable regulations (FDA-21CFR11, SOX, GDPR, etc.)')
-  .option('--business-context <context>', 'Business context description')
-  .option('--business-goals <goals...>', 'Business goals (compliance, automation, cost-reduction, etc.)')
-  .option('--integration-type <type>', 'Integration complexity (simple, moderate, complex, novel)')
-  .option('--framework <framework>', 'Target framework override')
-  .option('--custom-logic', 'Enable AI custom logic generation')
-  .option('--validate-live', 'Perform live Hedera blockchain validation')
   .option('-f, --force', 'Force overwrite existing files')
   .action(async (integration, options) => {
     const globalOptions = program.opts();
@@ -333,9 +308,6 @@ program
   .option('--requirements <requirements>', 'Natural language requirement description')
   .option('--industry <industry>', 'Target industry context')
   .option('--constraints <constraints...>', 'Technical or business constraints')
-  .option('--templates <templates...>', 'Base templates to combine')
-  .option('--novel-pattern', 'Create entirely new implementation pattern')
-  .option('--validate-live', 'Perform live Hedera validation')
   .action(async (options) => {
     if (!options.experimental && !experimentalEnabled()) {
       reportFailure(new Error('compose is experimental; re-run with --experimental'));
@@ -391,13 +363,7 @@ program
 program
   .command('recommend')
   .description('AI-powered enterprise Hedera service recommendations')
-  .option('--business-goals <goals...>', 'Business objectives')
   .option('--industry <industry>', 'Industry context')
-  .option('--current-systems <systems...>', 'Existing systems to integrate')
-  .option('--regulations <regulations...>', 'Regulatory requirements')
-  .option('--budget <budget>', 'Budget constraints')
-  .option('--timeline <timeline>', 'Implementation timeline')
-  .option('--interactive', 'Interactive recommendation wizard')
   .action(async (options) => {
     const globalOptions = program.opts();
     const allOptions = { ...options, ...globalOptions };
@@ -416,9 +382,6 @@ program
   .description('AI-powered explanations of Hedera concepts and enterprise patterns')
   .argument('<concept>', 'Concept to explain (e.g., "HTS vs smart contracts for loyalty points")')
   .option('--industry <industry>', 'Industry-specific explanation')
-  .option('--detailed', 'Provide detailed technical explanation')
-  .option('--examples', 'Include practical examples')
-  .option('--regulations', 'Include regulatory considerations')
   .action(async (concept, options) => {
     try {
       await ensureCliInitialized();
@@ -433,9 +396,7 @@ program
   .command('compare')
   .description('AI-powered comparison of Hedera approaches for enterprise use cases')
   .argument('<approaches>', 'Approaches to compare (e.g., "HCS vs smart contracts for audit trails")')
-  .option('--use-case <usecase>', 'Specific use case context')
   .option('--industry <industry>', 'Industry context')
-  .option('--criteria <criteria...>', 'Comparison criteria (cost, performance, compliance, etc.)')
   .action(async (approaches, options) => {
     try {
       await ensureCliInitialized();
@@ -450,8 +411,6 @@ program
   .command('confidence')
   .description('Assess AI confidence levels for specific requirements')
   .argument('<requirement>', 'Requirement to assess')
-  .option('--industry <industry>', 'Industry context')
-  .option('--complexity <complexity>', 'Requirement complexity level')
   .option('--detailed', 'Show detailed confidence breakdown')
   .action(async (requirement, options) => {
     try {
@@ -468,9 +427,6 @@ program
   .description('AI-powered debugging assistance for Hedera integration issues')
   .argument('<issue>', 'Issue description or error message')
   .option('--context <context>', 'Additional context about the issue')
-  .option('--files <files...>', 'Related files to analyze')
-  .option('--logs <logfile>', 'Log file to analyze')
-  .option('--suggest-fixes', 'Provide fix suggestions')
   .action(async (issue, options) => {
     try {
       await ensureCliInitialized();
@@ -693,8 +649,6 @@ program
       console.log('  --debug                  - Enable debug logging');
       console.log('  --verbose               - Enable verbose output');
       console.log('  --trace                 - Enable trace logging with stack traces');
-      console.log('  --log-file <path>       - Custom log file path');
-      console.log('  --no-file-logging       - Disable file logging');
       process.exit(0);
     } catch (error: any) {
       console.error(chalk.red('❌ Failed to retrieve debug information:'), maskSecrets(String(error?.message)));

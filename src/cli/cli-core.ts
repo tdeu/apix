@@ -1372,9 +1372,6 @@ export class APIxCLI {
       });
     }
 
-    if (options.files?.length > 0 || options.logs) {
-      console.log(chalk.yellow('\n⚠️  --files and --logs are not supported yet and were ignored.'));
-    }
     console.log(chalk.gray(`\n${NOT_RETRIED}`));
   }
 
