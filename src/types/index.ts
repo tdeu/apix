@@ -17,6 +17,8 @@ export interface IntegrationOptions {
   type?: string;
   force?: boolean;
   createToken?: boolean;
+  /** Skip the mainnet spending confirmation */
+  yes?: boolean;
 }
 
 // Project Analysis Types

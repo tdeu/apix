@@ -182,6 +182,7 @@ program
   .option('-t, --type <type>', 'Contract type')
   .option('-f, --force', 'Force overwrite existing files')
   .option('--create-token', 'HTS only: also create the token on Hedera (needs HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY)')
+  .option('-y, --yes', 'Skip the confirmation before spending HBAR on mainnet')
   .action(async (rawIntegration, options) => {
     // The one place aliases (hcs, contract) become canonical names
     const integration = normalizeIntegration(rawIntegration);
@@ -519,6 +520,7 @@ program
   .option('--supply-key', 'Set the supply key to your operator key (needed to mint)', false)
   .option('--freeze-key', 'Set the freeze key to your operator key', false)
   .option('--wipe-key', 'Set the wipe key to your operator key', false)
+  .option('-y, --yes', 'Skip the confirmation before spending HBAR on mainnet')
   .action(async (options) => {
     const globalOptions = program.opts();
     const allOptions = { ...options, ...globalOptions };
@@ -542,7 +544,7 @@ program
         wipeKey: options.wipeKey
       };
 
-      const result = await cli.createTokenOnBlockchain(tokenOptions);
+      const result = await cli.createTokenOnBlockchain(tokenOptions, { yes: options.yes });
       debugLogger.endCommand(true, result);
       debugLogger.success(`Token '${options.name}' created successfully`);
       process.exit(0);
@@ -553,7 +555,7 @@ program
         options: allOptions,
         stack: error?.stack
       });
-      console.error(chalk.red('❌ Token creation failed. Use --debug for detailed error information.'));
+      console.error(chalk.red(`❌ ${maskSecrets(error instanceof Error ? error.message : String(error))}`));
       process.exit(1);
     }
   });

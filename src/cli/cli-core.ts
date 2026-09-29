@@ -18,6 +18,7 @@ import { requireAIKey, selectProvider } from '../ai/provider';
 import { NOT_RETRIED } from '../ai/recovery/error-recovery-system';
 import { resolveModel } from '../ai/models';
 import { maskSecrets } from '../utils/secrets';
+import { confirmMainnetSpend } from './mainnet-guard';
 import { INTEGRATION_TYPES, describeIntegrations } from '../planning/integration-types';
 import { EnterpriseClassifier } from '../ai/classifiers/enterprise-classifier';
 import { ConversationEngine } from '../ai/conversation/conversation-engine';
@@ -209,6 +210,11 @@ export class APIxCLI {
         validTypes: INTEGRATION_TYPES
       });
       throw new Error(`Unknown integration type: ${integration}. Available: ${describeIntegrations()}`);
+    }
+
+    // Spending on mainnet is confirmed before anything else happens
+    if (integration === 'hts' && options.createToken && EnvironmentValidator.hasHederaCredentials()) {
+      await confirmMainnetSpend(hederaOperations.getNetwork(), { yes: options.yes });
     }
 
     // Refuse unsupported integrations before anything is written. Without a
@@ -466,6 +472,7 @@ export class APIxCLI {
         default: false
       }]));
       if (!createRealToken) return;
+      await confirmMainnetSpend(network, { yes: options.yes });
     }
 
     const tokenSpinner = ora(`Creating token on Hedera ${network}...`).start();
@@ -1609,7 +1616,9 @@ export class APIxCLI {
    * Create a token on Hedera blockchain (real blockchain operation).
    * Throws on any failure so the command exits non-zero.
    */
-  async createTokenOnBlockchain(options: TokenCreationOptions): Promise<void> {
+  async createTokenOnBlockchain(options: TokenCreationOptions, guard: { yes?: boolean } = {}): Promise<void> {
+    await confirmMainnetSpend(hederaOperations.getNetwork(), guard);
+
     console.log(chalk.blue.bold('\n🚀 Creating Token on Hedera Blockchain\n'));
 
     console.log(chalk.cyan('Token Details:'));
