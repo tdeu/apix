@@ -104,7 +104,8 @@ export class HTSManager {
         pauseKey,
         customFees = [],
         tokenType = TokenType.FungibleCommon,
-        supplyType = TokenSupplyType.Finite,
+        // FINITE only with a cap; FINITE without maxSupply is rejected by the network
+        supplyType = maxSupply ? TokenSupplyType.Finite : TokenSupplyType.Infinite,
         freezeDefault = false
       } = params;
 
@@ -350,8 +351,7 @@ export class HTSManager {
       symbol,
       initialSupply,
       decimals,
-      tokenType: TokenType.FungibleCommon,
-      supplyType: TokenSupplyType.Finite
+      tokenType: TokenType.FungibleCommon
     });
   }
 
