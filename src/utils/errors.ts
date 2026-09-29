@@ -158,32 +158,6 @@ export const createError = {
     )
 };
 
-// Error handler utility
-export const handleError = (error: unknown, context?: string): never => {
-  if (error instanceof APIxCustomError) {
-    // Already formatted APIx error, just re-throw
-    throw error;
-  }
-  
-  if (error instanceof Error) {
-    // Convert generic error to APIx error
-    throw new APIxCustomError(
-      `${context ? context + ': ' : ''}${error.message}`,
-      'UNKNOWN_ERROR',
-      { originalError: error.message },
-      ['Check the error details above', 'Report this issue if it persists']
-    );
-  }
-  
-  // Unknown error type
-  throw new APIxCustomError(
-    `Unknown error${context ? ' in ' + context : ''}`,
-    'UNKNOWN_ERROR',
-    { error },
-    ['This is an unexpected error', 'Please report this issue']
-  );
-};
-
 // Validation utilities
 export const validateAccountId = (accountId: string): boolean => {
   return /^\d+\.\d+\.\d+$/.test(accountId);

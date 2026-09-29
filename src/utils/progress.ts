@@ -276,38 +276,9 @@ export const INTEGRATION_STEPS = {
   ]
 };
 
-// Enhanced spinner configurations
-export const SPINNER_STYLES = {
-  default: 'dots2',
-  fast: 'dots',
-  slow: 'moon',
-  arrows: 'arrow3',
-  bounce: 'bounce'
-};
-
 // Utility functions for common progress patterns
 export function createProgressManager(operation: keyof typeof INTEGRATION_STEPS, options?: ProgressOptions): ProgressManager {
   return new ProgressManager(INTEGRATION_STEPS[operation], options);
-}
-
-export function withProgress<T>(
-  steps: ProgressStep[],
-  operation: () => Promise<T>,
-  options?: ProgressOptions
-): Promise<T> {
-  const progress = new ProgressManager(steps, options);
-  
-  return new Promise(async (resolve, reject) => {
-    try {
-      progress.start();
-      const result = await operation();
-      await progress.complete(true);
-      resolve(result);
-    } catch (error) {
-      progress.fail(error instanceof Error ? error.message : 'Unknown error');
-      reject(error);
-    }
-  });
 }
 
 export function trackSteps<T>(
@@ -347,79 +318,3 @@ export function trackSteps<T>(
   });
 }
 
-/**
- * Smart progress wrapper for single operations
- * Only shows progress if operation takes longer than threshold
- */
-export async function withSmartProgress<T>(
-  operation: () => Promise<T>,
-  label: string = 'Processing',
-  options: { minDuration?: number; silent?: boolean } = {}
-): Promise<T> {
-  const startTime = Date.now();
-  const minDuration = options.minDuration || 2000;
-  let spinner: Ora | null = null;
-  let showedProgress = false;
-
-  // Set up delayed progress indication
-  const progressTimer = setTimeout(() => {
-    if (!options.silent && logger.getLevel() > LogLevel.SILENT) {
-      const newSpinner = ora(chalk.cyan(label)).start();
-      spinner = newSpinner;
-      showedProgress = true;
-    }
-  }, minDuration);
-
-  try {
-    const result = await operation();
-    
-    // Clean up
-    clearTimeout(progressTimer);
-    if (spinner) {
-      (spinner as Ora).succeed();
-    }
-    
-    return result;
-  } catch (error) {
-    clearTimeout(progressTimer);
-    if (spinner) {
-      (spinner as Ora).fail();
-    }
-    throw error;
-  }
-}
-
-/**
- * Minimal progress for quick operations
- * Shows working indicator immediately but with minimal visual impact
- */
-export async function withMinimalProgress<T>(
-  operation: () => Promise<T>,
-  label?: string
-): Promise<T> {
-  if (logger.getLevel() === LogLevel.SILENT) {
-    return operation();
-  }
-
-  const startTime = Date.now();
-  if (label && logger.isLevelEnabled(LogLevel.VERBOSE)) {
-    console.log(chalk.cyan('◦'), label);
-  }
-
-  try {
-    const result = await operation();
-    const duration = Date.now() - startTime;
-    
-    // Show completion only if it took a noticeable amount of time
-    if (duration > 1000 && label && logger.isLevelEnabled(LogLevel.VERBOSE)) {
-      console.log(chalk.green('✓'), `${label} completed`);
-    }
-    
-    return result;
-  } catch (error) {
-    if (label && logger.isLevelEnabled(LogLevel.VERBOSE)) {
-      console.log(chalk.red('✗'), `${label} failed`);
-    }
-    throw error;
-  }
-}

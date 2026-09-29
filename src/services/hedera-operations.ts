@@ -743,35 +743,3 @@ export const hederaOperations = new HederaOperationsService(
   (process.env.HEDERA_NETWORK as 'testnet' | 'mainnet') || 'testnet'
 );
 
-// Helper functions
-export async function createToken(options: TokenCreationOptions): Promise<TokenOperationResult> {
-  return await hederaOperations.createToken(options);
-}
-
-export async function mintToken(options: TokenMintOptions): Promise<TokenOperationResult> {
-  return await hederaOperations.mintToken(options);
-}
-
-export async function transferToken(options: TokenTransferOptions): Promise<TokenOperationResult> {
-  return await hederaOperations.transferToken(options);
-}
-
-export async function deploySmartContract(options: SmartContractOptions): Promise<TokenOperationResult> {
-  return await hederaOperations.deploySmartContract(options);
-}
-
-export async function callSmartContract(options: ContractCallOptions): Promise<TokenOperationResult> {
-  return await hederaOperations.callSmartContract(options);
-}
-
-export async function queryContract(options: ContractQueryOptions): Promise<ContractQueryResult> {
-  return await hederaOperations.queryContract(options);
-}
-
-export async function createTopic(options: TopicOptions = {}): Promise<TokenOperationResult> {
-  return await hederaOperations.createTopic(options);
-}
-
-export async function submitTopicMessage(options: TopicMessageOptions): Promise<TokenOperationResult> {
-  return await hederaOperations.submitTopicMessage(options);
-}

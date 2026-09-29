@@ -387,5 +387,3 @@ export class IntegrationGenerator {
     return true;
   }
 }
-
-export const integrationGenerator = new IntegrationGenerator();

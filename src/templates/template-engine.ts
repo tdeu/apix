@@ -172,7 +172,7 @@ export class TemplateEngine {
 
   async loadTemplates(): Promise<void> {
     try {
-      const categories = ['components', 'api', 'hooks', 'utils', 'configs', 'types', 'contexts', 'enterprise-variants'];
+      const categories = ['components', 'api', 'hooks', 'utils', 'types'];
 
       for (const category of categories) {
         const categoryPath = path.join(this.templatesPath, category);

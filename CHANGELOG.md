@@ -78,7 +78,15 @@ run on testnet and verified on the mirror node
   SDK directly, and APIX's prompt templates are its own few lines of code.
   This removed 10 of the 21 production audit advisories and about 195
   production packages.
-- Unused dependencies: `@hashgraph/hedera-wallet-snap`.
+- Unused dependencies: `@hashgraph/hedera-wallet-snap`,
+  `@walletconnect/sign-client`, `@walletconnect/utils`, `qrcode-terminal`,
+  `axios`, `lodash`, `lru-cache`, `terminal-kit`, `tsconfig-paths` and their
+  `@types` packages.
+- Dead code that no command reached: APIX's own wallet-connection service
+  (`src/services/wallet-integration.ts`), performance and security
+  "managers", a second file generator, a template verifier, 17 planner
+  methods and 13 package-manager methods nothing called, and 12 templates no
+  integration renders. The generated files are byte-identical.
 - The testnet IDs published with the hackathon submission, which were never
   created.
 

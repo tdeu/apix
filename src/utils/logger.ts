@@ -228,14 +228,3 @@ export class Logger {
 }
 
 export const logger = new Logger();
-
-// Legacy methods for backward compatibility
-export const legacyLogger = {
-  error: (message: string, error?: any) => logger.error(message, error),
-  warn: (message: string, details?: any) => logger.warn(message, details), 
-  info: (message: string, details?: any) => logger.info(message, details),
-  debug: (message: string, details?: any) => logger.debug(message, details),
-  success: (message: string) => logger.success(message),
-  progress: (message: string) => logger.progress(message),
-  highlight: (message: string) => logger.highlight(message)
-};

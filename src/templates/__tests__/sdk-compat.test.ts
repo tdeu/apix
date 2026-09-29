@@ -162,7 +162,7 @@ describe('templates against the installed @hashgraph/sdk', () => {
 
     const files: string[] = [];
     for (const template of engine.listTemplates()) {
-      const jsx = /^(components|contexts|enterprise-variants)\//.test(template.id);
+      const jsx = /^components\//.test(template.id);
       const outputPath = `src/${template.id}.${jsx ? 'tsx' : 'ts'}`;
       const file = await engine.generateFile(template.id, { ...context, __outputPath: outputPath }, outputPath);
       const target = path.join(tmp, 'all', outputPath);
