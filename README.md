@@ -20,7 +20,7 @@ Repository: [github.com/0xfishbone/apix](https://github.com/0xfishbone/apix)
 
 | Project | `apix add` |
 |---|---|
-| Next.js, App Router, TypeScript | Supported: `hts`, `consensus`, `smart-contract`, `wallet` |
+| Next.js, App Router, TypeScript | Supported: `hts`, `consensus`, `smart-contract`, `wallet` (HashPack and Blade, via their browser extensions) |
 | React/Vite, TypeScript | `wallet` only, experimental |
 | Anything else (Pages Router routes, JavaScript, Vue, Angular, Express, plain Node) | Refused with a message; the project is left unchanged |
 
@@ -35,16 +35,15 @@ adds its own `npm ci`. You need Node.js 20+, git, and a free Hedera
 testnet account from [portal.hedera.com](https://portal.hedera.com/faucet)
 (its account ID and DER-encoded private key).
 
-1. Install APIX. Until 2.1.0 is published to npm, install from source (npm
-   still serves the 2.0.3 hackathon release):
+1. Install APIX:
 
    ```bash
-   git clone https://github.com/0xfishbone/apix.git
-   cd apix
-   npm ci
-   npm run build
-   npm link
+   npm install -g apix-ai
    ```
+
+   Until 2.1.0 is published, npm still serves the 2.0.3 hackathon release.
+   To use 2.1 now, install it from source
+   ([getting started](docs/getting-started.md#2-install-apix)).
 
 2. Create a Next.js app and add HTS:
 
@@ -129,8 +128,8 @@ without deploying a contract, so the generated code is a thin, auditable
 layer over the SDK.
 
 - **Transactions:** TokenCreateTransaction, TokenMintTransaction,
-  TransferTransaction, TokenInfoQuery (plus TokenAssociateTransaction and
-  TokenBurnTransaction in the generated module).
+  TransferTransaction, TokenInfoQuery. Token association is not part of 2.1
+  (see [integrations](docs/integrations.md#hts)).
 - **Proven on testnet:**
   - token [0.0.10782448](https://hashscan.io/testnet/token/0.0.10782448):
     created, minted and transferred through APIX's library;

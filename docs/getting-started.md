@@ -17,8 +17,13 @@ Hedera testnet. The steps match the run recorded in
 
 ## 2. Install APIX
 
-npm still serves the hackathon release (2.0.3). Until 2.1.0 is published,
-install from source:
+```bash
+npm install -g apix-ai
+apix --version
+```
+
+Until 2.1.0 is published, npm still serves the 2.0.3 hackathon release
+(`apix --version` prints 2.0.3). To use 2.1 now, install it from source:
 
 ```bash
 git clone https://github.com/0xfishbone/apix.git
@@ -28,8 +33,6 @@ npm run build
 npm link
 apix --version
 ```
-
-Once 2.1.0 is on npm, `npm install -g apix-ai` does the same.
 
 ## 3. Create a Next.js app
 

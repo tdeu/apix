@@ -51,7 +51,7 @@ Packages: `@hashgraph/sdk` (^2.80.0), `server-only`.
 | File | Purpose |
 |---|---|
 | `src/lib/hedera/client.ts` | Server-side Hedera client from the environment variables. |
-| `src/lib/hedera/hts-operations.ts` | `htsManager`: create, mint, burn, associate, transfer, token info, account balance. |
+| `src/lib/hedera/hts-operations.ts` | `htsManager`: create, mint, transfer, token info (used by the routes), plus burn, associate and balance methods that no route uses and that weren't tested on testnet. |
 | `src/app/api/tokens/create/route.ts` | `POST /api/tokens/create` |
 | `src/app/api/tokens/info/route.ts` | `GET /api/tokens/info?tokenId=0.0.x` |
 | `src/app/api/tokens/mint/route.ts` | `POST /api/tokens/mint` |
@@ -73,6 +73,11 @@ Routes (amounts in the token's smallest unit):
 
 Invalid input returns HTTP 400 with an `error` message; Hedera failures
 return HTTP 500 with `error` and `details`.
+
+Token association is not part of 2.1: no route or hook associates an
+account with a token, and the operator could only sign for its own account.
+Send tokens to accounts with free automatic association slots, or have the
+recipient associate the token from their wallet first.
 
 ## consensus (alias: hcs)
 
@@ -110,7 +115,7 @@ Packages: `@hashgraph/sdk`. Browser-only code.
 
 | File | Purpose |
 |---|---|
-| `src/lib/hedera/wallet-service.ts` | `walletService` with HashPack and Blade adapters (browser extensions, via `window`). |
+| `src/lib/hedera/wallet-service.ts` | `walletService` with HashPack and Blade adapters (their browser extensions, via `window`). These are the only working providers. |
 | `src/hooks/useWallet.ts` | Connection state for React. |
 | `src/components/ConnectWallet.tsx` | A "connect your wallet" button and account display. |
 
