@@ -145,10 +145,9 @@ refactor.
   - [2.1-nice] The "fast" model tier (`claude-haiku-4-5-20251001`,
     `APIX_ANTHROPIC_FAST_MODEL`) exists but no engine uses it; all use the
     default tier. Use it for classification or remove it. S.
-  - [2.1-nice] Unused dependencies after the move to the official SDKs:
-    `@langchain/anthropic`, `@langchain/openai` (only an unused import in
-    `src/testing/comprehensive-test-suite.ts`, which no command loads).
-    `@langchain/core` is still used for PromptTemplate and message types. S.
+  - [done 3b] `@langchain/anthropic` and `@langchain/openai` removed (unused
+    after the move to the official SDKs). `@langchain/core` stays: APIX uses
+    it for PromptTemplate and message types, and hedera-agent-kit needs it.
   - [2.1-nice] `chat` confidence is a hard-coded 0.8, so the "Confidence"
     line in chat never shows. Drop the field or compute it. S.
   - [2.1-nice] `confidence` "Estimated Time" is a rule of thumb from the
@@ -166,11 +165,9 @@ refactor.
   - [2.1-nice] `.env.example` still lists variables nothing reads:
     `ENABLE_DEBUG_LOGGING`, `CLI_INTERACTIVE_MODE`, `CLI_PROGRESS_INDICATORS`,
     `CLI_COLOR_OUTPUT` (the unused `AI_*` settings were removed in 3b). S.
-  - [2.1-nice] Secret masking covers both loggers (console and log files,
-    including `logs`/`last-error` read-back), AI errors and the AI commands'
-    exit path. Other commands still print raw `error.message` in places
-    (e.g. spinner.fail lines in cli-core); route them through `maskSecrets`
-    too. S.
+  - [done 3b] Secret masking covers both loggers (console and log files,
+    including `logs`/`last-error` read-back), AI errors and every error
+    message printed by cli-core.ts and index.ts.
 
 ## Phase 4
 

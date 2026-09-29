@@ -17,6 +17,7 @@ import { checkIntegrationSupport } from '../planning/support-policy';
 import { requireAIKey, selectProvider } from '../ai/provider';
 import { NOT_RETRIED } from '../ai/recovery/error-recovery-system';
 import { resolveModel } from '../ai/models';
+import { maskSecrets } from '../utils/secrets';
 import { INTEGRATION_TYPES, describeIntegrations } from '../planning/integration-types';
 import { EnterpriseClassifier } from '../ai/classifiers/enterprise-classifier';
 import { ConversationEngine } from '../ai/conversation/conversation-engine';
@@ -188,7 +189,7 @@ export class APIxCLI {
           console.log('📚 Create a React project: npx create-next-app@latest my-hedera-app\n');
         } else {
           debugLogger.error('Unexpected analysis error', error);
-          console.error('❌', error.message);
+          console.error('❌', maskSecrets(error.message));
         }
       }
 
@@ -1013,7 +1014,7 @@ export class APIxCLI {
       }
     } catch (error: any) {
       spinner.fail(chalk.red('❌ Validation failed'));
-      console.log(chalk.yellow(`\n${error.message}`));
+      console.log(chalk.yellow(`\n${maskSecrets(error.message)}`));
       throw error;
     }
   }
@@ -1642,7 +1643,7 @@ export class APIxCLI {
       console.log(chalk.white(`   • Run: ${chalk.cyan('apix add hts --name "' + options.name + '" --symbol ' + options.symbol)}`));
     } catch (error: any) {
       spinner.fail(chalk.red('❌ Token creation failed'));
-      console.log(chalk.yellow(`\n${error.message}`));
+      console.log(chalk.yellow(`\n${maskSecrets(error.message)}`));
       if (error.message?.toLowerCase().includes('insufficient')) {
         console.log(chalk.gray('   Token creation costs HBAR; check your account balance.'));
       }

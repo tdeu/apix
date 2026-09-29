@@ -208,7 +208,7 @@ program
         options: allOptions,
         stack: error?.stack
       });
-      console.error(chalk.red(`❌ Integration '${integration}' failed: ${error?.message ?? error}`));
+      console.error(chalk.red(`❌ Integration '${integration}' failed: ${maskSecrets(String(error?.message ?? error))}`));
       console.error(chalk.gray('   Use --debug for detailed error information.'));
       process.exit(1);
     }
@@ -381,7 +381,7 @@ program
     try {
       await ensureCliInitialized();
     } catch (error) {
-      console.error(chalk.red(`❌ ${error instanceof Error ? error.message : error}`));
+      console.error(chalk.red(`❌ ${maskSecrets(error instanceof Error ? error.message : String(error))}`));
       process.exit(1);
     }
 
@@ -625,7 +625,7 @@ program
       }
       process.exit(0);
     } catch (error: any) {
-      console.error(chalk.red('❌ Failed to retrieve logs:'), error.message);
+      console.error(chalk.red('❌ Failed to retrieve logs:'), maskSecrets(String(error?.message)));
       process.exit(1);
     }
   });
@@ -670,7 +670,7 @@ program
       console.log(chalk.yellow('\n💡 Tip: Use --debug flag with commands for detailed logging.'));
       process.exit(0);
     } catch (error: any) {
-      console.error(chalk.red('❌ Failed to retrieve last error:'), error.message);
+      console.error(chalk.red('❌ Failed to retrieve last error:'), maskSecrets(String(error?.message)));
       process.exit(1);
     }
   });
@@ -722,7 +722,7 @@ program
       console.log('  --no-file-logging       - Disable file logging');
       process.exit(0);
     } catch (error: any) {
-      console.error(chalk.red('❌ Failed to retrieve debug information:'), error.message);
+      console.error(chalk.red('❌ Failed to retrieve debug information:'), maskSecrets(String(error?.message)));
       process.exit(1);
     }
   });
