@@ -33,17 +33,17 @@ refactor.
   @types/node 26.
 
 ## Phase 3 (remove fake behaviour, fix app bugs)
-- [blocker-2.1] The six AI commands (generate, recommend, explain, compare,
-  confidence, debug) return fallbacks instead of erroring without a key.
-  `generate` is to become AI-key-required; template-only generation goes
-  through `add`. (Phase 3b.)
+- [done 3b] The AI commands (chat, generate, recommend, explain, compare,
+  confidence, debug) need an AI key and exit 1 with a clear message without
+  one; API failures surface as errors; fallbacks deleted (phase 3b).
 - BUG_REPORT_AND_FIXES.md open items:
-  - [2.1-nice] #7 TODOs at `src/cli/cli-core.ts:1567,1575` (debug command
-    file/log analysis, Phase 3b) and `src/planning/integration-planner.ts:429`
-    ("Methods disabled due to syntax issues").
+  - [2.1-nice] #7 TODO at `src/planning/integration-planner.ts:429`
+    ("Methods disabled due to syntax issues"). The cli-core debug TODOs went
+    with the Phase 3b rewrite; `--files/--logs` are listed below.
   - [2.1-nice] #9 5-second analyzer cache in `src/analysis/project-analyzer.ts`,
     no invalidation.
-  - [2.1-nice] #12 `ENABLE_TELEMETRY` in `.env.example` is not implemented.
+  - [done 3b] #12 `ENABLE_TELEMETRY` removed from `.env.example` (no code
+    read it); opt-in telemetry is a post-2.1 item.
 - Done in Phase 3a (Hedera side):
   - Test-account system removed; `initialize()` requires credentials and
     `add hts` makes no network call without credentials + confirmation or
@@ -136,6 +136,41 @@ refactor.
   - [done 3c] A failed `npm install` during `apix add` now shows the command,
     its exit code and the last 30 lines of npm's output, then rolls back
     (phase 3c closeout).
+- Found in Phase 3b, not fixed:
+  - [blocker-2.1] Verify the OpenAI model ID. Phase 3b kept `gpt-4o-mini`
+    (default for every tier, override `APIX_OPENAI_MODEL`, `src/ai/models.ts`)
+    without checking it is still offered; a retired ID breaks every AI
+    command for OpenAI-only users (they get the "could not use model" error).
+    S.
+  - [2.1-nice] The "fast" model tier (`claude-haiku-4-5-20251001`,
+    `APIX_ANTHROPIC_FAST_MODEL`) exists but no engine uses it; all use the
+    default tier. Use it for classification or remove it. S.
+  - [2.1-nice] Unused dependencies after the move to the official SDKs:
+    `@langchain/anthropic`, `@langchain/openai` (only an unused import in
+    `src/testing/comprehensive-test-suite.ts`, which no command loads).
+    `@langchain/core` is still used for PromptTemplate and message types. S.
+  - [2.1-nice] `chat` confidence is a hard-coded 0.8, so the "Confidence"
+    line in chat never shows. Drop the field or compute it. S.
+  - [2.1-nice] `confidence` "Estimated Time" is a rule of thumb from the
+    score (now labelled as such). Drop it or ask the AI. S.
+  - [2.1-nice] `debug --files/--logs` are accepted but ignored (now printed
+    as not supported). Implement or remove (see #7). S.
+  - [post-2.1] `compose` (experimental) only lists generated file paths; it
+    never writes files or prints their contents, so its output can't be
+    used yet. Decide: write with `add`'s overwrite protection, print, or
+    remove. Also: `parseArchitectureDesign` returns `{}` (the AI's novel
+    design is discarded), and composeCustomCode reads options no flag sets
+    (`businessContext`, `technical`, `compliance`, `stack`, ...), while
+    `--templates`, `--novel-pattern` and `--validate-live` are declared but
+    unused. M.
+  - [2.1-nice] `.env.example` still lists variables nothing reads:
+    `ENABLE_DEBUG_LOGGING`, `CLI_INTERACTIVE_MODE`, `CLI_PROGRESS_INDICATORS`,
+    `CLI_COLOR_OUTPUT` (the unused `AI_*` settings were removed in 3b). S.
+  - [2.1-nice] Secret masking covers both loggers (console and log files,
+    including `logs`/`last-error` read-back), AI errors and the AI commands'
+    exit path. Other commands still print raw `error.message` in places
+    (e.g. spinner.fail lines in cli-core); route them through `maskSecrets`
+    too. S.
 
 ## Phase 4
 
@@ -151,6 +186,12 @@ refactor.
   testnet IDs (accounts, tokens, contract, topic) that APIX never created. It
   clones `github.com/tdeu/apix` and claims `apix --version` shows 2.0.0 and
   SDK v2.40.0.
+- [2.1-nice] Docs still mention Groq, which Phase 3b removed from the code
+  and `.env.example`: `docs/TESTING_MODE_GUIDE.md`, `SECURITY_INCIDENT_REPORT.md`.
+  Also check docs/README for `compose` (now experimental, behind
+  `--experimental`) and old model IDs (`claude-3-*`, `PRIMARY_MODEL`,
+  `SECONDARY_MODEL`, `FAST_MODEL`, `DEFAULT_LLM`); the model variables are
+  now `APIX_ANTHROPIC_MODEL`, `APIX_ANTHROPIC_FAST_MODEL`, `APIX_OPENAI_MODEL`.
 - [2.1-nice] Rename `templates/components/react/WalletConnect.hbs` (e.g.
   `ConnectWallet.hbs`, and the `WalletConnect` component /
   `components/WalletConnect.tsx` output it generates) so it isn't confused
@@ -178,11 +219,15 @@ refactor.
   - `no-control-regex`: 2 (status-line-manager.ts:389 ANSI stripping,
     input-sanitizer.ts:158 control-char removal). Both look intentional;
     use a targeted disable comment.
-  - `no-useless-escape`: 1 (ai/recovery/error-recovery-system.ts:1314). `\s`
-    in a string literal is just `s`; check whether a regex was intended.
+  - [done 3b] `no-useless-escape` (ai/recovery/error-recovery-system.ts:1314):
+    it was a real bug (`\s` in a template string became `s`, so the regex
+    class was `[:s]`), in the retry code Phase 3b deleted.
   - `prefer-const`: 1 (validation/health-checker.ts:79)
 
 ## Post-2.1
+- [post-2.1] Opt-in telemetry. `ENABLE_TELEMETRY` was advertised in
+  `.env.example` but never implemented; Phase 3b removed it. If added, it
+  must be off by default and documented.
 - [post-2.1] Implement WalletConnect v2 in templates. Phase 3a removed
   `'walletconnect'` from the generated `WalletProvider` types
   (`templates/utils/common/wallet-service.hbs`, `templates/types/hedera-types.hbs`),
