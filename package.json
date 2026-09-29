@@ -9,6 +9,7 @@
   "files": [
     "dist/**/*.js",
     "!dist/**/__tests__/**",
+    "!dist/docs-check/**",
     "templates",
     "README.md",
     "LICENSE",
@@ -29,6 +30,7 @@
     "format": "prettier --write src/**/*.ts",
     "snapshot:templates": "ts-node --transpile-only scripts/snapshot-templates.ts",
     "e2e:generate": "ts-node --transpile-only scripts/e2e-generate.ts",
+    "check:docs": "ts-node --transpile-only scripts/check-docs.ts",
     "proof:testnet": "ts-node --transpile-only scripts/testnet-proof.ts",
     "audit:mocks": "./scripts/audit-mocks.sh",
     "precommit": "npm run build:check && npm run lint && npm test",
