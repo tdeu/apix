@@ -2,6 +2,12 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import chalk from 'chalk';
+import { maskSecretsDeep } from './secrets';
+
+/** Console output with configured secrets masked (first 6 characters max) */
+function print(write: (...args: any[]) => void, ...args: any[]): void {
+  write(...args.map(arg => maskSecretsDeep(arg)));
+}
 
 export enum LogLevel {
   ERROR = 0,
@@ -94,7 +100,7 @@ export class DebugLogger {
         }
       });
     } catch (error) {
-      console.warn(chalk.yellow('⚠️  Failed to initialize file logging:'), error);
+      print(console.warn, chalk.yellow('⚠️  Failed to initialize file logging:'), error);
       this.options.enableFileLogging = false;
     }
   }
@@ -117,7 +123,7 @@ export class DebugLogger {
         await fs.remove(file.path);
       }
     } catch (error) {
-      console.warn(chalk.yellow('⚠️  Failed to rotate log files:'), error);
+      print(console.warn, chalk.yellow('⚠️  Failed to rotate log files:'), error);
     }
   }
 
@@ -177,7 +183,7 @@ export class DebugLogger {
   private writeLogEntry(entry: LogEntry): void {
     // Write to file
     if (this.options.enableFileLogging && this.logStream) {
-      const logLine = JSON.stringify(entry) + '\n';
+      const logLine = JSON.stringify(maskSecretsDeep(entry)) + '\n';
       this.logStream.write(logLine);
     }
   }
@@ -222,9 +228,9 @@ export class DebugLogger {
       this.writeLogEntry(logEntry);
 
       if (this.options.enableConsole) {
-        console.error(this.formatConsoleMessage(LogLevel.ERROR, message, context));
+        print(console.error, this.formatConsoleMessage(LogLevel.ERROR, message, context));
         if (error && this.options.enableTrace && error.stack) {
-          console.error(chalk.red(error.stack));
+          print(console.error, chalk.red(error.stack));
         }
       }
     }
@@ -243,7 +249,7 @@ export class DebugLogger {
       this.writeLogEntry(logEntry);
 
       if (this.options.enableConsole) {
-        console.warn(this.formatConsoleMessage(LogLevel.WARN, message, context));
+        print(console.warn, this.formatConsoleMessage(LogLevel.WARN, message, context));
       }
     }
   }
@@ -261,7 +267,7 @@ export class DebugLogger {
       this.writeLogEntry(logEntry);
 
       if (this.options.enableConsole) {
-        console.log(this.formatConsoleMessage(LogLevel.INFO, message, context));
+        print(console.log, this.formatConsoleMessage(LogLevel.INFO, message, context));
       }
     }
   }
@@ -279,7 +285,7 @@ export class DebugLogger {
       this.writeLogEntry(logEntry);
 
       if (this.options.enableConsole) {
-        console.log(this.formatConsoleMessage(LogLevel.DEBUG, message, context));
+        print(console.log, this.formatConsoleMessage(LogLevel.DEBUG, message, context));
       }
     }
   }
@@ -300,7 +306,7 @@ export class DebugLogger {
       this.writeLogEntry(logEntry);
 
       if (this.options.enableConsole) {
-        console.log(this.formatConsoleMessage(LogLevel.TRACE, message, context));
+        print(console.log, this.formatConsoleMessage(LogLevel.TRACE, message, context));
       }
     }
   }
@@ -317,9 +323,9 @@ export class DebugLogger {
     this.writeLogEntry(logEntry);
 
     if (this.options.enableConsole) {
-      console.log(chalk.green.bold('✅'), message);
+      print(console.log, chalk.green.bold('✅'), message);
       if (context && this.options.level >= LogLevel.DEBUG) {
-        console.log(chalk.gray(JSON.stringify(context, null, 2)));
+        print(console.log, chalk.gray(JSON.stringify(context, null, 2)));
       }
     }
   }
@@ -336,7 +342,7 @@ export class DebugLogger {
     this.writeLogEntry(logEntry);
 
     if (this.options.enableConsole) {
-      console.log(chalk.cyan.bold('🔄'), message);
+      print(console.log, chalk.cyan.bold('🔄'), message);
     }
   }
 
@@ -353,7 +359,7 @@ export class DebugLogger {
     this.writeLogEntry(logEntry);
 
     if (this.options.enableConsole && this.options.level >= LogLevel.DEBUG) {
-      console.log(chalk.cyan.bold(`📋 [${step}]`), message);
+      print(console.log, chalk.cyan.bold(`📋 [${step}]`), message);
     }
   }
 
@@ -370,7 +376,7 @@ export class DebugLogger {
     this.writeLogEntry(logEntry);
 
     if (this.options.enableConsole && this.options.level >= LogLevel.DEBUG) {
-      console.log(chalk.blue.bold(`📝 [${templateId}]`), message);
+      print(console.log, chalk.blue.bold(`📝 [${templateId}]`), message);
     }
   }
 
@@ -387,7 +393,7 @@ export class DebugLogger {
     this.writeLogEntry(logEntry);
 
     if (this.options.enableConsole && this.options.level >= LogLevel.DEBUG) {
-      console.log(chalk.green.bold(`📁 [${fileName}]`), message);
+      print(console.log, chalk.green.bold(`📁 [${fileName}]`), message);
     }
   }
 
@@ -410,7 +416,7 @@ export class DebugLogger {
         })
         .filter((entry): entry is LogEntry => entry !== null);
 
-      return entries;
+      return maskSecretsDeep(entries);
     } catch (error) {
       this.error('Failed to read recent logs', error);
       return [];

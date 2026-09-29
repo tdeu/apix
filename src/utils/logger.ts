@@ -1,4 +1,10 @@
 import chalk from 'chalk';
+import { maskSecretsDeep } from './secrets';
+
+/** Console output with configured secrets masked (first 6 characters max) */
+function print(write: (...args: any[]) => void, ...args: any[]): void {
+  write(...args.map(arg => maskSecretsDeep(arg)));
+}
 
 /**
  * Enhanced Log Level System
@@ -60,19 +66,19 @@ export class Logger {
    */
   error(message: string, error?: any): void {
     if (this.level >= LogLevel.ERROR) {
-      console.error(chalk.red('Error:'), message);
+      print(console.error, chalk.red('Error:'), message);
       
       // Show technical details only in verbose/debug mode
       if (error && this.level >= LogLevel.VERBOSE) {
         if (typeof error === 'string') {
-          console.error(chalk.gray('Details:'), error);
+          print(console.error, chalk.gray('Details:'), error);
         } else if (error.message) {
-          console.error(chalk.gray('Details:'), error.message);
+          print(console.error, chalk.gray('Details:'), error.message);
         }
         
         // Stack trace only in debug mode
         if (this.level >= LogLevel.DEBUG && error.stack) {
-          console.error(chalk.gray('Stack:'), error.stack);
+          print(console.error, chalk.gray('Stack:'), error.stack);
         }
       }
     }
@@ -90,11 +96,11 @@ export class Logger {
       }
       this.warningTracker.markShown(warningKey);
       
-      console.warn(chalk.yellow('Warning:'), message);
+      print(console.warn, chalk.yellow('Warning:'), message);
       
       // Show details only in verbose mode
       if (details && this.level >= LogLevel.VERBOSE) {
-        console.warn(chalk.gray('Details:'), typeof details === 'object' ? JSON.stringify(details, null, 2) : details);
+        print(console.warn, chalk.gray('Details:'), typeof details === 'object' ? JSON.stringify(details, null, 2) : details);
       }
     }
   }
@@ -104,11 +110,11 @@ export class Logger {
    */
   info(message: string, details?: any): void {
     if (this.level >= LogLevel.INFO) {
-      console.log(message);
+      print(console.log, message);
       
       // Show details only in verbose mode
       if (details && this.level >= LogLevel.VERBOSE) {
-        console.log(chalk.gray('Details:'), typeof details === 'object' ? JSON.stringify(details, null, 2) : details);
+        print(console.log, chalk.gray('Details:'), typeof details === 'object' ? JSON.stringify(details, null, 2) : details);
       }
     }
   }
@@ -118,10 +124,10 @@ export class Logger {
    */
   verbose(message: string, details?: any): void {
     if (this.level >= LogLevel.VERBOSE) {
-      console.log(chalk.gray(message));
+      print(console.log, chalk.gray(message));
       
       if (details) {
-        console.log(chalk.gray(typeof details === 'object' ? JSON.stringify(details, null, 2) : details));
+        print(console.log, chalk.gray(typeof details === 'object' ? JSON.stringify(details, null, 2) : details));
       }
     }
   }
@@ -131,10 +137,10 @@ export class Logger {
    */
   debug(message: string, details?: any): void {
     if (this.level >= LogLevel.DEBUG) {
-      console.log(chalk.gray('[DEBUG]'), chalk.gray(message));
+      print(console.log, chalk.gray('[DEBUG]'), chalk.gray(message));
       
       if (details) {
-        console.log(chalk.gray(typeof details === 'object' ? JSON.stringify(details, null, 2) : details));
+        print(console.log, chalk.gray(typeof details === 'object' ? JSON.stringify(details, null, 2) : details));
       }
     }
   }
@@ -154,10 +160,10 @@ export class Logger {
       // Only show internal logs in debug mode
       if (this.level >= LogLevel.DEBUG) {
         const prefix = chalk.gray(`[INTERNAL-${level.toUpperCase()}]`);
-        console.log(prefix, chalk.gray(message));
+        print(console.log, prefix, chalk.gray(message));
         
         if (details && this.internalLevel >= LogLevel.DEBUG) {
-          console.log(chalk.gray(typeof details === 'object' ? JSON.stringify(details, null, 2) : details));
+          print(console.log, chalk.gray(typeof details === 'object' ? JSON.stringify(details, null, 2) : details));
         }
       }
     }
@@ -168,7 +174,7 @@ export class Logger {
    */
   success(message: string): void {
     if (this.level >= LogLevel.INFO) {
-      console.log(chalk.green('✓'), message);
+      print(console.log, chalk.green('✓'), message);
     }
   }
 
@@ -177,7 +183,7 @@ export class Logger {
    */
   failure(message: string): void {
     if (this.level >= LogLevel.ERROR) {
-      console.log(chalk.red('✗'), message);
+      print(console.log, chalk.red('✗'), message);
     }
   }
 
@@ -186,7 +192,7 @@ export class Logger {
    */
   progress(message: string): void {
     if (this.level >= LogLevel.INFO) {
-      console.log(chalk.cyan(message));
+      print(console.log, chalk.cyan(message));
     }
   }
 
@@ -195,7 +201,7 @@ export class Logger {
    */
   highlight(message: string): void {
     if (this.level >= LogLevel.INFO) {
-      console.log(chalk.bold(message));
+      print(console.log, chalk.bold(message));
     }
   }
 
