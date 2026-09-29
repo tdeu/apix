@@ -33,7 +33,7 @@ function projectContext(rootPath: string): ProjectContext {
 describe('generated dependency versions', () => {
   it('pins the SDK range to the @hashgraph/sdk version APIX itself uses', async () => {
     const ownPackage = await fs.readJSON(path.join(__dirname, '..', '..', '..', 'package.json'));
-    expect(HEDERA_SDK_VERSION_RANGE).toBe(`^${ownPackage.dependencies['@hashgraph/sdk']}`);
+    expect(HEDERA_SDK_VERSION_RANGE).toBe(`~${ownPackage.dependencies['@hashgraph/sdk']}`);
   });
 
   it('refuses to invent a version for an unknown dependency', () => {

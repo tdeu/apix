@@ -73,9 +73,6 @@ Generation:
 - The template engine silently falls back to a basic context if
   TemplateEnhancer throws (`src/templates/template-engine.ts`); make it an
   error or prove the output is identical. S.
-- New apps resolve `@hashgraph/sdk ^2.80.0` to 2.81.0 (the Phase 5a smoke
-  built with it); the testnet proof used 2.80.0. Re-run the proof on 2.81 or
-  pin the generated range. S.
 
 AI:
 - The "fast" model tier (`claude-haiku-4-5-20251001`,
@@ -140,7 +137,7 @@ Library and inputs:
   unreachable from our code; drop it when @elizaos/core updates.
 - **Phase 3a (Hedera side):** test-account fallback removed; credentials
   required; inputs validated before any SDK call; honest `apix health` by
-  area with `--strict`; generated projects pin `@hashgraph/sdk ^2.80.0`;
+  area with `--strict`; generated projects pin `@hashgraph/sdk` (now `~2.80.0`);
   fake-behaviour tests replaced.
 - **Phase 3c (generation):** every template renders; output follows the
   project's layout with relative imports; every imported module is
@@ -171,4 +168,6 @@ Library and inputs:
     (the four integrations' output byte-identical);
   - legacy scripts and `.env.example` variables removed;
   - 31 flags that did nothing removed, the working ones documented;
-  - LICENSE holder confirmed (Emtée Studio).
+  - LICENSE holder confirmed (Emtée Studio);
+  - generated `@hashgraph/sdk` range aligned to `~2.80.0` (was `^2.80.0`, which
+    resolved to 2.81.0) and the library proof re-run on 2.80.0.

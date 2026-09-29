@@ -3,14 +3,22 @@
 What APIX actually does on Hedera testnet, verified independently on the
 mirror node. Phase 4 ran the first proof and found failures. Phase 4b fixed
 them and re-ran everything below that the fixes touched. The history is in
-[Issues found and fixed in 4b](#issues-found-and-fixed-in-4b).
+[Issues found and fixed in 4b](#issues-found-and-fixed-in-4b). The library
+proof was re-run at the end of Phase 5a, after hedera-agent-kit and
+LangChain were removed
+([re-verification](#re-verified-on-hashgraphsdk-2800)).
 
-- Dates: 2026-09-29 (UTC). Phase 4 proof, then the Phase 4b re-proof.
-- APIX: branch `phase-4b/testnet-fixes`. The library proof script is
-  `scripts/testnet-proof.ts` (`npm run proof:testnet`), and its raw output
-  is [`testnet-proof.json`](testnet-proof.json).
-- `@hashgraph/sdk` 2.80.0 (APIX and the generated apps). The Phase 4 runs
-  still had hedera-agent-kit 3.8.2 installed; it was removed in Phase 5a.
+- Dates: 2026-09-29 (UTC). Phase 4 proof, the Phase 4b re-proof, and the
+  Phase 5a re-verification of the library.
+- APIX: branches `phase-4b/testnet-fixes` and `phase-5a/docs-release-prep`.
+  The library proof script is `scripts/testnet-proof.ts`
+  (`npm run proof:testnet`); [`testnet-proof.json`](testnet-proof.json)
+  holds the raw output of the latest run (the Phase 5a re-verification).
+- `@hashgraph/sdk` **2.80.0**: installed in APIX (pinned exactly) and used by
+  every run below. Generated apps get `~2.80.0`, so they install the same
+  version (or a 2.80 patch release), never an untested minor. The Phase 4 and
+  4b runs still had hedera-agent-kit 3.8.2 installed (unused since 4b); it
+  was removed in Phase 5a.
 - Network: testnet. Operator `0.0.10780747` (ECDSA); demo recipient
   `0.0.10777128` (ED25519, unlimited automatic associations).
 - Mirror node: `https://testnet.mirrornode.hedera.com/api/v1`
@@ -103,6 +111,32 @@ scaffold install 132.9 s, `add hts` 134.5 s, `add smart-contract` 22.9 s,
 and `next build` 94.1 s. These were not measured as one continuous run.
 Route latencies were 0.9 to 1.7 s per transaction. The contract route took
 8.0 s for deploy + set + get.
+
+## Re-verified on @hashgraph/sdk 2.80.0
+
+The library proof re-run at the end of Phase 5a (2026-09-29, 23:21 UTC)
+with `npm run proof:testnet`. This is the current code, after
+hedera-agent-kit, LangChain and the dead code were removed, with
+`@hashgraph/sdk` 2.80.0. All 9 steps passed and all 9 were mirror-verified.
+
+| Operation | Entity ID | Transaction ID | HashScan | Mirror-verified |
+|---|---|---|---|---|
+| Create token APIX Proof / APIXP (2 decimals, 100000 units, admin + supply key) | 0.0.10783823 | 0.0.10780747@1790724058.665191045 | [token](https://hashscan.io/testnet/token/0.0.10783823) | ✅ INFINITE supply 100000, treasury 0.0.10780747, admin and supply key set, SUCCESS |
+| Mint 5000 units | 0.0.10783823 | 0.0.10780747@1790724064.483153170 | [tx](https://hashscan.io/testnet/transaction/1790724070.724038762) | ✅ SUCCESS, supply 100000 → 105000 |
+| Transfer 1000 units to 0.0.10777128 | 0.0.10783823 | 0.0.10780747@1790724074.402215110 | [tx](https://hashscan.io/testnet/transaction/1790724085.211281104) | ✅ SUCCESS, recipient balance 1000 |
+| Create HCS topic | 0.0.10783825 | 0.0.10780747@1790724084.403428272 | [topic](https://hashscan.io/testnet/topic/0.0.10783825) | ✅ memo "APIX testnet proof", SUCCESS |
+| Submit topic message 1 | 0.0.10783825 | 0.0.10780747@1790724088.635393032 | [tx](https://hashscan.io/testnet/transaction/1790724096.251351104) | ✅ sequence 1, content matches |
+| Submit topic message 2 | 0.0.10783825 | 0.0.10780747@1790724096.546172289 | [tx](https://hashscan.io/testnet/transaction/1790724101.480615266) | ✅ sequence 2, content matches |
+| Deploy `StringStore` (solc 0.8.37, 861 bytes) | 0.0.10783827 | 0.0.10780747@1790724106.710048582 | [contract](https://hashscan.io/testnet/contract/0.0.10783827) | ✅ SUCCESS |
+| `set("hello from APIX")` | 0.0.10783827 | 0.0.10780747@1790724106.649929506 | [tx](https://hashscan.io/testnet/transaction/1790724113.803933546) | ✅ SUCCESS |
+| `get()` (`queryContract`) | 0.0.10783827 | (query, no transaction) | [contract](https://hashscan.io/testnet/contract/0.0.10783827) | ✅ `queryContract` and a mirror-node `eth_call` both return "hello from APIX" |
+
+The CLI and generated-app rows in sections 2 and 3 are from Phase 4 and 4b,
+on the same SDK version. Since then, the generated templates for the
+supported integrations are byte-identical (checked with
+`npm run snapshot:templates`), and a fresh Next.js app with `apix add hts`
+installed, type-checked and built in the e2e harness. The CLI and
+generated-app rows were not re-run on testnet.
 
 ## Fees observed
 

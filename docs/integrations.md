@@ -46,7 +46,7 @@ HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY must be set on the server (e.g. in .env
 
 ## hts
 
-Packages: `@hashgraph/sdk` (^2.80.0), `server-only`.
+Packages: `@hashgraph/sdk` (~2.80.0, the version APIX is tested with), `server-only`.
 
 | File | Purpose |
 |---|---|

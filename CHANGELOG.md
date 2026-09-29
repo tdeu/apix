@@ -40,7 +40,8 @@ run on testnet and verified on the mirror node
 - Generated code installs, type-checks and builds in a fresh Next.js app.
   It follows the project's layout (with or without `src/`) with relative
   imports, generates every module it imports, and matches
-  `@hashgraph/sdk` 2.80 (generated projects pin `^2.80.0`).
+  `@hashgraph/sdk` 2.80 (generated projects get `~2.80.0`: the tested
+  version or a patch of it, never an untested minor).
 - Generated server modules import `server-only` and create the Hedera
   client on first use, so the private key stays on the server and
   `next build` needs no credentials. The operator signs every transaction;
