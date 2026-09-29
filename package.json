@@ -1,19 +1,23 @@
 {
   "name": "apix-ai",
-  "version": "2.0.3",
-  "description": "Enterprise AI-powered Hedera development assistant with code composition and live blockchain validation",
+  "version": "2.1.0",
+  "description": "CLI that adds working Hedera integrations (HTS, HCS, smart contracts, wallet) to Next.js apps, with optional AI help",
   "main": "dist/cli/index.js",
   "bin": {
     "apix": "dist/cli/index.js"
   },
   "files": [
-    "dist",
+    "dist/**/*.js",
+    "!dist/**/__tests__/**",
     "templates",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "prepack": "npm run clean && npm run build",
     "build:check": "tsc --noEmit",
     "build:strict": "tsc --noEmit --strict",
     "dev": "nodemon --exec ts-node src/cli/index.ts",
@@ -52,10 +56,14 @@
   },
   "keywords": [
     "hedera",
-    "blockchain",
+    "hashgraph",
+    "hts",
+    "hcs",
+    "smart-contracts",
     "cli",
-    "ai",
-    "integration"
+    "nextjs",
+    "code-generation",
+    "web3"
   ],
   "author": "Emtée Studio",
   "contributors": [
