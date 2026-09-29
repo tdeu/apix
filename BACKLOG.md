@@ -141,7 +141,7 @@ refactor.
     (default for every tier, override `APIX_OPENAI_MODEL`, `src/ai/models.ts`)
     without checking it is still offered; a retired ID breaks every AI
     command for OpenAI-only users (they get the "could not use model" error).
-    S.
+    Still unverified after Phase 4: no OpenAI key was available. S.
   - [2.1-nice] The "fast" model tier (`claude-haiku-4-5-20251001`,
     `APIX_ANTHROPIC_FAST_MODEL`) exists but no engine uses it; all use the
     default tier. Use it for classification or remove it. S.
@@ -169,7 +169,44 @@ refactor.
     including `logs`/`last-error` read-back), AI errors and every error
     message printed by cli-core.ts and index.ts.
 
-## Phase 4
+## Phase 4 (testnet proof)
+- [done 4] Testnet evidence in `docs/TESTNET_PROOF.md` (library, CLI,
+  generated Next.js app, all mirror-verified); `npm run proof:testnet`;
+  nightly `testnet-smoke.yml` (skips without the Hedera secrets).
+- Found in Phase 4, not fixed:
+  - [blocker-2.1] Token creation through hedera-agent-kit loses the token ID.
+    `HederaAgentKitService.createToken` reads `tokenId`/`transactionId` from
+    the top level of the kit's response, but the kit returns
+    `{ raw: { tokenId, ... }, humanMessage }`. The token is created on
+    testnet, yet `apix create-token` prints `Token ID: undefined` and a
+    broken HashScan link and exits 0; `add hts --create-token` and
+    `hedera-operations.createToken` are affected too. The nightly testnet
+    smoke fails on this until it is fixed. S.
+  - [blocker-2.1] The agent-kit token is not the token APIX asks for:
+    `initialSupply` is taken in whole tokens (APIX's SDK path uses smallest
+    units), there is no admin or supply key, and supply is FINITE, so it can
+    never be minted. `create-token --admin-key/--supply-key/--freeze-key/
+    --wipe-key` are silently ignored. Decide: map every option onto the kit
+    call, or create tokens with the SDK path only. S-M.
+  - [2.1-nice] Generated HTS code defaults `supplyType` to FINITE but only
+    sets a max supply when one is passed, so `POST /api/tokens/create`
+    without the optional `maxSupply` always fails with
+    `INVALID_TOKEN_MAX_SUPPLY` (HTTP 500). The generated TokenManager UI
+    always sends one. Default to INFINITE without `maxSupply`, or require
+    it (400). S.
+  - [2.1-nice] `create-token --testnet/--mainnet` are declared but ignored
+    (the network always comes from HEDERA_NETWORK). Remove them, or make
+    `--mainnet` a deliberate, confirmed switch. S.
+  - [post-2.1] `hedera-operations` (no CLI command calls these today):
+    `callSmartContract` ignores `functionName` and `parameters` (it sends a
+    ContractExecute with no call data, so real functions revert), and
+    `deploySmartContract` ignores `constructorParameters`. There is no mint
+    and no contract read/query method. Explorer URLs for topics and
+    contracts use `/account/<id>` instead of `/topic/` and `/contract/`.
+    Implement with ContractFunctionParameters, or remove the unused
+    methods. M.
+  - [2.1-nice] `apix health` says the AI key is "Needed for chat, compose,
+    generate and the other AI commands"; compose is now experimental. S.
 
 ## Phase 5 (docs, README, cleanup)
 - [blocker-2.1] Confirm the Jest suite passes on Linux (GitHub Actions once
