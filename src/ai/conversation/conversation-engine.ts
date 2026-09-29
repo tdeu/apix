@@ -210,7 +210,7 @@ Keep responses concise but comprehensive.`;
 
 I can help you with:
 • Choosing Hedera services - HTS, HCS and smart contracts for your use case
-• Integrations - which `apix add` command fits, and what it generates
+• Integrations - which \`apix add\` command fits, and what it generates
 • Hedera concepts - accounts, keys, fees, tokens and topics
 • Troubleshooting - reading Hedera errors and what to try next
 

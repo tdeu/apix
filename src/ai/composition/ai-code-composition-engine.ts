@@ -487,7 +487,7 @@ Focus on practical, enterprise-grade solutions that can be implemented reliably 
 5. Performance optimization and scalability design
 6. Integration with enterprise systems (ERP, CRM, MES, etc.)
 
-Generate complete, working code with input validation and error handling; mark anything you cannot implement with `TODO: Implement`.`;
+Generate complete, working code with input validation and error handling; mark anything you cannot implement with \`TODO: Implement\`.`;
   }
 
   private getNovelDesignSystemPrompt(): string {
