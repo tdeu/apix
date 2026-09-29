@@ -1,4 +1,8 @@
-import { Client, AccountId, PrivateKey, TokenCreateTransaction, TokenType, TokenSupplyType, Hbar, TransactionResponse, TransactionReceipt, TokenAssociateTransaction, TransferTransaction, TokenId, ContractCreateTransaction, ContractExecuteTransaction, FileCreateTransaction, FileAppendTransaction, TopicCreateTransaction, TopicMessageSubmitTransaction, TopicId } from '@hashgraph/sdk';
+import {
+  Client, AccountId, PrivateKey, TokenCreateTransaction, TokenMintTransaction, TokenType, TokenSupplyType, Hbar,
+  TransferTransaction, TokenId, ContractCreateFlow, ContractExecuteTransaction, ContractCallQuery,
+  ContractFunctionParameters, ContractId, TopicCreateTransaction, TopicMessageSubmitTransaction, TopicId, Status
+} from '@hashgraph/sdk';
 import { logger } from '../utils/logger';
 import { EnvironmentValidator } from '../utils/environment-validator';
 import { InputSanitizer } from '../utils/input-sanitizer';
@@ -7,16 +11,22 @@ import { HederaAgentKitService } from './hedera-agent-kit-service';
 /**
  * Hedera Operations Service
  *
- * Provides real blockchain operations using Hedera Agent Kit and SDK
- * Handles token creation, transfers, and other blockchain operations
+ * Real Hedera operations through the Hedera SDK. Every operation that reports
+ * success carries the entity and/or transaction ID from the network's
+ * receipt; if the receipt lacks one, the operation fails instead.
  */
 
 export interface TokenCreationOptions {
   name: string;
   symbol: string;
   decimals?: number;
+  /** In the token's smallest unit: 100000 with 2 decimals is 1,000.00 tokens */
   initialSupply?: number;
+  /** Smallest units. Given: FINITE supply capped here. Omitted: INFINITE supply */
+  maxSupply?: number;
+  /** Must be the operator account (the only key APIX can sign with) */
   treasuryAccount?: string;
+  /** Each key flag sets that key to the operator's public key */
   adminKey?: boolean;
   supplyKey?: boolean;
   freezeKey?: boolean;
@@ -40,20 +50,53 @@ export interface TokenTransferOptions {
   amount: number;
 }
 
+export interface TokenMintOptions {
+  tokenId: string;
+  /** Smallest units */
+  amount: number;
+}
+
+/** A Solidity argument, encoded with ContractFunctionParameters */
+export type ContractParam =
+  | { type: 'string'; value: string }
+  | { type: 'bool'; value: boolean }
+  | { type: 'uint256' | 'int256'; value: number | string | bigint }
+  | { type: 'address'; value: string }
+  | { type: 'bytes32'; value: string | Uint8Array };
+
+export type ContractReturnType = 'string' | 'bool' | 'uint256' | 'address';
+
 export interface SmartContractOptions {
+  /** Compiled bytecode as hex, with or without a 0x prefix */
   bytecode: string;
   gas: number;
   initialBalance?: number;
-  constructorParameters?: any[];
+  constructorParameters?: ContractParam[];
   adminKey?: boolean;
 }
 
 export interface ContractCallOptions {
   contractId: string;
   functionName: string;
-  parameters?: any[];
+  parameters?: ContractParam[];
   gas: number;
   payableAmount?: number;
+}
+
+export interface ContractQueryOptions {
+  contractId: string;
+  functionName: string;
+  parameters?: ContractParam[];
+  /** The function's single return value, decoded as this type */
+  returns: ContractReturnType;
+  gas?: number;
+}
+
+export interface ContractQueryResult {
+  success: true;
+  /** string and address as strings, bool as boolean, uint256 as a decimal string */
+  value: string | boolean;
+  details: { contractId: string; functionName: string; gasUsed: string; network: string };
 }
 
 export interface TopicOptions {
@@ -70,6 +113,7 @@ export interface TopicMessageOptions {
 }
 
 type InputCheck = { valid: boolean; error?: string };
+type ExplorerPage = 'transaction' | 'token' | 'topic' | 'contract' | 'account';
 
 /**
  * Throw before any SDK call if any input check failed.
@@ -79,6 +123,122 @@ function assertValidInput(operation: string, checks: InputCheck[]): void {
   if (errors.length > 0) {
     throw new Error(`Invalid ${operation} input:\n${errors.map(error => `  - ${error}`).join('\n')}`);
   }
+}
+
+const UINT256_MAX = (BigInt(1) << BigInt(256)) - BigInt(1);
+const INT256_MIN = -(BigInt(1) << BigInt(255));
+const INT256_MAX = (BigInt(1) << BigInt(255)) - BigInt(1);
+
+function toBigInt(value: number | string | bigint, label: string): bigint {
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value)) throw new Error(`${label} must be a safe integer (pass larger values as a string or bigint)`);
+    return BigInt(value);
+  }
+  if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) return BigInt(value.trim());
+  throw new Error(`${label} must be an integer`);
+}
+
+/**
+ * The SDK converts integer arguments with its own bignumber.js and accepts a
+ * decimal string (a BigNumber from another copy of the library is rejected),
+ * so 256-bit values go in as strings; the declared type is wider than needed.
+ */
+function toSdkInteger(value: bigint): Parameters<ContractFunctionParameters['addUint256']>[0] {
+  return value.toString(10) as unknown as Parameters<ContractFunctionParameters['addUint256']>[0];
+}
+
+function validateSolidityName(name: string): InputCheck {
+  return typeof name === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
+    ? { valid: true }
+    : { valid: false, error: `Invalid function name: "${name}"` };
+}
+
+/**
+ * Encode arguments for a contract function. Throws on a value that doesn't
+ * fit its declared type, so nothing malformed reaches the network.
+ */
+export function buildContractParameters(params: ContractParam[] = []): ContractFunctionParameters {
+  const encoded = new ContractFunctionParameters();
+  params.forEach((param, index) => {
+    const label = `Parameter ${index + 1} (${param?.type})`;
+    switch (param?.type) {
+      case 'string':
+        if (typeof param.value !== 'string') throw new Error(`${label} must be a string`);
+        encoded.addString(param.value);
+        break;
+      case 'bool':
+        if (typeof param.value !== 'boolean') throw new Error(`${label} must be true or false`);
+        encoded.addBool(param.value);
+        break;
+      case 'uint256': {
+        const value = toBigInt(param.value, label);
+        if (value < BigInt(0) || value > UINT256_MAX) throw new Error(`${label} is out of range for uint256`);
+        encoded.addUint256(toSdkInteger(value));
+        break;
+      }
+      case 'int256': {
+        const value = toBigInt(param.value, label);
+        if (value < INT256_MIN || value > INT256_MAX) throw new Error(`${label} is out of range for int256`);
+        encoded.addInt256(toSdkInteger(value));
+        break;
+      }
+      case 'address': {
+        const value = typeof param.value === 'string' ? param.value.trim() : '';
+        let evm: string;
+        if (/^0x[0-9a-fA-F]{40}$/.test(value)) {
+          evm = value.slice(2);
+        } else if (/^\d+\.\d+\.\d+$/.test(value)) {
+          evm = AccountId.fromString(value).toSolidityAddress();
+        } else {
+          throw new Error(`${label} must be a 0x-prefixed 20-byte EVM address or a 0.0.x ID`);
+        }
+        encoded.addAddress(evm);
+        break;
+      }
+      case 'bytes32': {
+        let bytes: Uint8Array;
+        if (param.value instanceof Uint8Array) {
+          bytes = param.value;
+        } else if (typeof param.value === 'string' && /^0x[0-9a-fA-F]{64}$/.test(param.value.trim())) {
+          bytes = Uint8Array.from(Buffer.from(param.value.trim().slice(2), 'hex'));
+        } else {
+          throw new Error(`${label} must be 32 bytes (0x followed by 64 hex characters)`);
+        }
+        if (bytes.length !== 32) throw new Error(`${label} must be exactly 32 bytes`);
+        encoded.addBytes32(bytes);
+        break;
+      }
+      default:
+        throw new Error(`${label}: unsupported type; use string, bool, uint256, int256, address or bytes32`);
+    }
+  });
+  return encoded;
+}
+
+/** Hex digits of the bytecode, without a 0x prefix */
+function normalizeBytecode(bytecode: string): string {
+  const hex = typeof bytecode === 'string' ? bytecode.trim().replace(/^0x/, '') : '';
+  if (!hex) throw new Error('Invalid contract deployment input:\n  - Bytecode is required');
+  if (!/^[0-9a-fA-F]+$/.test(hex)) throw new Error('Invalid contract deployment input:\n  - Bytecode must be valid hexadecimal');
+  if (hex.length % 2 !== 0) throw new Error('Invalid contract deployment input:\n  - Bytecode must have an even number of hex characters');
+  return hex;
+}
+
+/** The receipt must name the entity the operation created */
+function requireReceiptId<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) {
+    throw new Error(`The network receipt has no ${what}; the operation cannot be confirmed`);
+  }
+  return value;
+}
+
+function failure(operation: string, error: any, details: Record<string, unknown>): TokenOperationResult {
+  return {
+    success: false,
+    error: `${operation} failed: ${error?.message ?? String(error)}`,
+    details: { ...details, errorCode: error?.status?.toString(), errorDetails: error?.message }
+  };
 }
 
 export class HederaOperationsService {
@@ -117,7 +277,8 @@ export class HederaOperationsService {
   }
 
   /**
-   * Initialize HederaAgentKit service
+   * Initialize HederaAgentKit service. No operation uses it since Phase 4b
+   * (token creation goes through the SDK); kept pending a decision.
    */
   private async initializeAgentKit(accountId: string, privateKey: string): Promise<void> {
     try {
@@ -132,11 +293,11 @@ export class HederaOperationsService {
       if (this.agentKitService.isAvailable()) {
         logger.internal('info', 'HederaAgentKit service initialized successfully');
       } else {
-        logger.warn('HederaAgentKit not available, using direct SDK operations');
+        logger.internal('info', 'HederaAgentKit not available');
       }
 
     } catch (error) {
-      logger.warn('Failed to initialize HederaAgentKit service', error);
+      logger.internal('warn', 'Failed to initialize HederaAgentKit service', error);
       this.agentKitService = null;
     }
   }
@@ -163,7 +324,6 @@ export class HederaOperationsService {
       throw error;
     }
 
-    // AgentKit is now handled separately in the initialization phase
     logger.internal('info', 'Direct SDK client configured successfully');
 
     logger.info('Initialized with user credentials', {
@@ -172,202 +332,137 @@ export class HederaOperationsService {
     });
   }
 
-  /**
-   * Create a new token using Agent Kit
-   */
-  async createToken(options: TokenCreationOptions): Promise<TokenOperationResult> {
-    const tokenInput = InputSanitizer.validateTokenCreation(options);
-    assertValidInput('token creation', [
-      ...tokenInput.errors.map(error => ({ valid: false, error })),
-      options.treasuryAccount ? InputSanitizer.validateAccountIdFormat(options.treasuryAccount) : { valid: true }
-    ]);
-    options = { ...options, ...tokenInput.sanitized };
-
+  private async requireClient(): Promise<Client> {
     if (!this.initialized) {
       await this.initialize();
     }
-
-    // Try AgentKit first if available
-    if (this.agentKitService && this.agentKitService.isAvailable()) {
-      try {
-        const agentKitResult = await this.agentKitService.createToken({
-          name: options.name,
-          symbol: options.symbol,
-          decimals: options.decimals,
-          initialSupply: options.initialSupply,
-          adminKey: options.adminKey,
-          supplyKey: options.supplyKey,
-          freezeKey: options.freezeKey,
-          wipeKey: options.wipeKey
-        });
-
-        if (agentKitResult.success) {
-          logger.internal('info', 'Token created successfully via HederaAgentKit', {
-            tokenId: agentKitResult.data?.tokenId,
-            name: options.name
-          });
-
-          return {
-            success: true,
-            tokenId: agentKitResult.data?.tokenId,
-            transactionId: agentKitResult.transactionId,
-            explorerUrl: agentKitResult.explorerUrl,
-            details: {
-              name: options.name,
-              symbol: options.symbol,
-              decimals: options.decimals || 8,
-              initialSupply: options.initialSupply || 1000000,
-              network: this.network,
-              method: 'HederaAgentKit'
-            }
-          };
-        } else {
-          logger.warn('HederaAgentKit token creation failed, falling back to direct SDK', agentKitResult.error);
-        }
-      } catch (error: any) {
-        logger.warn('HederaAgentKit token creation error, falling back to direct SDK', error);
-      }
-    }
-
-    // Fallback to direct SDK operations
     if (!this.client) {
       throw new Error(
         'Hedera client not initialized. ' +
-        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set in your .env file, ' +
-        'or obtain testnet credentials from https://portal.hedera.com/faucet'
+        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set.'
+      );
+    }
+    return this.client;
+  }
+
+  /**
+   * Create a fungible token with the Hedera SDK. The operator is the
+   * treasury; key flags set that key to the operator's public key.
+   */
+  async createToken(options: TokenCreationOptions): Promise<TokenOperationResult> {
+    const tokenInput = InputSanitizer.validateTokenCreation(options);
+    const maxSupplyCheck: InputCheck = options.maxSupply === undefined
+      ? { valid: true }
+      : !Number.isSafeInteger(options.maxSupply) || options.maxSupply <= 0
+        ? { valid: false, error: 'Max supply must be a positive whole number (smallest units)' }
+        : (options.initialSupply ?? 1000000) > options.maxSupply
+          ? { valid: false, error: 'Initial supply cannot exceed max supply' }
+          : { valid: true };
+    assertValidInput('token creation', [
+      ...tokenInput.errors.map(error => ({ valid: false, error })),
+      options.treasuryAccount ? InputSanitizer.validateAccountIdFormat(options.treasuryAccount) : { valid: true },
+      maxSupplyCheck
+    ]);
+    options = { ...options, ...tokenInput.sanitized };
+
+    const client = await this.requireClient();
+    const operatorAccount = requireReceiptId(client.operatorAccountId, 'operator account');
+    if (options.treasuryAccount && options.treasuryAccount !== operatorAccount.toString()) {
+      throw new Error(
+        `Invalid token creation input:\n  - The treasury must be the operator account (${operatorAccount}); ` +
+        'APIX can only sign with the operator key'
       );
     }
 
+    const decimals = options.decimals ?? 8;
+    const initialSupply = options.initialSupply ?? 1000000;
+    const finite = options.maxSupply !== undefined;
+
     try {
-      logger.info('Creating token with Agent Kit...', {
-        name: options.name,
-        symbol: options.symbol,
-        decimals: options.decimals || 8,
-        network: this.network
-      });
+      const operatorKey = this.requireOperatorKey();
+      const transaction = new TokenCreateTransaction()
+        .setTokenName(options.name)
+        .setTokenSymbol(options.symbol)
+        .setDecimals(decimals)
+        .setInitialSupply(initialSupply)
+        .setTreasuryAccountId(operatorAccount)
+        .setTokenType(TokenType.FungibleCommon)
+        .setSupplyType(finite ? TokenSupplyType.Finite : TokenSupplyType.Infinite)
+        .setFreezeDefault(options.freezeDefault === true)
+        .setMaxTransactionFee(new Hbar(30));
 
-      // Use Agent Kit to create token
-      const tokenData = {
-        name: options.name,
-        symbol: options.symbol,
-        decimals: options.decimals || 8,
-        initialSupply: options.initialSupply || 1000000,
-        treasuryAccountId: options.treasuryAccount || this.client.operatorAccountId?.toString(),
-        adminKey: options.adminKey !== false, // Default to true
-        supplyKey: options.supplyKey !== false, // Default to true
-        freezeKey: options.freezeKey || false,
-        wipeKey: options.wipeKey || false,
-        freezeDefault: options.freezeDefault || false
+      if (finite) transaction.setMaxSupply(options.maxSupply!);
+      if (options.adminKey) transaction.setAdminKey(operatorKey.publicKey);
+      if (options.supplyKey) transaction.setSupplyKey(operatorKey.publicKey);
+      if (options.freezeKey) transaction.setFreezeKey(operatorKey.publicKey);
+      if (options.wipeKey) transaction.setWipeKey(operatorKey.publicKey);
+
+      logger.info('Submitting token creation transaction...');
+      const response = await transaction.execute(client);
+      const receipt = await response.getReceipt(client);
+      const tokenId = requireReceiptId(receipt.tokenId, 'token ID').toString();
+      const transactionId = response.transactionId.toString();
+
+      return {
+        success: true,
+        tokenId,
+        transactionId,
+        explorerUrl: this.getExplorerUrl(tokenId, 'token'),
+        details: {
+          name: options.name,
+          symbol: options.symbol,
+          decimals,
+          initialSupply,
+          supplyType: finite ? 'FINITE' : 'INFINITE',
+          maxSupply: options.maxSupply,
+          keys: {
+            admin: options.adminKey === true,
+            supply: options.supplyKey === true,
+            freeze: options.freezeKey === true,
+            wipe: options.wipeKey === true
+          },
+          treasury: operatorAccount.toString(),
+          network: this.network,
+          method: 'Hedera SDK',
+          transactionUrl: this.getExplorerUrl(transactionId, 'transaction')
+        }
       };
-
-      // This would be the actual Agent Kit call
-      // For now, we'll use direct SDK call as Agent Kit structure is being finalized
-      const result = await this.createTokenWithSDK(tokenData);
-
-      logger.info('Token creation completed', {
-        success: result.success,
-        tokenId: result.tokenId,
-        transactionId: result.transactionId
-      });
-
-      return result;
-
     } catch (error: any) {
       logger.error('Token creation failed:', error);
-      return {
-        success: false,
-        error: `Token creation failed: ${error.message}`,
-        details: error
-      };
+      return failure('Token creation', error, { name: options.name, symbol: options.symbol });
     }
   }
 
   /**
-   * Create token using direct Hedera SDK
-   * (This bridges to Agent Kit as the integration matures)
+   * Mint more of a token (needs the token's supply key to be the operator key)
    */
-  private async createTokenWithSDK(tokenData: any): Promise<TokenOperationResult> {
-    if (!this.client) {
-      throw new Error('Client not initialized');
-    }
+  async mintToken(options: TokenMintOptions): Promise<TokenOperationResult> {
+    assertValidInput('token mint', [
+      InputSanitizer.validateTokenIdFormat(options.tokenId),
+      InputSanitizer.validateTransferAmount(options.amount)
+    ]);
+    const client = await this.requireClient();
 
     try {
-      // Get operator key for signing
-      const operatorAccount = this.client.operatorAccountId;
-      if (!operatorAccount) {
-        throw new Error('No operator account configured');
-      }
-
-      const operatorKey = this.requireOperatorKey();
-
-      // Create token transaction
-      const tokenCreateTx = new TokenCreateTransaction()
-        .setTokenName(tokenData.name)
-        .setTokenSymbol(tokenData.symbol)
-        .setDecimals(tokenData.decimals)
-        .setInitialSupply(tokenData.initialSupply)
-        .setTreasuryAccountId(this.client.operatorAccountId!)
-        .setTokenType(TokenType.FungibleCommon)
-        .setSupplyType(TokenSupplyType.Infinite);
-
-      // Add keys if specified
-      if (tokenData.adminKey) {
-        tokenCreateTx.setAdminKey(operatorKey.publicKey);
-      }
-      if (tokenData.supplyKey) {
-        tokenCreateTx.setSupplyKey(operatorKey.publicKey);
-      }
-      if (tokenData.freezeKey) {
-        tokenCreateTx.setFreezeKey(operatorKey.publicKey);
-      }
-      if (tokenData.wipeKey) {
-        tokenCreateTx.setWipeKey(operatorKey.publicKey);
-      }
-
-      // Set freeze default
-      if (tokenData.freezeDefault) {
-        tokenCreateTx.setFreezeDefault(true);
-      }
-
-      // Set transaction fee (typical for token creation)
-      tokenCreateTx.setMaxTransactionFee(new Hbar(30));
-
-      logger.info('Submitting token creation transaction...');
-
-      // Execute transaction
-      const txResponse: TransactionResponse = await tokenCreateTx.execute(this.client);
-      const receipt: TransactionReceipt = await txResponse.getReceipt(this.client);
-
-      const tokenId = receipt.tokenId;
-      if (!tokenId) {
-        throw new Error('Token ID not received in transaction receipt');
-      }
-
-      const explorerUrl = this.getExplorerUrl(tokenId.toString(), 'token');
-
-      logger.info('Token created successfully!', {
-        tokenId: tokenId.toString(),
-        transactionId: txResponse.transactionId.toString(),
-        explorerUrl
-      });
+      const response = await new TokenMintTransaction()
+        .setTokenId(TokenId.fromString(options.tokenId))
+        .setAmount(options.amount)
+        .setMaxTransactionFee(new Hbar(5))
+        .execute(client);
+      const receipt = await response.getReceipt(client);
+      const transactionId = response.transactionId.toString();
+      const totalSupply = requireReceiptId(receipt.totalSupply, 'new total supply').toString();
 
       return {
         success: true,
-        tokenId: tokenId.toString(),
-        transactionId: txResponse.transactionId.toString(),
-        explorerUrl,
-        details: {
-          name: tokenData.name,
-          symbol: tokenData.symbol,
-          decimals: tokenData.decimals,
-          initialSupply: tokenData.initialSupply,
-          network: this.network
-        }
+        tokenId: options.tokenId,
+        transactionId,
+        explorerUrl: this.getExplorerUrl(transactionId, 'transaction'),
+        details: { amount: options.amount, totalSupply, network: this.network, receiptStatus: receipt.status.toString() }
       };
-
     } catch (error: any) {
-      logger.error('SDK token creation failed:', error);
-      throw error;
+      logger.error('Token mint failed:', error);
+      return failure('Token mint', error, { ...options });
     }
   }
 
@@ -381,374 +476,209 @@ export class HederaOperationsService {
       InputSanitizer.validateAccountIdFormat(options.toAccount),
       InputSanitizer.validateTransferAmount(options.amount)
     ]);
-
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    if (!this.client) {
-      throw new Error(
-        'Hedera client not initialized. ' +
-        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set.'
-      );
-    }
+    const client = await this.requireClient();
 
     try {
-      logger.info('Executing token transfer on Hedera network...', {
-        tokenId: options.tokenId,
-        fromAccount: options.fromAccount,
-        toAccount: options.toAccount,
-        amount: options.amount,
-        network: this.network
-      });
-
-      // Create the transfer transaction
-      const transferTx = new TransferTransaction()
-        .addTokenTransfer(
-          TokenId.fromString(options.tokenId),
-          AccountId.fromString(options.fromAccount),
-          -options.amount // Negative amount for sender
-        )
-        .addTokenTransfer(
-          TokenId.fromString(options.tokenId),
-          AccountId.fromString(options.toAccount),
-          options.amount // Positive amount for receiver
-        )
-        .setMaxTransactionFee(new Hbar(2)); // Set reasonable fee
-
-      logger.info('Submitting token transfer transaction...');
-
-      // Execute the transaction
-      const txResponse: TransactionResponse = await transferTx.execute(this.client);
-      const receipt: TransactionReceipt = await txResponse.getReceipt(this.client);
-
-      const transactionId = txResponse.transactionId.toString();
-      const explorerUrl = this.getExplorerUrl(transactionId, 'transaction');
-
-      logger.info('Token transfer completed successfully!', {
-        transactionId,
-        tokenId: options.tokenId,
-        fromAccount: options.fromAccount,
-        toAccount: options.toAccount,
-        amount: options.amount,
-        explorerUrl
-      });
+      const response = await new TransferTransaction()
+        .addTokenTransfer(TokenId.fromString(options.tokenId), AccountId.fromString(options.fromAccount), -options.amount)
+        .addTokenTransfer(TokenId.fromString(options.tokenId), AccountId.fromString(options.toAccount), options.amount)
+        .setMaxTransactionFee(new Hbar(2))
+        .execute(client);
+      const receipt = await response.getReceipt(client);
+      if (receipt.status !== Status.Success) {
+        throw new Error(`Transfer receipt status ${receipt.status.toString()}`);
+      }
+      const transactionId = response.transactionId.toString();
 
       return {
         success: true,
         transactionId,
-        explorerUrl,
-        details: {
-          tokenId: options.tokenId,
-          fromAccount: options.fromAccount,
-          toAccount: options.toAccount,
-          amount: options.amount,
-          network: this.network,
-          receiptStatus: receipt.status.toString()
-        }
+        explorerUrl: this.getExplorerUrl(transactionId, 'transaction'),
+        details: { ...options, network: this.network, receiptStatus: receipt.status.toString() }
       };
-
     } catch (error: any) {
       logger.error('Token transfer failed:', error);
-      return {
-        success: false,
-        error: `Token transfer failed: ${error.message}`,
-        details: {
-          ...options,
-          errorCode: error.status?.toString(),
-          errorDetails: error.message
-        }
-      };
+      return failure('Token transfer', error, { ...options });
     }
   }
 
   /**
-   * Deploy a smart contract to Hedera network
+   * Deploy compiled contract bytecode (ContractCreateFlow uploads it to a
+   * file first, in chunks if needed)
    */
   async deploySmartContract(options: SmartContractOptions): Promise<TokenOperationResult> {
     assertValidInput('contract deployment', [
       InputSanitizer.validateGasLimit(options.gas),
       InputSanitizer.validateOptionalAmount(options.initialBalance, 'Initial balance')
     ]);
-
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    if (!this.client) {
-      throw new Error(
-        'Hedera client not initialized. ' +
-        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set.'
-      );
-    }
+    const bytecode = normalizeBytecode(options.bytecode);
+    const constructorParameters = options.constructorParameters?.length
+      ? buildContractParameters(options.constructorParameters)
+      : undefined;
+    const client = await this.requireClient();
 
     try {
-      logger.info('Deploying smart contract to Hedera network...', {
-        gas: options.gas,
-        initialBalance: options.initialBalance || 0,
-        network: this.network
-      });
-
-      // First, create a file to store the bytecode
-      const fileCreateTx = new FileCreateTransaction()
-        .setContents(options.bytecode)
-        .setMaxTransactionFee(new Hbar(2));
-
-      // Add keys if specified
-      if (options.adminKey) {
-        const operatorKey = this.requireOperatorKey();
-        fileCreateTx.setKeys([operatorKey.publicKey]);
-      }
-
-      logger.info('Creating bytecode file...');
-      const fileResponse = await fileCreateTx.execute(this.client);
-      const fileReceipt = await fileResponse.getReceipt(this.client);
-
-      if (!fileReceipt.fileId) {
-        throw new Error('Failed to create bytecode file');
-      }
-
-      logger.info('Bytecode file created:', { fileId: fileReceipt.fileId.toString() });
-
-      // Now create the contract
-      const contractCreateTx = new ContractCreateTransaction()
-        .setBytecodeFileId(fileReceipt.fileId)
+      const flow = new ContractCreateFlow()
+        .setBytecode(bytecode)
         .setGas(options.gas)
-        .setInitialBalance(Hbar.fromTinybars(options.initialBalance || 0))
-        .setMaxTransactionFee(new Hbar(20));
-
-      // Add constructor parameters if provided
-      if (options.constructorParameters && options.constructorParameters.length > 0) {
-        // Note: For real implementation, you'd need to properly encode parameters
-        logger.info('Constructor parameters provided:', options.constructorParameters);
-      }
+        .setInitialBalance(Hbar.fromTinybars(options.initialBalance || 0));
+      if (constructorParameters) flow.setConstructorParameters(constructorParameters);
+      if (options.adminKey) flow.setAdminKey(this.requireOperatorKey().publicKey);
 
       logger.info('Deploying smart contract...');
-      const contractResponse = await contractCreateTx.execute(this.client);
-      const contractReceipt = await contractResponse.getReceipt(this.client);
-
-      if (!contractReceipt.contractId) {
-        throw new Error('Failed to get contract ID from deployment');
-      }
-
-      const contractId = contractReceipt.contractId.toString();
-      const transactionId = contractResponse.transactionId.toString();
-      const explorerUrl = this.getExplorerUrl(contractId, 'account');
-
-      logger.info('Smart contract deployed successfully!', {
-        contractId,
-        transactionId,
-        fileId: fileReceipt.fileId.toString(),
-        explorerUrl
-      });
+      const response = await flow.execute(client);
+      const receipt = await response.getReceipt(client);
+      const contractId = requireReceiptId(receipt.contractId, 'contract ID').toString();
+      const transactionId = response.transactionId.toString();
 
       return {
         success: true,
         tokenId: contractId, // Using tokenId field for contract ID
         transactionId,
-        explorerUrl,
+        explorerUrl: this.getExplorerUrl(contractId, 'contract'),
         details: {
           contractId,
-          fileId: fileReceipt.fileId.toString(),
+          evmAddress: `0x${ContractId.fromString(contractId).toSolidityAddress()}`,
           gas: options.gas,
           initialBalance: options.initialBalance || 0,
-          network: this.network
+          network: this.network,
+          transactionUrl: this.getExplorerUrl(transactionId, 'transaction')
         }
       };
-
     } catch (error: any) {
       logger.error('Smart contract deployment failed:', error);
-      return {
-        success: false,
-        error: `Smart contract deployment failed: ${error.message}`,
-        details: {
-          ...options,
-          errorCode: error.status?.toString(),
-          errorDetails: error.message
-        }
-      };
+      return failure('Smart contract deployment', error, { gas: options.gas });
     }
   }
 
   /**
-   * Call a smart contract function
+   * Execute a state-changing contract function, with its arguments ABI-encoded
    */
   async callSmartContract(options: ContractCallOptions): Promise<TokenOperationResult> {
     assertValidInput('contract call', [
       InputSanitizer.validateEntityIdFormat(options.contractId, 'contract ID'),
+      validateSolidityName(options.functionName),
       InputSanitizer.validateGasLimit(options.gas),
       InputSanitizer.validateOptionalAmount(options.payableAmount, 'Payable amount')
     ]);
-
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    if (!this.client) {
-      throw new Error(
-        'Hedera client not initialized. ' +
-        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set.'
-      );
-    }
+    const parameters = buildContractParameters(options.parameters);
+    const client = await this.requireClient();
 
     try {
-      logger.info('Calling smart contract function...', {
-        contractId: options.contractId,
-        functionName: options.functionName,
-        gas: options.gas,
-        network: this.network
-      });
-
-      // Create contract call transaction
-      const contractCallTx = new ContractExecuteTransaction()
-        .setContractId(options.contractId)
+      const transaction = new ContractExecuteTransaction()
+        .setContractId(ContractId.fromString(options.contractId))
         .setGas(options.gas)
+        .setFunction(options.functionName, parameters)
         .setMaxTransactionFee(new Hbar(2));
-
-      // Add payable amount if specified
       if (options.payableAmount && options.payableAmount > 0) {
-        contractCallTx.setPayableAmount(Hbar.fromTinybars(options.payableAmount));
+        transaction.setPayableAmount(Hbar.fromTinybars(options.payableAmount));
       }
 
-      // Note: For real implementation, you'd need to properly encode function call data
-      // This would typically use ContractFunctionParameters for parameter encoding
-      if (options.parameters && options.parameters.length > 0) {
-        logger.info('Function parameters provided:', options.parameters);
+      const response = await transaction.execute(client);
+      const receipt = await response.getReceipt(client);
+      if (receipt.status !== Status.Success) {
+        throw new Error(`Contract call receipt status ${receipt.status.toString()}`);
       }
-
-      logger.info('Executing contract call...');
-      const callResponse = await contractCallTx.execute(this.client);
-      const callReceipt = await callResponse.getReceipt(this.client);
-
-      const transactionId = callResponse.transactionId.toString();
-      const explorerUrl = this.getExplorerUrl(transactionId, 'transaction');
-
-      logger.info('Smart contract call completed!', {
-        contractId: options.contractId,
-        functionName: options.functionName,
-        transactionId,
-        explorerUrl
-      });
+      const transactionId = response.transactionId.toString();
 
       return {
         success: true,
         transactionId,
-        explorerUrl,
+        explorerUrl: this.getExplorerUrl(transactionId, 'transaction'),
         details: {
           contractId: options.contractId,
           functionName: options.functionName,
           gas: options.gas,
           payableAmount: options.payableAmount || 0,
           network: this.network,
-          receiptStatus: callReceipt.status.toString()
+          receiptStatus: receipt.status.toString()
         }
       };
-
     } catch (error: any) {
       logger.error('Smart contract call failed:', error);
-      return {
-        success: false,
-        error: `Smart contract call failed: ${error.message}`,
-        details: {
-          ...options,
-          errorCode: error.status?.toString(),
-          errorDetails: error.message
-        }
-      };
+      return failure('Smart contract call', error, { contractId: options.contractId, functionName: options.functionName });
     }
+  }
+
+  /**
+   * Read a view function (ContractCallQuery) and decode its single return
+   * value. Throws on failure: there is no partial result.
+   */
+  async queryContract(options: ContractQueryOptions): Promise<ContractQueryResult> {
+    const gas = options.gas ?? 100000;
+    assertValidInput('contract query', [
+      InputSanitizer.validateEntityIdFormat(options.contractId, 'contract ID'),
+      validateSolidityName(options.functionName),
+      InputSanitizer.validateGasLimit(gas),
+      ['string', 'bool', 'uint256', 'address'].includes(options.returns)
+        ? { valid: true }
+        : { valid: false, error: `Unsupported return type "${options.returns}"; use string, bool, uint256 or address` }
+    ]);
+    const parameters = buildContractParameters(options.parameters);
+    const client = await this.requireClient();
+
+    const result = await new ContractCallQuery()
+      .setContractId(ContractId.fromString(options.contractId))
+      .setGas(gas)
+      .setFunction(options.functionName, parameters)
+      .execute(client);
+
+    let value: string | boolean;
+    switch (options.returns) {
+      case 'string': value = result.getString(0); break;
+      case 'bool': value = result.getBool(0); break;
+      case 'uint256': value = result.getUint256(0).toString(10); break;
+      case 'address': value = `0x${result.getAddress(0)}`; break;
+    }
+
+    return {
+      success: true,
+      value,
+      details: {
+        contractId: options.contractId,
+        functionName: options.functionName,
+        gasUsed: result.gasUsed?.toString() ?? '',
+        network: this.network
+      }
+    };
   }
 
   /**
    * Create a Hedera Consensus Service (HCS) topic
    */
   async createTopic(options: TopicOptions = {}): Promise<TokenOperationResult> {
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    if (!this.client) {
-      throw new Error(
-        'Hedera client not initialized. ' +
-        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set.'
-      );
-    }
+    const client = await this.requireClient();
 
     try {
-      logger.info('Creating HCS topic...', {
-        memo: options.memo,
-        network: this.network
-      });
-
-      // Create topic transaction
-      const topicCreateTx = new TopicCreateTransaction()
-        .setMaxTransactionFee(new Hbar(2));
-
-      // Add memo if provided
-      if (options.memo) {
-        topicCreateTx.setTopicMemo(options.memo);
-      }
-
-      // Add keys if specified
-      if (options.adminKey || options.submitKey) {
-        const operatorKey = this.requireOperatorKey();
-
-        if (options.adminKey) {
-          topicCreateTx.setAdminKey(operatorKey.publicKey);
-        }
-        if (options.submitKey) {
-          topicCreateTx.setSubmitKey(operatorKey.publicKey);
-        }
-      }
-
-      // Set auto renew period if specified
-      if (options.autoRenewPeriod) {
-        topicCreateTx.setAutoRenewPeriod(options.autoRenewPeriod);
-      }
+      const transaction = new TopicCreateTransaction().setMaxTransactionFee(new Hbar(2));
+      if (options.memo) transaction.setTopicMemo(options.memo);
+      if (options.adminKey) transaction.setAdminKey(this.requireOperatorKey().publicKey);
+      if (options.submitKey) transaction.setSubmitKey(this.requireOperatorKey().publicKey);
+      if (options.autoRenewPeriod) transaction.setAutoRenewPeriod(options.autoRenewPeriod);
 
       logger.info('Submitting topic creation transaction...');
-      const topicResponse = await topicCreateTx.execute(this.client);
-      const topicReceipt = await topicResponse.getReceipt(this.client);
-
-      if (!topicReceipt.topicId) {
-        throw new Error('Failed to get topic ID from creation');
-      }
-
-      const topicId = topicReceipt.topicId.toString();
-      const transactionId = topicResponse.transactionId.toString();
-      const explorerUrl = this.getExplorerUrl(topicId, 'account');
-
-      logger.info('HCS topic created successfully!', {
-        topicId,
-        transactionId,
-        memo: options.memo,
-        explorerUrl
-      });
+      const response = await transaction.execute(client);
+      const receipt = await response.getReceipt(client);
+      const topicId = requireReceiptId(receipt.topicId, 'topic ID').toString();
+      const transactionId = response.transactionId.toString();
 
       return {
         success: true,
         tokenId: topicId, // Using tokenId field for topic ID
         transactionId,
-        explorerUrl,
+        explorerUrl: this.getExplorerUrl(topicId, 'topic'),
         details: {
           topicId,
           memo: options.memo || '',
           adminKey: !!options.adminKey,
           submitKey: !!options.submitKey,
-          network: this.network
+          network: this.network,
+          transactionUrl: this.getExplorerUrl(transactionId, 'transaction')
         }
       };
-
     } catch (error: any) {
       logger.error('HCS topic creation failed:', error);
-      return {
-        success: false,
-        error: `HCS topic creation failed: ${error.message}`,
-        details: {
-          ...options,
-          errorCode: error.status?.toString(),
-          errorDetails: error.message
-        }
-      };
+      return failure('HCS topic creation', error, { memo: options.memo });
     }
   }
 
@@ -760,69 +690,33 @@ export class HederaOperationsService {
       InputSanitizer.validateEntityIdFormat(options.topicId, 'topic ID'),
       InputSanitizer.validateTopicMessage(options.message)
     ]);
-
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    if (!this.client) {
-      throw new Error(
-        'Hedera client not initialized. ' +
-        'Please ensure HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY are set.'
-      );
-    }
+    const client = await this.requireClient();
 
     try {
-      logger.info('Submitting message to HCS topic...', {
-        topicId: options.topicId,
-        messageLength: options.message.length,
-        network: this.network
-      });
-
-      // Create topic message transaction
-      const topicMessageTx = new TopicMessageSubmitTransaction()
+      const response = await new TopicMessageSubmitTransaction()
         .setTopicId(TopicId.fromString(options.topicId))
         .setMessage(options.message)
-        .setMaxTransactionFee(new Hbar(2));
-
-      logger.info('Submitting topic message transaction...');
-      const messageResponse = await topicMessageTx.execute(this.client);
-      const messageReceipt = await messageResponse.getReceipt(this.client);
-
-      const transactionId = messageResponse.transactionId.toString();
-      const explorerUrl = this.getExplorerUrl(transactionId, 'transaction');
-
-      logger.info('HCS message submitted successfully!', {
-        topicId: options.topicId,
-        transactionId,
-        messageLength: options.message.length,
-        explorerUrl
-      });
+        .setMaxTransactionFee(new Hbar(2))
+        .execute(client);
+      const receipt = await response.getReceipt(client);
+      const sequenceNumber = requireReceiptId(receipt.topicSequenceNumber, 'topic sequence number').toString();
+      const transactionId = response.transactionId.toString();
 
       return {
         success: true,
         transactionId,
-        explorerUrl,
+        explorerUrl: this.getExplorerUrl(transactionId, 'transaction'),
         details: {
           topicId: options.topicId,
-          message: options.message,
+          sequenceNumber,
           messageLength: options.message.length,
           network: this.network,
-          receiptStatus: messageReceipt.status.toString()
+          receiptStatus: receipt.status.toString()
         }
       };
-
     } catch (error: any) {
       logger.error('HCS message submission failed:', error);
-      return {
-        success: false,
-        error: `HCS message submission failed: ${error.message}`,
-        details: {
-          ...options,
-          errorCode: error.status?.toString(),
-          errorDetails: error.message
-        }
-      };
+      return failure('HCS message submission', error, { topicId: options.topicId });
     }
   }
 
@@ -834,14 +728,14 @@ export class HederaOperationsService {
   }
 
   /**
-   * Get Hedera Explorer URL for transaction or entity
+   * HashScan page for an entity or transaction. Transaction IDs use the
+   * 0.0.x-seconds-nanos form HashScan accepts in URLs.
    */
-  private getExplorerUrl(id: string, type: 'transaction' | 'token' | 'account'): string {
-    const baseUrl = this.network === 'mainnet'
-      ? 'https://hashscan.io/mainnet'
-      : 'https://hashscan.io/testnet';
-
-    return `${baseUrl}/${type}/${id}`;
+  getExplorerUrl(id: string, page: ExplorerPage): string {
+    const path = page === 'transaction' && id.includes('@')
+      ? id.replace('@', '-').replace(/\.(\d+)$/, '-$1')
+      : id;
+    return `https://hashscan.io/${this.network}/${page}/${path}`;
   }
 
   /**
@@ -852,7 +746,7 @@ export class HederaOperationsService {
   }
 
   /**
-   * Check if service is using AgentKit
+   * Check if hedera-agent-kit initialised (no operation uses it)
    */
   isUsingAgentKit(): boolean {
     return this.agentKitService?.isAvailable() || false;
@@ -908,6 +802,10 @@ export async function createToken(options: TokenCreationOptions): Promise<TokenO
   return await hederaOperations.createToken(options);
 }
 
+export async function mintToken(options: TokenMintOptions): Promise<TokenOperationResult> {
+  return await hederaOperations.mintToken(options);
+}
+
 export async function transferToken(options: TokenTransferOptions): Promise<TokenOperationResult> {
   return await hederaOperations.transferToken(options);
 }
@@ -918,6 +816,10 @@ export async function deploySmartContract(options: SmartContractOptions): Promis
 
 export async function callSmartContract(options: ContractCallOptions): Promise<TokenOperationResult> {
   return await hederaOperations.callSmartContract(options);
+}
+
+export async function queryContract(options: ContractQueryOptions): Promise<ContractQueryResult> {
+  return await hederaOperations.queryContract(options);
 }
 
 export async function createTopic(options: TopicOptions = {}): Promise<TokenOperationResult> {

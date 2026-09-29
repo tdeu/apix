@@ -471,11 +471,15 @@ export class APIxCLI {
     const tokenSpinner = ora(`Creating token on Hedera ${network}...`).start();
     let tokenResult;
     try {
+      // 1,000,000 whole tokens at 8 decimals; the operator holds the admin and
+      // supply keys so the generated mint route can sign
       tokenResult = await hederaOperations.createToken({
         name: options.name!,
         symbol: options.symbol!,
         decimals: 8,
-        initialSupply: 1000000
+        initialSupply: 1_000_000 * 10 ** 8,
+        adminKey: true,
+        supplyKey: true
       });
     } catch (error: any) {
       tokenResult = { success: false, error: error.message } as const;
@@ -1006,7 +1010,7 @@ export class APIxCLI {
       console.log(chalk.blue('\n📋 Validation Results:'));
       console.log(chalk.green(`   ✅ Network: ${hederaOperations.getNetwork().toUpperCase()}`));
       console.log(chalk.green(`   ✅ Account: ${hederaOperations.getCurrentAccountId()}`));
-      console.log(chalk.green(`   ✅ Mode: ${hederaOperations.isUsingAgentKit() ? 'AgentKit' : 'Direct SDK'}`));
+      console.log(chalk.green(`   ✅ Mode: Hedera SDK`));
       console.log(chalk.gray('   No network call was made; credentials are checked on your first transaction.'));
 
       if (options.enterprise || options.performance || options.security || options.compliance) {
@@ -1611,8 +1615,13 @@ export class APIxCLI {
     console.log(chalk.cyan('Token Details:'));
     console.log(chalk.white(`   Name: ${chalk.bold(options.name)}`));
     console.log(chalk.white(`   Symbol: ${chalk.bold(options.symbol)}`));
-    console.log(chalk.white(`   Decimals: ${chalk.bold(options.decimals || 8)}`));
-    console.log(chalk.white(`   Initial Supply: ${chalk.bold((options.initialSupply || 1000000).toLocaleString())}`));
+    const decimals = options.decimals ?? 8;
+    const units = options.initialSupply ?? 1000000;
+    console.log(chalk.white(`   Decimals: ${chalk.bold(decimals)}`));
+    console.log(chalk.white(`   Initial Supply: ${chalk.bold(units.toLocaleString('en-US'))} smallest units (${formatTokenAmount(units, decimals)} tokens)`));
+    console.log(chalk.white(`   Supply Type: ${chalk.bold(options.maxSupply !== undefined ? `FINITE (max ${options.maxSupply.toLocaleString('en-US')} units)` : 'INFINITE')}`));
+    const keys = (['admin', 'supply', 'freeze', 'wipe'] as const).filter(key => options[`${key}Key` as const]);
+    console.log(chalk.white(`   Keys (operator key): ${chalk.bold(keys.length > 0 ? keys.join(', ') : 'none')}`));
     console.log(chalk.white(`   Network: ${chalk.bold(hederaOperations.getNetwork().toUpperCase())}\n`));
 
     const spinner = ora('Initializing Hedera client...').start();
@@ -1629,14 +1638,17 @@ export class APIxCLI {
         throw new Error(result.error || 'Token creation failed');
       }
 
+      if (!result.tokenId || !result.transactionId) {
+        throw new Error('Token creation reported success without a token ID and transaction ID');
+      }
+
       spinner.succeed(chalk.green('✅ Token created successfully!'));
       console.log(chalk.blue('\nToken Information:'));
       console.log(chalk.white(`   Token ID: ${chalk.bold(result.tokenId)}`));
       console.log(chalk.white(`   Transaction ID: ${chalk.bold(result.transactionId)}`));
       console.log(chalk.white(`   Treasury Account: ${chalk.bold(accountId)}`));
-      if (result.explorerUrl) {
-        console.log(chalk.white(`   Explorer: ${chalk.blue.underline(result.explorerUrl)}`));
-      }
+      console.log(chalk.white(`   Token on HashScan: ${chalk.blue.underline(hederaOperations.getExplorerUrl(result.tokenId, 'token'))}`));
+      console.log(chalk.white(`   Transaction on HashScan: ${chalk.blue.underline(hederaOperations.getExplorerUrl(result.transactionId, 'transaction'))}`));
 
       console.log(chalk.cyan('\n💡 Next Steps:'));
       console.log(chalk.white('   • Use this token ID in your application'));
@@ -1955,4 +1967,12 @@ export class APIxCLI {
       rollbackPlan
     };
   }
+}
+
+/** 100000 units at 2 decimals -> "1,000.00" */
+export function formatTokenAmount(units: number, decimals: number): string {
+  const value = BigInt(units);
+  const scale = BigInt(10) ** BigInt(decimals);
+  const whole = (value / scale).toLocaleString('en-US');
+  return decimals > 0 ? `${whole}.${(value % scale).toString().padStart(decimals, '0')}` : whole;
 }

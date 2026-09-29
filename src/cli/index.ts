@@ -509,17 +509,16 @@ program
 
 program
   .command('create-token')
-  .description('Create a token directly on Hedera blockchain (live blockchain operation)')
+  .description('Create a fungible token on Hedera (network from HEDERA_NETWORK; live operation)')
   .option('-n, --name <name>', 'Token name', 'Test Token')
   .option('-s, --symbol <symbol>', 'Token symbol', 'TEST')
   .option('-d, --decimals <decimals>', 'Token decimals', '8')
-  .option('--supply <supply>', 'Initial supply', '1000000')
-  .option('--admin-key', 'Enable admin key', false)
-  .option('--supply-key', 'Enable supply key', false)
-  .option('--freeze-key', 'Enable freeze key', false)
-  .option('--wipe-key', 'Enable wipe key', false)
-  .option('--testnet', 'Use testnet (default)')
-  .option('--mainnet', 'Use mainnet (production)')
+  .option('--supply <supply>', 'Initial supply in the smallest unit (100000 with --decimals 2 = 1,000.00 tokens)', '1000000')
+  .option('--max-supply <maxSupply>', 'Cap the supply (smallest units); without it the supply is infinite')
+  .option('--admin-key', 'Set the admin key to your operator key', false)
+  .option('--supply-key', 'Set the supply key to your operator key (needed to mint)', false)
+  .option('--freeze-key', 'Set the freeze key to your operator key', false)
+  .option('--wipe-key', 'Set the wipe key to your operator key', false)
   .action(async (options) => {
     const globalOptions = program.opts();
     const allOptions = { ...options, ...globalOptions };
@@ -534,8 +533,9 @@ program
       const tokenOptions = {
         name: options.name,
         symbol: options.symbol,
-        decimals: parseInt(options.decimals),
-        initialSupply: parseInt(options.supply),
+        decimals: Number(options.decimals),
+        initialSupply: Number(options.supply),
+        ...(options.maxSupply !== undefined ? { maxSupply: Number(options.maxSupply) } : {}),
         adminKey: options.adminKey,
         supplyKey: options.supplyKey,
         freezeKey: options.freezeKey,
