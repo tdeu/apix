@@ -20,7 +20,7 @@ const MIRROR = 'https://testnet.mirrornode.hedera.com/api/v1';
 const HASHSCAN = 'https://hashscan.io/testnet';
 const SMOKE = process.argv.includes('--smoke');
 
-type Status = 'ok' | 'failed' | 'unavailable';
+type Status = 'ok' | 'failed';
 
 interface ProofStep {
   operation: string;
@@ -37,7 +37,7 @@ const steps: ProofStep[] = [];
 
 function record(step: ProofStep): ProofStep {
   steps.push(step);
-  const mark = step.status === 'ok' ? '✅' : step.status === 'unavailable' ? '⚪' : '❌';
+  const mark = step.status === 'ok' ? '✅' : '❌';
   console.log(`${mark} ${step.operation}: ${step.entityId ?? ''} ${step.transactionId ?? ''} mirror=${step.mirrorVerified ? 'yes' : 'no'}`);
   for (const note of step.notes) console.log(`   ${note}`);
   if (step.error) console.log(`   error: ${step.error}`);
@@ -80,24 +80,36 @@ async function mirrorTransaction(transactionId: string): Promise<{ result: strin
   return tx ? { result: tx.result, consensus: tx.consensus_timestamp } : null;
 }
 
-function txLink(consensus?: string, transactionId?: string): string | undefined {
-  if (consensus) return `${HASHSCAN}/transaction/${consensus}`;
-  return transactionId ? `${HASHSCAN}/transaction/${mirrorTxId(transactionId)}` : undefined;
-}
-
-async function verifyTransaction(step: ProofStep): Promise<void> {
+/** Checks the step's transaction on the mirror node; returns its consensus timestamp */
+async function verifyTransaction(step: ProofStep, linkToTransaction: boolean): Promise<string | undefined> {
   if (!step.transactionId) {
-    step.notes.push('no transaction ID returned, so the transaction could not be checked on the mirror node');
-    return;
+    step.notes.push('no transaction ID returned');
+    step.mirrorVerified = false;
+    return undefined;
   }
   const tx = await mirrorTransaction(step.transactionId);
   if (!tx) {
     step.notes.push('transaction not found on the mirror node within 60s');
-    return;
+    step.mirrorVerified = false;
+    return undefined;
   }
   step.notes.push(`mirror: transaction result ${tx.result}, consensus ${tx.consensus}`);
   step.mirrorVerified = tx.result === 'SUCCESS';
-  if (!step.hashscan) step.hashscan = txLink(tx.consensus, step.transactionId);
+  if (linkToTransaction) step.hashscan = `${HASHSCAN}/transaction/${tx.consensus}`;
+  return tx.consensus;
+}
+
+/** Runs one step: `body` fills it in and throws on failure */
+async function runStep(operation: string, body: (step: ProofStep) => Promise<void>): Promise<ProofStep> {
+  const step: ProofStep = { operation, status: 'failed', mirrorVerified: false, notes: [] };
+  try {
+    await body(step);
+    step.status = 'ok';
+  } catch (error) {
+    step.error = masked(error);
+    step.mirrorVerified = false;
+  }
+  return record(step);
 }
 
 // --- Solidity -------------------------------------------------------------
@@ -146,6 +158,11 @@ function decodeAbiString(hex: string): string {
   return Buffer.from(data.slice(offset + 64, offset + 64 + length * 2), 'hex').toString('utf8');
 }
 
+function require_<T>(value: T | undefined, what: string): T {
+  if (value === undefined || value === null || value === '') throw new Error(`skipped: no ${what} from an earlier step`);
+  return value;
+}
+
 // --- Proof ----------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -160,220 +177,170 @@ async function main(): Promise<void> {
   console.log(`Testnet proof ${SMOKE ? '(smoke) ' : ''}started ${startedAt}, operator ${operator}`);
 
   await hederaOperations.initialize();
-  const agentKit = hederaOperations.isUsingAgentKit();
-  console.log(`hedera-agent-kit available: ${agentKit}`);
 
-  // a) Fungible token
+  // a) Fungible token: 1,000.00 APIXP, operator holds the admin and supply keys
   let tokenId: string | undefined;
-  {
-    const step: ProofStep = { operation: 'Create fungible token (APIX Proof / APIXP)', status: 'failed', mirrorVerified: false, notes: [] };
-    try {
-      const result = await hederaOperations.createToken({ name: 'APIX Proof', symbol: 'APIXP', decimals: 2, initialSupply: 100000 });
-      if (!result.success) throw new Error(result.error ?? 'createToken returned success: false');
-      step.notes.push(`created via ${result.details?.method ?? 'direct SDK'}`);
-      if (!result.tokenId) {
-        // Look the token up for the record only; later steps don't use it
-        const created = await mirror<any>(
-          `/transactions?account.id=${operator}&transactiontype=TOKENCREATION&order=desc&limit=1&timestamp=gte:${Date.parse(startedAt) / 1000}`,
-          b => (b.transactions?.length ?? 0) > 0
-        );
-        const tx = created?.transactions?.[0];
-        step.entityId = tx?.entity_id;
-        step.transactionId = tx?.transaction_id;
-        step.hashscan = tx ? `${HASHSCAN}/token/${tx.entity_id}` : undefined;
-        throw new Error(
-          'createToken reported success but returned no token ID' +
-          (tx ? ` (the mirror node shows token ${tx.entity_id} created by ${tx.transaction_id}, result ${tx.result})` : '')
-        );
-      }
-      tokenId = result.tokenId;
-      step.entityId = tokenId;
-      step.transactionId = result.transactionId;
-      step.hashscan = `${HASHSCAN}/token/${tokenId}`;
-      const token = await mirror<any>(`/tokens/${tokenId}`);
-      if (token) {
-        const treasuryOk = token.treasury_account_id === operator;
-        step.notes.push(`mirror: name "${token.name}", symbol ${token.symbol}, decimals ${token.decimals}, total supply ${token.total_supply}, treasury ${token.treasury_account_id} (${treasuryOk ? 'operator, as expected' : 'NOT the operator'})`);
-        step.mirrorVerified = token.name === 'APIX Proof' && token.symbol === 'APIXP' && treasuryOk;
-      } else {
-        step.notes.push('token not found on the mirror node within 60s');
-      }
-      if (step.transactionId) {
-        const tx = await mirrorTransaction(step.transactionId);
-        step.notes.push(tx ? `mirror: transaction result ${tx.result}` : 'transaction not found on the mirror node');
-        if (tx?.result !== 'SUCCESS') step.mirrorVerified = false;
-      } else {
-        step.notes.push('no transaction ID returned');
-      }
-      step.status = 'ok';
-    } catch (error) {
-      step.error = masked(error);
-    }
-    record(step);
-  }
+  await runStep('Create fungible token APIX Proof / APIXP (admin + supply key)', async step => {
+    const result = await hederaOperations.createToken({
+      name: 'APIX Proof', symbol: 'APIXP', decimals: 2, initialSupply: 100000, adminKey: true, supplyKey: true,
+    });
+    if (!result.success) throw new Error(result.error);
+    tokenId = result.tokenId;
+    step.entityId = tokenId;
+    step.transactionId = result.transactionId;
+    step.hashscan = `${HASHSCAN}/token/${tokenId}`;
+    step.notes.push(`created via ${result.details?.method}; library link ${result.explorerUrl}`);
+    await verifyTransaction(step, false);
+    const token = await mirror<any>(`/tokens/${tokenId}`);
+    if (!token) throw new Error('token not found on the mirror node within 60s');
+    const checks = {
+      treasury: token.treasury_account_id === operator,
+      supplyKey: !!token.supply_key,
+      adminKey: !!token.admin_key,
+      infinite: token.supply_type === 'INFINITE',
+      supply: token.total_supply === '100000',
+    };
+    step.notes.push(
+      `mirror: "${token.name}" ${token.symbol}, decimals ${token.decimals}, supply ${token.total_supply} (${token.supply_type}), ` +
+      `treasury ${token.treasury_account_id}, admin key ${checks.adminKey ? 'set' : 'none'}, supply key ${checks.supplyKey ? 'set' : 'none'}`
+    );
+    step.mirrorVerified = step.mirrorVerified && Object.values(checks).every(Boolean);
+  });
 
-  // b) Mint, then transfer to the demo recipient
   if (!SMOKE) {
-    record({
-      operation: 'Mint APIXP',
-      status: 'unavailable',
-      mirrorVerified: false,
-      notes: ['hedera-operations has no mint method (only create, transfer, contract deploy/call, topic create/submit); not worked around'],
+    // b) Mint, then transfer to the demo recipient
+    await runStep('Mint 50.00 APIXP (5000 units)', async step => {
+      const id = require_(tokenId, 'token ID');
+      const result = await hederaOperations.mintToken({ tokenId: id, amount: 5000 });
+      if (!result.success) throw new Error(result.error);
+      step.entityId = id;
+      step.transactionId = result.transactionId;
+      step.notes.push(`receipt: new total supply ${result.details?.totalSupply}`);
+      await verifyTransaction(step, true);
+      const token = await mirror<any>(`/tokens/${id}`, b => b.total_supply === '105000');
+      step.notes.push(`mirror: total supply ${token ? token.total_supply : 'not 105000 within 60s'}`);
+      if (!token) step.mirrorVerified = false;
     });
 
-    const step: ProofStep = { operation: `Transfer 10.00 APIXP to ${recipient}`, status: 'failed', mirrorVerified: false, notes: [] };
-    try {
-      if (!tokenId) throw new Error('skipped: createToken returned no token ID');
-      if (!recipient) throw new Error('APIX_DEMO_RECIPIENT is not set');
-      const result = await hederaOperations.transferToken({ tokenId, fromAccount: operator, toAccount: recipient, amount: 1000 });
-      if (!result.success) throw new Error(result.error ?? 'transferToken returned success: false');
+    await runStep(`Transfer 10.00 APIXP (1000 units) to ${recipient}`, async step => {
+      const id = require_(tokenId, 'token ID');
+      const to = require_(recipient, 'APIX_DEMO_RECIPIENT');
+      const result = await hederaOperations.transferToken({ tokenId: id, fromAccount: operator, toAccount: to, amount: 1000 });
+      if (!result.success) throw new Error(result.error);
+      step.entityId = id;
       step.transactionId = result.transactionId;
-      step.entityId = tokenId;
-      step.notes.push(`receipt status ${result.details?.receiptStatus}`);
-      await verifyTransaction(step);
-      const balances = await mirror<any>(`/tokens/${tokenId}/balances?account.id=${recipient}`, b => (b.balances?.[0]?.balance ?? 0) > 0);
+      await verifyTransaction(step, true);
+      const balances = await mirror<any>(`/tokens/${id}/balances?account.id=${to}`, b => (b.balances?.[0]?.balance ?? 0) > 0);
       const balance = balances?.balances?.[0]?.balance;
-      step.notes.push(`mirror: recipient balance ${balance ?? 'not found'} (smallest units; expected 1000)`);
+      step.notes.push(`mirror: recipient balance ${balance ?? 'not found'} (expected 1000)`);
       if (balance !== 1000) step.mirrorVerified = false;
-      step.status = 'ok';
-    } catch (error) {
-      step.error = masked(error);
-    }
-    record(step);
+    });
   }
 
   // c) HCS topic and messages
   let topicId: string | undefined;
-  {
-    const step: ProofStep = { operation: 'Create HCS topic', status: 'failed', mirrorVerified: false, notes: [] };
-    try {
-      const result = await hederaOperations.createTopic({ memo: 'APIX testnet proof' });
-      if (!result.success) throw new Error(result.error ?? 'createTopic returned success: false');
-      topicId = result.tokenId;
-      step.entityId = topicId;
-      step.transactionId = result.transactionId;
-      step.hashscan = `${HASHSCAN}/topic/${topicId}`;
-      step.notes.push(`library explorerUrl: ${result.explorerUrl}`);
-      const topic = await mirror<any>(`/topics/${topicId}`);
-      step.notes.push(topic ? `mirror: topic memo "${topic.memo}"` : 'topic not found on the mirror node within 60s');
-      await verifyTransaction(step);
-      step.hashscan = `${HASHSCAN}/topic/${topicId}`;
-      if (!topic) step.mirrorVerified = false;
-      step.status = 'ok';
-    } catch (error) {
-      step.error = masked(error);
-    }
-    record(step);
-  }
+  await runStep('Create HCS topic', async step => {
+    const result = await hederaOperations.createTopic({ memo: 'APIX testnet proof' });
+    if (!result.success) throw new Error(result.error);
+    topicId = result.tokenId;
+    step.entityId = topicId;
+    step.transactionId = result.transactionId;
+    step.hashscan = `${HASHSCAN}/topic/${topicId}`;
+    step.notes.push(`library link ${result.explorerUrl}`);
+    await verifyTransaction(step, false);
+    const topic = await mirror<any>(`/topics/${topicId}`);
+    step.notes.push(topic ? `mirror: topic memo "${topic.memo}"` : 'topic not found on the mirror node within 60s');
+    if (!topic) step.mirrorVerified = false;
+  });
 
   const messages = SMOKE ? ['APIX nightly smoke'] : ['APIX testnet proof: message 1', 'APIX testnet proof: message 2'];
   for (const [index, message] of messages.entries()) {
-    const step: ProofStep = { operation: `Submit topic message ${index + 1}`, status: 'failed', mirrorVerified: false, notes: [] };
-    try {
-      if (!topicId) throw new Error('skipped: no topic was created');
-      const result = await hederaOperations.submitTopicMessage({ topicId, message });
-      if (!result.success) throw new Error(result.error ?? 'submitTopicMessage returned success: false');
-      step.entityId = topicId;
+    await runStep(`Submit topic message ${index + 1}`, async step => {
+      const id = require_(topicId, 'topic ID');
+      const result = await hederaOperations.submitTopicMessage({ topicId: id, message });
+      if (!result.success) throw new Error(result.error);
+      step.entityId = id;
       step.transactionId = result.transactionId;
-      await verifyTransaction(step);
+      step.notes.push(`receipt: sequence ${result.details?.sequenceNumber}`);
+      const consensus = await verifyTransaction(step, true);
       // Found by consensus timestamp, so an earlier failed message doesn't shift the lookup
-      const tx = await mirrorTransaction(step.transactionId!);
-      const found = tx ? await mirror<any>(`/topics/${topicId}/messages?timestamp=${tx.consensus}`, b => (b.messages?.length ?? 0) > 0) : null;
+      const found = consensus ? await mirror<any>(`/topics/${id}/messages?timestamp=${consensus}`, b => (b.messages?.length ?? 0) > 0) : null;
       const stored = found?.messages?.[0];
       const content = stored ? Buffer.from(stored.message, 'base64').toString('utf8') : undefined;
       step.notes.push(`mirror: ${stored ? `sequence ${stored.sequence_number} = ${JSON.stringify(content)}` : 'message not found'}`);
       if (content !== message) step.mirrorVerified = false;
-      step.status = 'ok';
-    } catch (error) {
-      step.error = masked(error);
-    }
-    record(step);
+    });
   }
 
   // d) Real contract: compile, deploy, set, get
   if (!SMOKE) {
-    let contractId: string | undefined;
-    let compiled: ReturnType<typeof compileStringStore> | undefined;
-    const deploy: ProofStep = { operation: 'Deploy StringStore contract (solc)', status: 'failed', mirrorVerified: false, notes: [] };
-    try {
-      compiled = compileStringStore();
-      deploy.notes.push(`compiled with solc ${compiled.compiler}, ${compiled.bytecode.length / 2} bytes`);
-      const result = await hederaOperations.deploySmartContract({ bytecode: compiled.bytecode, gas: 400000 });
-      if (!result.success) throw new Error(result.error ?? 'deploySmartContract returned success: false');
-      contractId = result.tokenId;
-      deploy.entityId = contractId;
-      deploy.transactionId = result.transactionId;
-      deploy.notes.push(`bytecode file ${result.details?.fileId}; library explorerUrl: ${result.explorerUrl}`);
-      const contract = await mirror<any>(`/contracts/${contractId}`);
-      deploy.notes.push(contract ? `mirror: contract ${contract.contract_id}, evm ${contract.evm_address}, file ${contract.file_id}` : 'contract not found on the mirror node within 60s');
-      await verifyTransaction(deploy);
-      deploy.hashscan = `${HASHSCAN}/contract/${contractId}`;
-      if (!contract) deploy.mirrorVerified = false;
-      deploy.status = 'ok';
-    } catch (error) {
-      deploy.error = masked(error);
-    }
-    record(deploy);
-
     const value = 'hello from APIX';
-    const set: ProofStep = { operation: `Call set("${value}")`, status: 'failed', mirrorVerified: false, notes: [] };
-    try {
-      if (!contractId) throw new Error('skipped: no contract was deployed');
-      const result = await hederaOperations.callSmartContract({ contractId, functionName: 'set', parameters: [value], gas: 100000 });
-      set.entityId = contractId;
-      set.transactionId = result.transactionId;
-      if (!result.success) throw new Error(result.error ?? 'callSmartContract returned success: false');
-      set.notes.push(`receipt status ${result.details?.receiptStatus}`);
-      await verifyTransaction(set);
-      set.status = 'ok';
-    } catch (error) {
-      set.error = masked(error);
-      set.notes.push('callSmartContract ignores functionName and parameters: it sends a ContractExecute with no function data');
-      // The failed receipt names the transaction; record what the mirror node saw
-      const failedTx = set.error.match(/transaction (\d+\.\d+\.\d+@\d+\.\d+)/)?.[1];
-      if (failedTx && !set.transactionId) {
-        set.transactionId = failedTx;
-        const tx = await mirrorTransaction(failedTx).catch(() => null);
-        set.hashscan = txLink(tx?.consensus, failedTx);
-        set.notes.push(tx ? `mirror: transaction result ${tx.result}` : 'transaction not found on the mirror node');
-      }
-    }
-    record(set);
+    let contractId: string | undefined;
+    let evmAddress: string | undefined;
+    let compiled: ReturnType<typeof compileStringStore> | undefined;
 
-    const get: ProofStep = { operation: 'Call get() and check the round trip', status: 'unavailable', mirrorVerified: false, notes: [] };
-    get.notes.push('hedera-operations has no read/query method for contracts; not worked around');
-    try {
-      if (contractId && compiled) {
-        const contract = await mirror<any>(`/contracts/${contractId}`);
-        const response = await fetch(`${MIRROR}/contracts/call`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ to: contract.evm_address, data: `0x${compiled.selectors['get()']}`, block: 'latest' }),
-        });
-        const body: any = await response.json();
-        const stored = response.ok ? decodeAbiString(body.result ?? '') : undefined;
-        get.entityId = contractId;
-        get.notes.push(`independent check via mirror node eth_call: get() returns ${stored === undefined ? `HTTP ${response.status}` : JSON.stringify(stored)} (expected ${JSON.stringify(value)})`);
-        get.mirrorVerified = stored === value;
-      }
-    } catch (error) {
-      get.notes.push(`mirror eth_call failed: ${masked(error)}`);
-    }
-    record(get);
+    await runStep('Deploy StringStore contract (solc)', async step => {
+      compiled = compileStringStore();
+      step.notes.push(`compiled with solc ${compiled.compiler}, ${compiled.bytecode.length / 2} bytes`);
+      const result = await hederaOperations.deploySmartContract({ bytecode: compiled.bytecode, gas: 400000 });
+      if (!result.success) throw new Error(result.error);
+      contractId = result.tokenId;
+      evmAddress = result.details?.evmAddress;
+      step.entityId = contractId;
+      step.transactionId = result.transactionId;
+      step.hashscan = `${HASHSCAN}/contract/${contractId}`;
+      step.notes.push(`library link ${result.explorerUrl}`);
+      await verifyTransaction(step, false);
+      const contract = await mirror<any>(`/contracts/${contractId}`);
+      step.notes.push(contract ? `mirror: contract ${contract.contract_id}, evm ${contract.evm_address}` : 'contract not found on the mirror node within 60s');
+      if (!contract) step.mirrorVerified = false;
+    });
+
+    await runStep(`Call set("${value}")`, async step => {
+      const id = require_(contractId, 'contract ID');
+      const result = await hederaOperations.callSmartContract({
+        contractId: id, functionName: 'set', gas: 100000, parameters: [{ type: 'string', value }],
+      });
+      if (!result.success) throw new Error(result.error);
+      step.entityId = id;
+      step.transactionId = result.transactionId;
+      step.notes.push(`receipt status ${result.details?.receiptStatus}`);
+      await verifyTransaction(step, true);
+    });
+
+    await runStep('Call get() and check the round trip', async step => {
+      const id = require_(contractId, 'contract ID');
+      step.entityId = id;
+      step.hashscan = `${HASHSCAN}/contract/${id}`;
+      const read = await hederaOperations.queryContract({ contractId: id, functionName: 'get', returns: 'string' });
+      step.notes.push(`library queryContract: get() = ${JSON.stringify(read.value)}`);
+      if (read.value !== value) throw new Error(`get() returned ${JSON.stringify(read.value)}, expected ${JSON.stringify(value)}`);
+
+      // Independent check through the mirror node's eth_call
+      const response = await fetch(`${MIRROR}/contracts/call`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ to: require_(evmAddress, 'EVM address'), data: `0x${compiled!.selectors['get()']}`, block: 'latest' }),
+      });
+      const body: any = await response.json();
+      const stored = response.ok ? decodeAbiString(body.result ?? '') : undefined;
+      step.notes.push(`mirror eth_call: get() = ${stored === undefined ? `HTTP ${response.status}` : JSON.stringify(stored)}`);
+      step.mirrorVerified = stored === value;
+    });
   }
 
   hederaOperations.close();
 
   const sdkVersion = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'node_modules', '@hashgraph', 'sdk', 'package.json'), 'utf8')).version;
-  const report = { startedAt, finishedAt: new Date().toISOString(), network, operator, recipient, agentKit, sdkVersion, smoke: SMOKE, steps };
+  const report = { startedAt, finishedAt: new Date().toISOString(), network, operator, recipient, sdkVersion, smoke: SMOKE, steps };
   if (!SMOKE) {
     const out = path.join(__dirname, '..', 'docs', 'testnet-proof.json');
     fs.writeFileSync(out, JSON.stringify(report, null, 2) + '\n');
     console.log(`Results written to ${path.relative(process.cwd(), out)}`);
   }
 
-  const failed = steps.filter(step => step.status === 'failed');
-  console.log(`\n${steps.length} steps: ${steps.filter(s => s.status === 'ok').length} ok, ${failed.length} failed, ${steps.filter(s => s.status === 'unavailable').length} unavailable`);
+  const failed = steps.filter(step => step.status === 'failed' || !step.mirrorVerified);
+  console.log(`\n${steps.length} steps: ${steps.filter(s => s.status === 'ok').length} ok, ${steps.filter(s => s.status === 'failed').length} failed, ${steps.filter(s => s.mirrorVerified).length} mirror-verified`);
   process.exit(failed.length > 0 ? 1 : 0);
 }
 
