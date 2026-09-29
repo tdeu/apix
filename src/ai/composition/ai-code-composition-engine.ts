@@ -941,16 +941,15 @@ Improve the code addressing these quality issues while maintaining functionality
           description: 'Run tests and validation',
           commands: [
             'npm test',
-            'apix validate --testnet'
+            'apix validate'
           ]
         },
         {
           step: 5,
-          title: 'Deployment',
-          description: 'Deploy to target environment',
+          title: 'Health check',
+          description: 'Check the project and configuration',
           commands: [
-            'apix deploy --environment staging',
-            'apix health --comprehensive'
+            'apix health'
           ]
         }
       ],

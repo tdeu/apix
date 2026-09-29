@@ -4,19 +4,19 @@
 {{#ifLanguage language "typescript"}}import React, { useState, useCallback } from 'react';
 import { useWallet } from '{{importFrom "use-wallet"}}';
 
-interface WalletConnectProps {
+interface ConnectWalletProps {
   className?: string;
   onConnectionChange?: (connected: boolean) => void;
 }
 
-export const WalletConnect: React.FC<WalletConnectProps> = ({ 
+export const ConnectWallet: React.FC<ConnectWalletProps> = ({ 
   className = '', 
   onConnectionChange 
 }) => {
 {{else}}import React, { useState, useCallback } from 'react';
 import { useWallet } from '{{importFrom "use-wallet"}}';
 
-export const WalletConnect = ({ className = '', onConnectionChange }) => {
+export const ConnectWallet = ({ className = '', onConnectionChange }) => {
 {{/ifLanguage}}
   const { 
     accountId, 
@@ -294,5 +294,5 @@ export const WalletConnect = ({ className = '', onConnectionChange }) => {
 };
 
 {{#ifLanguage language "javascript"}}
-export default WalletConnect;
+export default ConnectWallet;
 {{/ifLanguage}}

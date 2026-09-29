@@ -25,7 +25,6 @@ integration_commands=(
 blockchain_commands=(
   "npm run apix:create-token"
   "npm run apix:validate"
-  "npm run apix:validate:full"
 )
 
 # AI Commands (may not exist yet)

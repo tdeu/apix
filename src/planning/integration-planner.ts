@@ -359,10 +359,10 @@ import {
         });
 
         plan.templates.push({
-          templateId: 'components/react/WalletConnect',
+          templateId: 'components/react/ConnectWallet',
           templateType: 'component',
           framework: 'next.js',
-          outputPath: moduleFile(plan.layout!, 'wallet-connect', '.tsx'),
+          outputPath: moduleFile(plan.layout!, 'connect-wallet', '.tsx'),
           variables: { network: 'testnet' }
         });
       }
@@ -609,10 +609,10 @@ import {
               variables: { ...config }
             },
             {
-              templateId: 'components/react/WalletConnect',
+              templateId: 'components/react/ConnectWallet',
               templateType: 'component',
               framework: framework as any,
-              outputPath: 'components/WalletConnect.tsx',
+              outputPath: 'components/ConnectWallet.tsx',
               variables: { ...config }
             }
           );

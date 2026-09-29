@@ -18,7 +18,7 @@ export class TemplateVerifier {
   private static readonly REQUIRED_TEMPLATES = [
     'api/nextjs/tokens/create.hbs',
     'components/react/TokenManager.hbs',
-    'components/react/WalletConnect.hbs',
+    'components/react/ConnectWallet.hbs',
     'hooks/react/useTokens.hbs',
     'hooks/react/useWallet.hbs',
     'utils/common/hedera-client.hbs',

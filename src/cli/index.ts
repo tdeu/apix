@@ -370,14 +370,7 @@ program
 
 program
   .command('validate')
-  .description('Comprehensive validation with live Hedera blockchain testing')
-  .option('--testnet', 'Use Hedera testnet for validation')
-  .option('--mainnet', 'Use Hedera mainnet for validation (production)')
-  .option('--enterprise', 'Run enterprise-grade compliance validation')
-  .option('--compliance <frameworks...>', 'Test specific compliance frameworks')
-  .option('--performance', 'Include performance testing')
-  .option('--security', 'Include security vulnerability scanning')
-  .option('--files <files...>', 'Validate specific files')
+  .description('Check your Hedera configuration locally (network from HEDERA_NETWORK; no network call)')
   .action(async (options) => {
     try {
       await ensureCliInitialized();
@@ -485,26 +478,6 @@ program
       process.exit(0);
     } catch (error) {
       reportFailure(error); // debug
-    }
-  });
-
-program
-  .command('deploy')
-  .description('Enterprise deployment with compliance checking and audit trails')
-  .option('--environment <env>', 'Target environment (development, staging, production)')
-  .option('--compliance-check', 'Run compliance validation before deployment')
-  .option('--audit-trail', 'Enable deployment audit trail')
-  .option('--rollback-plan', 'Generate rollback procedures')
-  .option('--monitoring', 'Set up monitoring and alerts')
-  .option('--dry-run', 'Simulate deployment without executing')
-  .action(async (options) => {
-    try {
-      await ensureCliInitialized();
-      await cli.enterpriseDeployment(options);
-      process.exit(0);
-    } catch (error) {
-      logger.error('Enterprise deployment failed:', error);
-      process.exit(1);
     }
   });
 

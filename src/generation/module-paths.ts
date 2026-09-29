@@ -20,7 +20,7 @@ export const MODULES = {
   'use-token-operations': 'hooks/useTokenOperations',
   'token-manager': 'components/TokenManager',
   'transaction-status': 'components/TransactionStatus',
-  'wallet-connect': 'components/WalletConnect',
+  'connect-wallet': 'components/ConnectWallet',
   // Not components/ui/: that is where shadcn/ui puts button.tsx etc., and
   // Button.tsx would collide with it on case-insensitive file systems
   'ui-button': 'components/hedera/Button',

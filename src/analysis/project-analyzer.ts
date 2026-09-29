@@ -365,8 +365,8 @@ export class ProjectAnalyzer {
       'hooks/useWallet.js',
       'hooks/useWalletOperations.ts',
       'hooks/useWalletOperations.js',
-      'components/WalletConnect.tsx',
-      'components/WalletConnect.jsx',
+      'components/ConnectWallet.tsx',
+      'components/ConnectWallet.jsx',
       'components/WalletConnectionModal.tsx',
       'components/WalletConnectionModal.jsx'
     ];

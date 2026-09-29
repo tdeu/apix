@@ -75,7 +75,7 @@ describe('next steps', () => {
 
   it('wallet: no credentials or routes (nothing server-side)', async () => {
     expect(await add('wallet')).toEqual([
-      'Render <WalletConnect /> (src/components/WalletConnect.tsx) from a page',
+      'Render <ConnectWallet /> (src/components/ConnectWallet.tsx) from a page',
       'Start the dev server: npm run dev',
     ]);
   });

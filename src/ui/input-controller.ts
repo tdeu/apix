@@ -182,7 +182,7 @@ export class InputController {
     const apixCommands = [
       'analyze', 'add', 'init', 'status', 'health', 'generate', 'compose',
       'chat', 'validate', 'recommend', 'explain', 'compare', 'confidence',
-      'debug', 'deploy', 'create-token', 'logs', 'last-error', 'debug-info'
+      'debug', 'create-token', 'logs', 'last-error', 'debug-info'
     ];
 
     const bashCommands = [
