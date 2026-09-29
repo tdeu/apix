@@ -1,4 +1,3 @@
-import { ChatOpenAI } from '@langchain/openai';
 import { logger } from '../utils/logger';
 import { ConversationEngine } from '../ai/conversation/conversation-engine';
 import { LimitationHandler } from '../ai/limitations/limitation-handler';
