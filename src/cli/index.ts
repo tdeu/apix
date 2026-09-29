@@ -8,11 +8,24 @@ import chalk from 'chalk';
 import { APIxCLI } from './cli-core';
 import { HealthChecker } from '../validation/health-checker';
 import { describeIntegrations, normalizeIntegration } from '../planning/integration-types';
+import { maskSecrets } from '../utils/secrets';
 import { logger, LogLevel } from '../utils/logger';
 import { debugLogger, LogLevel as DebugLogLevel } from '../utils/debug-logger';
 import { formatter, createFormatter } from '../utils/output-formatter';
 
 const packageJson = require('../../package.json');
+
+/** APIX_EXPERIMENTAL=1 unlocks experimental commands (currently only compose) */
+function experimentalEnabled(): boolean {
+  return process.env.APIX_EXPERIMENTAL === '1';
+}
+
+/** Print the error's own message (secrets masked) and exit 1 */
+function reportFailure(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(chalk.red(`❌ ${maskSecrets(message)}`));
+  process.exit(1);
+}
 let cli: APIxCLI;
 
 // Initialize CLI asynchronously
@@ -307,14 +320,15 @@ program
         options: allOptions,
         stack: error?.stack
       });
-      console.error(chalk.red(`❌ Enterprise generation '${integration}' failed. Use --debug for detailed error information.`));
-      process.exit(1);
+      reportFailure(error);
     }
   });
 
 program
-  .command('compose')
-  .description('AI-powered custom code composition for novel requirements')
+  // Experimental: listed in --help only when APIX_EXPERIMENTAL=1
+  .command('compose', { hidden: !experimentalEnabled() })
+  .description('(experimental) AI-powered custom code composition for novel requirements')
+  .option('--experimental', 'Acknowledge that compose is experimental')
   .option('--requirements <requirements>', 'Natural language requirement description')
   .option('--industry <industry>', 'Target industry context')
   .option('--constraints <constraints...>', 'Technical or business constraints')
@@ -322,13 +336,15 @@ program
   .option('--novel-pattern', 'Create entirely new implementation pattern')
   .option('--validate-live', 'Perform live Hedera validation')
   .action(async (options) => {
+    if (!options.experimental && !experimentalEnabled()) {
+      reportFailure(new Error('compose is experimental; re-run with --experimental'));
+    }
     try {
       await ensureCliInitialized();
       await cli.composeCustomCode(options);
       process.exit(0);
     } catch (error) {
-      logger.error('AI composition failed:', error);
-      process.exit(1);
+      reportFailure(error); // compose
     }
   });
 
@@ -347,8 +363,7 @@ program
       await ensureCliInitialized(allOptions);
       await cli.startConversationalInterface(options);
     } catch (error) {
-      logger.error('Conversational interface failed:', error);
-      process.exit(1);
+      reportFailure(error); // chat
     }
   });
 
@@ -398,8 +413,7 @@ program
       await cli.generateRecommendations(allOptions);
       process.exit(0);
     } catch (error) {
-      logger.error('Recommendation generation failed:', error);
-      process.exit(1);
+      reportFailure(error); // recommend
     }
   });
 
@@ -417,8 +431,7 @@ program
       await cli.explainConcept(concept, options);
       process.exit(0);
     } catch (error) {
-      logger.error('Concept explanation failed:', error);
-      process.exit(1);
+      reportFailure(error); // explain
     }
   });
 
@@ -435,8 +448,7 @@ program
       await cli.compareApproaches(approaches, options);
       process.exit(0);
     } catch (error) {
-      logger.error('Approach comparison failed:', error);
-      process.exit(1);
+      reportFailure(error); // compare
     }
   });
 
@@ -453,8 +465,7 @@ program
       await cli.assessConfidence(requirement, options);
       process.exit(0);
     } catch (error) {
-      logger.error('Confidence assessment failed:', error);
-      process.exit(1);
+      reportFailure(error); // confidence
     }
   });
 
@@ -472,8 +483,7 @@ program
       await cli.debugIssue(issue, options);
       process.exit(0);
     } catch (error) {
-      logger.error('Debug assistance failed:', error);
-      process.exit(1);
+      reportFailure(error); // debug
     }
   });
 

@@ -4,6 +4,7 @@ import ora from 'ora';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
 import { ConversationEngine } from '../ai/conversation/conversation-engine';
+import { AIRequestError, AIUnavailableError } from '../ai/errors';
 import { LimitationHandler } from '../ai/limitations/limitation-handler';
 import { ErrorRecoverySystem } from '../ai/recovery/error-recovery-system';
 import { TerminalInterfaceController } from '../ui/terminal-interface-controller';
@@ -31,9 +32,9 @@ export class ChatInterface {
   private enhancedMode: boolean = true;
 
   constructor() {
-    this.conversationEngine = new ConversationEngine();
+    this.conversationEngine = new ConversationEngine({ command: 'chat' });
     this.limitationHandler = new LimitationHandler();
-    this.errorRecovery = new ErrorRecoverySystem();
+    this.errorRecovery = new ErrorRecoverySystem({ command: 'chat' });
     this.currentSessionId = uuidv4();
     this.userPreferences = this.getDefaultPreferences();
     
@@ -113,6 +114,11 @@ export class ChatInterface {
       await this.conversationLoop();
 
     } catch (error: any) {
+      // No key, or the AI request failed: end the chat; `apix chat` reports it and exits 1
+      if (error instanceof AIUnavailableError || error instanceof AIRequestError) {
+        this.isActive = false;
+        throw error;
+      }
       logger.error('Chat interface error:', error);
       console.log(chalk.red('\n❌ Chat session encountered an error. Please try again.'));
 
@@ -187,6 +193,9 @@ export class ChatInterface {
         }
 
       } catch (inputError) {
+        if (inputError instanceof AIUnavailableError || inputError instanceof AIRequestError) {
+          throw inputError;
+        }
         logger.error('Input error:', inputError);
         console.log(chalk.yellow('⚠️ There was an issue with your input. Please try again.'));
       }
@@ -481,8 +490,8 @@ export class ChatInterface {
     console.log(chalk.red(`\n❌ Command failed: ${error.message}`));
 
     try {
-      // Use error recovery system
-      const recovery = await this.errorRecovery.detectAndRecover(
+      // AI diagnosis only: nothing is retried or changed
+      const diagnosis = await this.errorRecovery.detectAndRecover(
         {
           type: 'cli-command',
           parameters: { command: command.command },
@@ -492,57 +501,28 @@ export class ChatInterface {
         error
       );
 
-      if (recovery.success) {
-        console.log(chalk.green('\n✅ Error resolved automatically!'));
-        console.log(recovery.message);
-      } else {
-        console.log(chalk.yellow('\n⚠️ Manual intervention required:'));
-        recovery.recommendations.forEach(rec => {
-          console.log(chalk.yellow(`   • ${rec}`));
-        });
-      }
+      console.log(chalk.yellow('\n⚠️ Suggestions:'));
+      diagnosis.recommendations.forEach(rec => {
+        console.log(chalk.yellow(`   • ${rec}`));
+      });
+      console.log(chalk.gray(`   ${diagnosis.message}`));
 
-    } catch (recoveryError) {
-      console.log(chalk.red('\n❌ Error recovery failed. Please try manually or contact support.'));
+    } catch (diagnosisError) {
+      const reason = diagnosisError instanceof Error ? diagnosisError.message : String(diagnosisError);
+      console.log(chalk.red(`\n❌ No AI diagnosis available: ${reason}`));
     }
   }
 
   /**
    * Handle processing errors with graceful degradation
    */
-  private async handleProcessingError(error: Error, userInput: string): Promise<void> {
-    console.log(chalk.red('\n❌ I encountered an issue processing your request.'));
-
-    // Attempt to classify and recover from the error
-    try {
-      const recovery = await this.errorRecovery.detectAndRecover(
-        {
-          type: 'conversation-processing',
-          parameters: { userInput },
-          originalRequirement: userInput,
-          projectContext: {}
-        },
-        error
-      );
-
-      if (recovery.success) {
-        console.log(chalk.green('✅ Recovered! Let me try a different approach...'));
-        // Continue conversation with fallback response
-      } else {
-        console.log(chalk.yellow('⚠️ Please try:'));
-        recovery.recommendations.forEach(rec => {
-          console.log(chalk.yellow(`   • ${rec}`));
-        });
-      }
-
-    } catch (recoveryError) {
-      // Fallback to basic guidance
-      console.log(chalk.yellow('Please try:'));
-      console.log(chalk.yellow('   • Rephrasing your question'));
-      console.log(chalk.yellow('   • Breaking complex requests into smaller parts'));
-      console.log(chalk.yellow('   • Using specific CLI commands directly'));
-      console.log(chalk.yellow('   • Type "/help" for assistance'));
+  private async handleProcessingError(error: Error, _userInput: string): Promise<void> {
+    // AI errors end the chat: nothing here can answer without the AI
+    if (error instanceof AIUnavailableError || error instanceof AIRequestError) {
+      throw error;
     }
+    console.log(chalk.red(`\n❌ ${error.message}`));
+    console.log(chalk.gray('   Nothing was retried. You can rephrase and try again.'));
   }
 
   /**

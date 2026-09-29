@@ -1,5 +1,5 @@
-import { ChatOpenAI } from '@langchain/openai';
-import { ChatAnthropic } from '@langchain/anthropic';
+import { AIClient, createAIClient } from '../provider';
+import { parseAIJson } from '../json';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { z } from 'zod';
 import { logger } from '../../utils/logger';
@@ -25,13 +25,14 @@ import {
  * for optimal Hedera service selection and implementation approach.
  */
 export class EnterpriseClassifier {
-  private primaryLLM: ChatOpenAI | null = null;
-  private secondaryLLM: ChatAnthropic | null = null;
+  private client: AIClient | null;
+  private readonly command?: string;
   private classificationPrompt: PromptTemplate | null = null;
   private industryKnowledgeBase: Map<EnterpriseIndustry, IndustryKnowledge> = new Map();
 
-  constructor() {
-    this.initializeLLMs();
+  constructor(options: { client?: AIClient; command?: string } = {}) {
+    this.client = options.client ?? null;
+    this.command = options.command;
     this.initializePrompts();
     this.initializeIndustryKnowledge();
   }
@@ -43,7 +44,7 @@ export class EnterpriseClassifier {
     requirement: string,
     context?: Partial<EnterpriseContext>
   ): Promise<EnterpriseClassification> {
-    try {
+    {
       logger.info('Starting enterprise requirement classification', { 
         requirementLength: requirement.length,
         hasContext: !!context 
@@ -83,11 +84,13 @@ export class EnterpriseClassifier {
       });
 
       return classification;
-
-    } catch (error: any) {
-      logger.error('Enterprise classification failed', { error: error?.message });
-      return this.createFallbackClassification(requirement);
     }
+  }
+
+  /** Throws AIUnavailableError when no AI key is configured */
+  private getClient(): AIClient {
+    this.client ??= createAIClient({ tier: 'default', command: this.command });
+    return this.client;
   }
 
   /**
@@ -102,15 +105,8 @@ export class EnterpriseClassifier {
     complianceRequirements: ComplianceClassification;
   }> {
 
-    // If no LLMs available, use rule-based classification
-    if (!this.primaryLLM && !this.secondaryLLM) {
-      logger.info('No LLMs available, using rule-based classification');
-      return this.performRuleBasedAnalysis(requirement, context);
-    }
-
     if (!this.classificationPrompt) {
-      logger.warn('Classification prompt not available, using simplified analysis');
-      return this.performRuleBasedAnalysis(requirement, context);
+      throw new Error('Classification prompt failed to initialize');
     }
 
     const analysisPrompt = await this.classificationPrompt.format({
@@ -121,38 +117,14 @@ export class EnterpriseClassifier {
       technicalPatterns: this.getTechnicalPatterns()
     });
 
-    try {
-      // Use primary LLM for analysis
-      if (this.primaryLLM) {
-        const response = await this.primaryLLM.invoke([
-          { role: 'system', content: this.getSystemPrompt() },
-          { role: 'user', content: analysisPrompt }
-        ]);
-
-        const analysis = this.parseAnalysisResponse(response.content as string);
-        return analysis;
-      }
-
-    } catch (error: any) {
-      logger.warn('Primary LLM failed, falling back to secondary', { error: error?.message });
-
-      // Fallback to secondary LLM
-      try {
-        if (this.secondaryLLM) {
-          const response = await this.secondaryLLM.invoke([
-            { role: 'system', content: this.getSystemPrompt() },
-            { role: 'user', content: analysisPrompt }
-          ]);
-
-          return this.parseAnalysisResponse(response.content as string);
-        }
-      } catch (secondaryError: any) {
-        logger.warn('Secondary LLM also failed, using rule-based analysis', { error: secondaryError?.message });
-      }
-    }
-
-    // Final fallback to rule-based analysis
-    return this.performRuleBasedAnalysis(requirement, context);
+    const client = this.getClient();
+    const answer = await client.complete({
+      system: this.getSystemPrompt(),
+      prompt: analysisPrompt,
+      maxTokens: 2000,
+      temperature: 0.1
+    });
+    return parseAIJson(client.provider, answer, 'requirement classification');
   }
 
   /**
@@ -266,55 +238,6 @@ export class EnterpriseClassifier {
       estimatedEffort,
       riskAssessment
     };
-  }
-
-  /**
-   * Initialize LLM instances
-   */
-  private initializeLLMs(): void {
-    try {
-      // Initialize primary LLM (OpenAI)
-      if (process.env.OPENAI_API_KEY) {
-        this.primaryLLM = new ChatOpenAI({
-          modelName: process.env.PRIMARY_MODEL || 'gpt-4o-mini',
-          temperature: 0.1, // Low temperature for consistent classification
-          maxTokens: 2000,
-          apiKey: process.env.OPENAI_API_KEY
-        });
-        logger.internal('info', 'OpenAI ChatGPT initialized for enterprise classification');
-      } else {
-        logger.info('OpenAI API key not found - will use rule-based classification with Anthropic fallback');
-      }
-
-      // Initialize secondary LLM (Anthropic)
-      if (process.env.ANTHROPIC_API_KEY) {
-        this.secondaryLLM = new ChatAnthropic({
-          modelName: process.env.SECONDARY_MODEL || 'claude-3-5-sonnet-20241022',
-          temperature: 0.1,
-          maxTokens: 2000,
-          apiKey: process.env.ANTHROPIC_API_KEY
-        });
-        logger.info('Anthropic Claude initialized as secondary classifier');
-      } else {
-        logger.internal('info', 'Anthropic API key not found - will use rule-based classification if OpenAI unavailable');
-      }
-
-      // Log AI capabilities status
-      const aiCapabilities = [];
-      if (this.primaryLLM) aiCapabilities.push('OpenAI GPT');
-      if (this.secondaryLLM) aiCapabilities.push('Anthropic Claude');
-
-      if (aiCapabilities.length > 0) {
-        logger.internal('info', `Enterprise classifier initialized with AI models: ${aiCapabilities.join(', ')}`);
-      } else {
-        logger.info('Enterprise classifier initialized with rule-based analysis (no AI models available)');
-      }
-
-    } catch (error) {
-      logger.error('Failed to initialize LLMs:', error);
-      this.primaryLLM = null;
-      this.secondaryLLM = null;
-    }
   }
 
   /**
@@ -438,26 +361,6 @@ Analyze the requirement and provide detailed classification:
 6. Provide honest assessments of AI capabilities and limitations
 
 Focus on practical, implementable solutions that meet enterprise standards for security, compliance, and scalability.`;
-  }
-
-  /**
-   * Parse AI analysis response
-   */
-  private parseAnalysisResponse(response: string): any {
-    try {
-      // Extract JSON from response (handling various response formats)
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-      
-      // Fallback parsing for non-JSON responses
-      return this.parseUnstructuredResponse(response);
-      
-    } catch (error: any) {
-      logger.warn('Failed to parse AI response', { error: error?.message });
-      return this.createDefaultAnalysis();
-    }
   }
 
   /**
@@ -746,175 +649,6 @@ Focus on practical, implementable solutions that meet enterprise standards for s
     return [...new Set(services)]; // Remove duplicates
   }
 
-  /**
-   * Create fallback classification for error cases
-   */
-  private createFallbackClassification(requirement: string): EnterpriseClassification {
-    return {
-      businessIntent: {
-        primary: 'data-verification',
-        secondary: [],
-        confidence: 50,
-        keywords: [],
-        patterns: []
-      },
-      businessContext: {
-        primary: 'data-verification',
-        secondary: [],
-        confidence: 50,
-        keywords: [],
-        patterns: []
-      },
-      industrySpecific: {
-        industry: 'technology',
-        subCategory: 'general',
-        regulatoryContext: [],
-        industryStandards: [],
-        commonIntegrations: [],
-        confidence: 50
-      },
-      technicalComplexity: {
-        overallScore: 50,
-        factors: {
-          integrationComplexity: 50,
-          regulatoryComplexity: 50,
-          technicalNovelty: 50,
-          scalabilityRequirements: 50,
-          securityRequirements: 50
-        },
-        riskFactors: ['Unknown requirements complexity'],
-        mitigationStrategies: ['Expert consultation recommended']
-      },
-      complianceRequirements: {
-        applicableFrameworks: [],
-        complianceLevel: 'basic',
-        auditRequirements: [],
-        dataProtectionNeeds: [],
-        reportingRequirements: []
-      },
-      confidence: {
-        overall: 50,
-        breakdown: {
-          businessIntent: 50,
-          technicalFeasibility: 50,
-          regulatoryCompliance: 50,
-          templateAvailability: 50,
-          aiCapability: 50
-        }
-      },
-      recommendedApproach: {
-        strategy: 'expert-consultation',
-        templateSuggestions: [],
-        customDevelopmentNeeds: ['Full requirement analysis needed'],
-        expertConsultationAreas: ['Business requirements', 'Technical architecture'],
-        estimatedEffort: {
-          development: 0,
-          testing: 0,
-          compliance: 0,
-          integration: 0,
-          total: 0,
-          confidence: 0
-        },
-        riskAssessment: {
-          technicalRisks: [],
-          businessRisks: [],
-          complianceRisks: [],
-          mitigationStrategies: []
-        }
-      },
-      recommendedServices: ['HCS', 'Account Service'] // Default services
-    };
-  }
-
-  /**
-   * Rule-based analysis fallback when LLMs are not available
-   */
-  private async performRuleBasedAnalysis(
-    requirement: string,
-    context?: Partial<EnterpriseContext>
-  ): Promise<{
-    businessIntent: BusinessIntent;
-    technicalComplexity: TechnicalComplexity;
-    complianceRequirements: ComplianceClassification;
-  }> {
-    const reqLower = requirement.toLowerCase();
-
-    // Rule-based business intent detection
-    let primaryIntent: BusinessIntentCategory = 'data-verification';
-    const keywords: string[] = [];
-    const patterns: string[] = [];
-
-    if (reqLower.includes('supply') || reqLower.includes('track') || reqLower.includes('trace')) {
-      primaryIntent = 'supply-chain-compliance';
-      keywords.push('supply', 'tracking', 'traceability');
-      patterns.push('supply-chain-tracking');
-    } else if (reqLower.includes('payment') || reqLower.includes('financial') || reqLower.includes('money')) {
-      primaryIntent = 'financial-automation';
-      keywords.push('payment', 'financial', 'automation');
-      patterns.push('payment-automation');
-    } else if (reqLower.includes('audit') || reqLower.includes('compliance') || reqLower.includes('regulatory')) {
-      primaryIntent = 'audit-trail';
-      keywords.push('audit', 'compliance', 'regulatory');
-      patterns.push('audit-trail');
-    } else if (reqLower.includes('token') || reqLower.includes('asset') || reqLower.includes('nft')) {
-      primaryIntent = 'asset-tokenization';
-      keywords.push('token', 'asset', 'tokenization');
-      patterns.push('asset-tokenization');
-    } else if (reqLower.includes('identity') || reqLower.includes('credential') || reqLower.includes('verification')) {
-      primaryIntent = 'identity-management';
-      keywords.push('identity', 'credential', 'verification');
-      patterns.push('identity-management');
-    }
-
-    const businessIntent: BusinessIntent = {
-      primary: primaryIntent,
-      secondary: [],
-      confidence: 75,
-      keywords,
-      patterns
-    };
-
-    // Rule-based technical complexity assessment
-    let complexityScore = 50;
-    if (reqLower.includes('complex') || reqLower.includes('enterprise') || reqLower.includes('integration')) complexityScore += 20;
-    if (reqLower.includes('simple') || reqLower.includes('basic')) complexityScore -= 20;
-    if (reqLower.includes('compliance') || reqLower.includes('regulatory')) complexityScore += 15;
-
-    const technicalComplexity: TechnicalComplexity = {
-      overallScore: Math.max(0, Math.min(100, complexityScore)),
-      factors: {
-        integrationComplexity: complexityScore,
-        regulatoryComplexity: reqLower.includes('compliance') ? complexityScore + 20 : complexityScore - 10,
-        technicalNovelty: reqLower.includes('novel') || reqLower.includes('new') ? complexityScore + 30 : complexityScore,
-        scalabilityRequirements: reqLower.includes('scale') || reqLower.includes('enterprise') ? complexityScore + 15 : complexityScore,
-        securityRequirements: reqLower.includes('security') || reqLower.includes('secure') ? complexityScore + 25 : complexityScore
-      },
-      riskFactors: [],
-      mitigationStrategies: []
-    };
-
-    // Rule-based compliance detection
-    const applicableFrameworks: RegulatoryFramework[] = [];
-    if (reqLower.includes('fda') || reqLower.includes('pharmaceutical')) applicableFrameworks.push('FDA-21CFR11');
-    if (reqLower.includes('sox') || reqLower.includes('financial')) applicableFrameworks.push('SOX');
-    if (reqLower.includes('gdpr') || reqLower.includes('privacy')) applicableFrameworks.push('GDPR');
-    if (reqLower.includes('hipaa') || reqLower.includes('healthcare')) applicableFrameworks.push('HIPAA');
-
-    const complianceRequirements: ComplianceClassification = {
-      applicableFrameworks,
-      complianceLevel: applicableFrameworks.length > 0 ? 'advanced' : 'basic',
-      auditRequirements: applicableFrameworks.length > 0 ? ['audit-trail', 'compliance-reporting'] : [],
-      dataProtectionNeeds: reqLower.includes('privacy') || reqLower.includes('protection') ? ['encryption', 'access-control'] : [],
-      reportingRequirements: applicableFrameworks.length > 0 ? ['regulatory-reporting'] : []
-    };
-
-    return {
-      businessIntent,
-      technicalComplexity,
-      complianceRequirements
-    };
-  }
-
   // Additional helper methods with real implementations
   private getIndustryExamples(): string {
     return `
@@ -1005,23 +739,6 @@ Focus on practical, implementable solutions that meet enterprise standards for s
       businessRisks: analysis.technicalComplexity?.overallScore > 80 ? ['Timeline risk', 'Cost overrun risk'] : [],
       complianceRisks: analysis.complianceRequirements?.applicableFrameworks?.length > 1 ? ['Multi-framework compliance complexity'] : [],
       mitigationStrategies: ['Incremental development', 'Regular stakeholder review', 'Compliance validation checkpoints']
-    };
-  }
-
-  private parseUnstructuredResponse(response: string): any {
-    // Basic text parsing for non-JSON responses
-    return {
-      businessIntent: { primary: 'data-verification', confidence: 60 },
-      technicalComplexity: { overallScore: 50 },
-      complianceRequirements: { applicableFrameworks: [] }
-    };
-  }
-
-  private createDefaultAnalysis(): any {
-    return {
-      businessIntent: { primary: 'data-verification', confidence: 50 },
-      technicalComplexity: { overallScore: 50 },
-      complianceRequirements: { applicableFrameworks: [] }
     };
   }
 

@@ -9,9 +9,11 @@ material, not a spec.
   with a clear, actionable message.
 - Hedera commands (create-token, validate, deploy) require real credentials
   (see src/utils/environment-validator.ts) and fail fast without them.
-- AI commands (chat, compose, generate, recommend, explain, compare,
-  confidence, debug) require ANTHROPIC_API_KEY or OPENAI_API_KEY. If missing,
-  they exit with a clear error. Never return canned replies.
+- AI commands (chat, generate, recommend, explain, compare, confidence,
+  debug) require ANTHROPIC_API_KEY or OPENAI_API_KEY. If missing, they exit
+  with a clear error. Never return canned replies. `compose` is experimental:
+  hidden from --help unless APIX_EXPERIMENTAL=1, refused without
+  --experimental (or APIX_EXPERIMENTAL=1), and it also needs an AI key.
 - Non-AI, non-blockchain commands (analyze, add, init, status, health, logs,
   last-error, debug-info, --help, --version) must work with no keys at all.
   `add hts` may offer optional real token creation only when Hedera
