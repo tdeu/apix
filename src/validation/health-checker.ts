@@ -915,7 +915,7 @@ export class HealthChecker {
       process.env.OPENAI_API_KEY ? 'OPENAI_API_KEY' : null
     ].filter((name): name is string => name !== null);
     if (providers.length === 0) {
-      return { name: 'AI key', status: 'not configured', message: 'ANTHROPIC_API_KEY / OPENAI_API_KEY not set', hint: 'Needed for chat, compose, generate and the other AI commands' };
+      return { name: 'AI key', status: 'not configured', message: 'ANTHROPIC_API_KEY / OPENAI_API_KEY not set', hint: 'Needed for chat, generate, recommend, explain, compare, confidence and debug (and the experimental compose)' };
     }
     const placeholders = providers.filter(name => looksLikePlaceholder(process.env[name]!));
     if (placeholders.length > 0) {
