@@ -4,6 +4,24 @@ import { execSync } from 'child_process';
 import { logger } from './logger';
 import { HEDERA_SDK_VERSION_RANGE } from '../generation/dependency-versions';
 
+const OUTPUT_TAIL_LINES = 30;
+
+function tailLines(text: string, count: number): string {
+  return text.split(/\r?\n/).slice(-count).join('\n');
+}
+
+/** A package-manager command that exited non-zero, with what it printed */
+export class CommandError extends Error {
+  constructor(
+    readonly command: string,
+    readonly cwd: string,
+    readonly exitCode: number | null,
+    readonly output: string
+  ) {
+    super(`Command failed (exit ${exitCode ?? 'unknown'}): ${command}`);
+  }
+}
+
 export interface Dependency {
   name: string;
   version: string;
@@ -154,23 +172,18 @@ export class PackageManager {
 
       logger.debug('Dependencies installed successfully');
     } catch (error) {
-      logger.error('❌ Failed to install dependencies:', error);
-
+      const command = this.getInstallCommand().join(' ');
       let enhancedError = `Dependency installation failed with ${this.manager}\n\n`;
-      enhancedError += `Command: ${this.getInstallCommand()}\n`;
-      enhancedError += `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\n`;
-      enhancedError += `🔧 Troubleshooting steps:\n`;
-      enhancedError += `   • Check your internet connection\n`;
-      enhancedError += `   • Verify package.json exists and is valid\n`;
-      enhancedError += `   • Try running: ${this.getInstallCommand()}\n`;
-      enhancedError += `   • Clear npm cache: npm cache clean --force\n`;
-
-      if (this.manager === 'npm') {
-        enhancedError += `   • Try deleting node_modules and package-lock.json\n`;
-      } else if (this.manager === 'yarn') {
-        enhancedError += `   • Try deleting node_modules and yarn.lock\n`;
+      enhancedError += `Command: ${command} (in ${this.projectPath})\n`;
+      if (error instanceof CommandError) {
+        enhancedError += `Exit code: ${error.exitCode ?? 'unknown'}\n`;
+        enhancedError += error.output
+          ? `${this.manager} output (last ${OUTPUT_TAIL_LINES} lines):\n${tailLines(error.output, OUTPUT_TAIL_LINES)}\n`
+          : `${this.manager} printed nothing.\n`;
+      } else {
+        enhancedError += `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n`;
       }
-
+      enhancedError += `\nRun \`${command}\` yourself to see the full output.`;
       throw new Error(enhancedError);
     }
   }
@@ -283,19 +296,20 @@ export class PackageManager {
   }
 
   private async runCommand(command: string | string[]): Promise<string> {
+    const cmd = Array.isArray(command) ? command.join(' ') : command;
     try {
-      const cmd = Array.isArray(command) ? command.join(' ') : command;
-      
       const output = execSync(cmd, {
         cwd: this.projectPath,
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'pipe']
       });
-      
+
       return output.trim();
     } catch (error: any) {
-      logger.error(`Command failed: ${command}`, error.message);
-      throw new Error(`Command failed: ${error.message}`);
+      // Keep what the command printed: it is the only real explanation
+      const output = `${error.stderr ?? ''}`.trim() || `${error.stdout ?? ''}`.trim();
+      logger.debug(`Command failed: ${cmd}`, error.message);
+      throw new CommandError(cmd, this.projectPath, error.status ?? null, output);
     }
   }
 

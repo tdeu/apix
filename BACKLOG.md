@@ -133,9 +133,9 @@ refactor.
     else is refused naming the detected framework (phase 3c closeout).
   - [2.1-nice] The e2e CI job (ci.yml) and the nightly workflow have not run on
     GitHub yet; check the first PR run (timing, npm cache, artifact).
-  - [2.1-nice] When `apix add` runs `npm install` and it fails, the user only
-    sees "Command failed: npm install": PackageManager captures npm's output
-    and drops it. Show npm's error (at least the last lines). S.
+  - [done 3c] A failed `npm install` during `apix add` now shows the command,
+    its exit code and the last 30 lines of npm's output, then rolls back
+    (phase 3c closeout).
 
 ## Phase 4
 
