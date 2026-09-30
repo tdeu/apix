@@ -1,0 +1,25 @@
+{{!-- META: {"name": "Consensus Topic API Route", "description": "Next.js App Router route that creates an HCS topic", "language": "typescript"} --}}
+// App Router route handler: app/api/consensus/topics/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { consensusManager, ConsensusInputError } from '{{importFrom "consensus-operations"}}';
+
+// POST /api/consensus/topics  { "memo"?: string, "restrictSubmit"?: boolean }
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const result = await consensusManager.createTopic({
+      memo: body.memo,
+      restrictSubmit: body.restrictSubmit === true,
+    });
+    return NextResponse.json({ success: true, data: result });
+  } catch (error) {
+    if (error instanceof ConsensusInputError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    console.error('Topic creation error:', error);
+    return NextResponse.json(
+      { error: 'Failed to create topic', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}

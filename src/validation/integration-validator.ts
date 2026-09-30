@@ -227,17 +227,32 @@ export class IntegrationValidator {
         }
 
         const issues: string[] = [];
-        
+
+        // Read-only: validation must never change the project, even on failure
         for (const dir of requiredDirs) {
-          const fullPath = path.join(context.rootPath, dir);
-          const parentDir = path.dirname(fullPath);
-          
-          // Check if parent directory exists and is writable
+          let existing = path.join(context.rootPath, dir);
+          while (!await fs.pathExists(existing) && path.dirname(existing) !== existing) {
+            existing = path.dirname(existing);
+          }
           try {
-            await fs.ensureDir(parentDir);
-            await fs.access(parentDir, fs.constants.W_OK);
-          } catch (error) {
-            issues.push(`Cannot create directory: ${dir}`);
+            if (!(await fs.stat(existing)).isDirectory()) {
+              issues.push(`Cannot create directory: ${dir} (${path.relative(context.rootPath, existing)} is a file)`);
+              continue;
+            }
+            await fs.access(existing, fs.constants.W_OK);
+          } catch {
+            issues.push(`Cannot create directory: ${dir} (${path.relative(context.rootPath, existing) || '.'} is not writable)`);
+          }
+        }
+
+        // Next.js ignores src/app once a root app/ exists, so never create one
+        if (await fs.pathExists(path.join(context.rootPath, 'src', 'app'))
+          && !await fs.pathExists(path.join(context.rootPath, 'app'))) {
+          const rootApp = plan.templates
+            .map(t => t.outputPath.split(/[\\/]/).join('/'))
+            .filter(p => p.startsWith('app/'));
+          if (rootApp.length > 0) {
+            issues.push(`Would create a root app/ next to src/app, which breaks the app: ${rootApp.join(', ')}`);
           }
         }
 
@@ -301,7 +316,7 @@ export class IntegrationValidator {
         }
 
         const issues: string[] = [];
-        const supportedProviders = ['hashpack', 'blade', 'walletconnect'];
+        const supportedProviders = ['hashpack', 'blade'];
         
         if (plan.options.provider) {
           if (!supportedProviders.includes(plan.options.provider)) {

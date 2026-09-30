@@ -1,6 +1,5 @@
 // Conversation System Type Definitions for APIX AI
 
-import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
 import { EnterpriseContext, EnterpriseClassification } from './enterprise';
 
 /**
@@ -33,12 +32,19 @@ export interface ConversationContext {
   previousInteractions?: ConversationSummary[];
 }
 
+/** One turn of a conversation */
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
 /**
  * Conversation Session
  */
 export interface ConversationSession {
   id: string;
-  messages: (HumanMessage | AIMessage | SystemMessage)[];
+  /** Plain objects, so a session saved as JSON loads back as-is */
+  messages: ChatMessage[];
   context: ConversationContext;
   createdAt: Date;
   lastActivity: Date;

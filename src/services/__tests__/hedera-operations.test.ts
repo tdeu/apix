@@ -1,155 +1,108 @@
 // src/services/__tests__/hedera-operations.test.ts
+import { Client, PrivateKey } from '@hashgraph/sdk';
 import { HederaOperationsService, TokenCreationOptions } from '../hedera-operations';
 
 // Mock dependencies
-jest.mock('../hedera-agent-kit-service');
 jest.mock('../../utils/logger');
-jest.mock('../../utils/test-accounts');
 
 describe('HederaOperationsService', () => {
   let service: HederaOperationsService;
 
   beforeEach(() => {
     service = new HederaOperationsService('testnet');
+    jest.restoreAllMocks();
     jest.clearAllMocks();
-    // Clear environment variables
     delete process.env.HEDERA_ACCOUNT_ID;
     delete process.env.HEDERA_PRIVATE_KEY;
+    delete process.env.HEDERA_NETWORK;
   });
 
-  describe('Token Creation', () => {
-    it('should require initialization before token creation', async () => {
-      const options: TokenCreationOptions = {
-        name: 'Test Token',
-        symbol: 'TEST',
-        decimals: 8,
-        initialSupply: 1000000
-      };
+  afterEach(() => {
+    service.close();
+  });
 
-      // Should auto-initialize
-      const result = await service.createToken(options);
-      expect(result).toBeDefined();
+  describe('Initialization', () => {
+    it('should throw a helpful error without credentials', async () => {
+      const forTestnet = jest.spyOn(Client, 'forTestnet');
+
+      await expect(service.initialize()).rejects.toThrow(/Hedera credentials are not configured/);
+      await expect(service.initialize()).rejects.toThrow(/HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY/);
+      await expect(service.initialize()).rejects.toThrow(/portal\.hedera\.com\/faucet/);
+      expect(forTestnet).not.toHaveBeenCalled();
+      expect(service.getCapabilities().directSDK).toBe(false);
     });
 
-    it('should validate token parameters', async () => {
-      const invalidOptions: TokenCreationOptions = {
-        name: '', // Invalid: empty name
-        symbol: 'TEST',
-        decimals: 8,
-        initialSupply: 1000000
-      };
+    it('should reject malformed credentials before creating a Client', async () => {
+      process.env.HEDERA_ACCOUNT_ID = 'invalid';
+      process.env.HEDERA_PRIVATE_KEY = 'invalid';
+      const forTestnet = jest.spyOn(Client, 'forTestnet');
 
-      // Should handle gracefully (currently no validation, but should add)
-      const result = await service.createToken(invalidOptions);
-      expect(result).toBeDefined();
+      await expect(service.initialize()).rejects.toThrow(/Invalid HEDERA_ACCOUNT_ID format/);
+      expect(forTestnet).not.toHaveBeenCalled();
     });
 
-    it('should use test account when no credentials provided', async () => {
-      const options: TokenCreationOptions = {
-        name: 'Test Token',
-        symbol: 'TEST'
-      };
+    it('should close the Client when the operator key is rejected', async () => {
+      process.env.HEDERA_ACCOUNT_ID = '0.0.1234';
+      process.env.HEDERA_PRIVATE_KEY = 'z'.repeat(64); // passes the length check, not a key
 
-      const result = await service.createToken(options);
+      const realForTestnet = Client.forTestnet.bind(Client);
+      let closeSpy: jest.SpyInstance | undefined;
+      jest.spyOn(Client, 'forTestnet').mockImplementation(() => {
+        const client = realForTestnet();
+        closeSpy = jest.spyOn(client, 'close');
+        return client;
+      });
 
-      expect(result.success).toBe(true);
-      expect(result.details?.note).toContain('simulation');
+      await expect(service.initialize()).rejects.toThrow(/initialization failed/);
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+      expect(service.getCapabilities().directSDK).toBe(false);
     });
 
-    it('should use default decimals and supply when not provided', async () => {
-      const options: TokenCreationOptions = {
-        name: 'Test Token',
-        symbol: 'TEST'
-      };
+    it('should configure the operator from valid credentials', async () => {
+      process.env.HEDERA_ACCOUNT_ID = '0.0.1234';
+      process.env.HEDERA_PRIVATE_KEY = PrivateKey.generateED25519().toStringDer();
 
-      const result = await service.createToken(options);
+      await service.initialize();
 
-      // In simulation mode, should still succeed
-      expect(result.success).toBe(true);
-    });
-
-    it('should generate explorer URL on success', async () => {
-      const options: TokenCreationOptions = {
-        name: 'Test Token',
-        symbol: 'TEST'
-      };
-
-      const result = await service.createToken(options);
-
-      if (result.success) {
-        expect(result.explorerUrl).toBeDefined();
-        expect(result.explorerUrl).toContain('hashscan.io/testnet');
-      }
+      expect(service.getCurrentAccountId()).toBe('0.0.1234');
+      expect(service.getCapabilities()).toEqual({ directSDK: true });
     });
   });
 
-  describe('Token Transfer', () => {
-    it('should simulate token transfer without real credentials', async () => {
-      const options = {
-        tokenId: '0.0.123456',
-        fromAccount: '0.0.2',
-        toAccount: '0.0.3',
-        amount: 100
-      };
+  describe('Input Validation', () => {
+    const validToken: TokenCreationOptions = { name: 'Test Token', symbol: 'TEST', decimals: 8, initialSupply: 1000000 };
 
-      const result = await service.transferToken(options);
+    // Every case must throw before initialize(), i.e. before any SDK call
+    const cases: Array<[string, (s: HederaOperationsService) => Promise<unknown>, RegExp]> = [
+      ['empty token name', s => s.createToken({ ...validToken, name: '' }), /Token name is required/],
+      ['invalid token symbol', s => s.createToken({ ...validToken, symbol: 'invalid-symbol' }), /Token symbol must be at most 6 characters/],
+      ['negative decimals', s => s.createToken({ ...validToken, decimals: -1 }), /decimals must be non-negative/],
+      ['NaN decimals', s => s.createToken({ ...validToken, decimals: NaN }), /decimals must be a whole number/],
+      ['negative initial supply', s => s.createToken({ ...validToken, initialSupply: -5 }), /Initial supply must be non-negative/],
+      ['invalid treasury account', s => s.createToken({ ...validToken, treasuryAccount: 'treasury' }), /Invalid account ID format/],
+      ['invalid transfer account ID', s => s.transferToken({ tokenId: '0.0.123', fromAccount: 'invalid-account', toAccount: '0.0.456', amount: 100 }), /Invalid account ID format: "invalid-account"/],
+      ['invalid transfer token ID', s => s.transferToken({ tokenId: 'token', fromAccount: '0.0.1', toAccount: '0.0.2', amount: 100 }), /Invalid token ID format/],
+      ['zero transfer amount', s => s.transferToken({ tokenId: '0.0.123', fromAccount: '0.0.1', toAccount: '0.0.2', amount: 0 }), /Amount must be greater than 0/],
+      ['fractional transfer amount', s => s.transferToken({ tokenId: '0.0.123', fromAccount: '0.0.1', toAccount: '0.0.2', amount: 1.5 }), /Amount must be an integer/],
+      ['invalid contract ID', s => s.callSmartContract({ contractId: 'contract', functionName: 'f', gas: 50000 }), /Invalid contract ID format/],
+      ['negative payable amount', s => s.callSmartContract({ contractId: '0.0.5', functionName: 'f', gas: 50000, payableAmount: -1 }), /Payable amount must be a non-negative whole number/],
+      ['gas over the limit', s => s.deploySmartContract({ bytecode: '0x00', gas: 20_000_000 }), /Gas limit exceeds maximum/],
+      ['invalid topic ID', s => s.submitTopicMessage({ topicId: 'topic', message: 'hi' }), /Invalid topic ID format/],
+      ['empty topic message', s => s.submitTopicMessage({ topicId: '0.0.7', message: '' }), /Message is required/],
+      ['oversized topic message', s => s.submitTopicMessage({ topicId: '0.0.7', message: 'x'.repeat(1025) }), /exceeds 1024 bytes/],
+    ];
 
-      expect(result.success).toBe(true);
-      expect(result.details?.note).toContain('simulation');
-    });
-  });
+    it.each(cases)('should reject %s before any SDK call', async (_name, call, expected) => {
+      const initialize = jest.spyOn(service, 'initialize');
+      const forTestnet = jest.spyOn(Client, 'forTestnet');
 
-  describe('Smart Contract Operations', () => {
-    it('should simulate smart contract deployment', async () => {
-      const options = {
-        bytecode: '0x1234567890abcdef',
-        gas: 100000
-      };
-
-      const result = await service.deploySmartContract(options);
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.tokenId).toMatch(/^0\.0\.\d+$/); // Contract ID format
-      }
-    });
-
-    it('should simulate contract call', async () => {
-      const options = {
-        contractId: '0.0.500000',
-        functionName: 'transfer',
-        gas: 50000
-      };
-
-      const result = await service.callSmartContract(options);
-
-      expect(result.success).toBe(true);
-    });
-  });
-
-  describe('HCS (Consensus Service)', () => {
-    it('should simulate topic creation', async () => {
-      const options = {
-        memo: 'Test topic for APIX'
-      };
-
-      const result = await service.createTopic(options);
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.tokenId).toMatch(/^0\.0\.\d+$/); // Topic ID format
-      }
+      await expect(call(service)).rejects.toThrow(expected);
+      expect(initialize).not.toHaveBeenCalled();
+      expect(forTestnet).not.toHaveBeenCalled();
     });
 
-    it('should simulate topic message submission', async () => {
-      const options = {
-        topicId: '0.0.700000',
-        message: 'Hello, Hedera!'
-      };
-
-      const result = await service.submitTopicMessage(options);
-
-      expect(result.success).toBe(true);
+    it('should reach credential checks once input is valid', async () => {
+      await expect(service.createToken(validToken)).rejects.toThrow(/Hedera credentials are not configured/);
     });
   });
 
@@ -162,72 +115,23 @@ describe('HederaOperationsService', () => {
       expect(mainnetService.getNetwork()).toBe('mainnet');
     });
 
-    it('should report capabilities', () => {
-      const capabilities = service.getCapabilities();
-
-      expect(capabilities).toHaveProperty('agentKit');
-      expect(capabilities).toHaveProperty('directSDK');
-      expect(capabilities).toHaveProperty('testAccounts');
-      expect(typeof capabilities.agentKit).toBe('boolean');
-    });
-
-    it('should return current account ID when using test accounts', async () => {
-      await service.initialize();
-      const accountId = service.getCurrentAccountId();
-
-      expect(accountId).toBeDefined();
-      if (accountId) {
-        expect(accountId).toMatch(/^0\.0\.\d+$/);
-      }
+    it('should report no capabilities before initialization', () => {
+      expect(service.getCapabilities()).toEqual({ directSDK: false });
+      expect(service.getCurrentAccountId()).toBeNull();
     });
   });
 
   describe('Cleanup', () => {
-    it('should close client connections', () => {
+    it('should close client connections', async () => {
+      process.env.HEDERA_ACCOUNT_ID = '0.0.1234';
+      process.env.HEDERA_PRIVATE_KEY = PrivateKey.generateED25519().toStringDer();
+      await service.initialize();
+      expect(service.getCapabilities().directSDK).toBe(true);
+
       service.close();
 
-      // After closing, should not be in fallback mode
-      expect(service.isFallbackMode()).toBe(true);
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('should handle initialization errors gracefully', async () => {
-      // Force initialization failure by using invalid credentials
-      process.env.HEDERA_ACCOUNT_ID = 'invalid';
-      process.env.HEDERA_PRIVATE_KEY = 'invalid';
-
-      const newService = new HederaOperationsService('testnet');
-
-      await expect(newService.initialize()).rejects.toThrow();
-    });
-  });
-
-  describe('Input Validation (should be added)', () => {
-    it('should validate account ID format in transfers', async () => {
-      const invalidOptions = {
-        tokenId: '0.0.123',
-        fromAccount: 'invalid-account',
-        toAccount: '0.0.456',
-        amount: 100
-      };
-
-      // Currently no validation - should add this
-      const result = await service.transferToken(invalidOptions);
-      // After adding validation, this should fail with clear error
-    });
-
-    it('should validate token symbol format', async () => {
-      const invalidOptions: TokenCreationOptions = {
-        name: 'Test Token',
-        symbol: 'invalid-symbol', // Should be uppercase, 2-6 chars
-        decimals: 8,
-        initialSupply: 1000000
-      };
-
-      // Currently no validation - should add this
-      const result = await service.createToken(invalidOptions);
-      // After adding validation, this should fail with clear error
+      expect(service.getCapabilities().directSDK).toBe(false);
+      expect(service.getCurrentAccountId()).toBeNull();
     });
   });
 });

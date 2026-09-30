@@ -2,7 +2,10 @@ import fs from 'fs-extra';
 import path from 'path';
 import { ProjectContext, IntegrationPlan, GeneratedFile, TemplateSelection, ConfigurationUpdate } from '../types';
 import { TemplateEngine } from '../templates/template-engine';
-import { PackageManager } from '../utils/package-manager';
+import { generatedDependencyVersion } from './dependency-versions';
+import { modulePathMap } from './module-paths';
+import { detectProjectLayout } from '../analysis/project-layout';
+import { PackageManager, Dependency } from '../utils/package-manager';
 import { logger } from '../utils/logger';
 
 export interface GenerationResult {
@@ -10,6 +13,26 @@ export interface GenerationResult {
   installedDependencies: string[];
   modifiedFiles: string[];
   nextSteps: string[];
+  /** Existing files that differed and were replaced (only with force) */
+  overwrittenFiles: string[];
+  /** Existing files already identical to what would be generated (left alone) */
+  unchangedFiles: string[];
+}
+
+export interface GenerationOptions {
+  /** Overwrite existing files that differ from what would be generated */
+  force?: boolean;
+}
+
+/** Thrown when generation would overwrite existing files and force is off */
+export class FileConflictError extends Error {
+  constructor(readonly conflicts: string[]) {
+    super(
+      `These files already exist and differ from what APIX would generate:\n` +
+      conflicts.map(file => `  - ${file}`).join('\n') +
+      '\nNothing was written. Re-run with --force to overwrite them.'
+    );
+  }
 }
 
 export class IntegrationGenerator {
@@ -32,65 +55,86 @@ export class IntegrationGenerator {
 
   async generateIntegration(
     plan: IntegrationPlan,
-    context: ProjectContext
+    context: ProjectContext,
+    options: GenerationOptions = {}
   ): Promise<GenerationResult> {
     const result: GenerationResult = {
       generatedFiles: [],
       installedDependencies: [],
       modifiedFiles: [],
-      nextSteps: []
+      nextSteps: [],
+      overwrittenFiles: [],
+      unchangedFiles: []
     };
 
     try {
       // Initialize package manager for this project
       this.packageManager = new PackageManager(context.rootPath);
-      
-      // Step 1: Install dependencies
+
+      // Step 1: Render every file in memory first, so a template error
+      // leaves the project untouched
+      logger.info(`Generating ${plan.templates.length} files from templates...`);
+
+      // Use the template engine's helper to create proper context
+      const baseContext = this.templateEngine.createContextFromProject(context, plan.options);
+      const layout = plan.layout ?? await detectProjectLayout(context.rootPath, context.framework);
+      const templateContext = {
+        ...baseContext,
+        hederaNetwork: 'testnet' as const, // Override to ensure testnet
+        __modulePaths: modulePathMap(layout)
+      };
+
+      const rendered: GeneratedFile[] = [];
+      for (const selection of plan.templates) {
+        rendered.push(await this.templateEngine.generateFile(
+          selection.templateId,
+          { ...templateContext, __outputPath: selection.outputPath },
+          selection.outputPath
+        ));
+      }
+
+      // Existing files: identical ones are left alone (e.g. lib/hedera/client.ts
+      // from an earlier `apix add`); different ones are only replaced with force
+      const toWrite: GeneratedFile[] = [];
+      const conflicts: string[] = [];
+      for (const file of rendered) {
+        const fullPath = path.join(context.rootPath, file.path);
+        if (!await fs.pathExists(fullPath)) {
+          toWrite.push(file);
+        } else if ((await fs.readFile(fullPath, 'utf8')) === file.content) {
+          result.unchangedFiles.push(file.path);
+        } else {
+          conflicts.push(file.path);
+          toWrite.push(file);
+        }
+      }
+      if (conflicts.length > 0 && !options.force) {
+        throw new FileConflictError(conflicts);
+      }
+      result.overwrittenFiles = conflicts;
+
+      // Step 2: Install dependencies
       if (plan.dependencies.length > 0) {
         logger.info(`Installing ${plan.dependencies.length} dependencies...`);
         // Convert string array to dependency objects
         const deps = plan.dependencies.map(dep => ({
           name: dep,
-          version: 'latest',
+          version: generatedDependencyVersion(dep),
           type: 'dependencies' as const
         }));
-        await this.packageManager.addDependencies(deps);
+        await this.addDependenciesOrRestore(context.rootPath, deps);
         result.installedDependencies = plan.dependencies;
         logger.success('✅ Dependencies installed successfully');
       }
 
-      // Step 2: Generate files from templates
-      logger.info(`Generating ${plan.templates.length} files from templates...`);
-      
-      // Use the template engine's helper to create proper context
-      const baseContext = this.templateEngine.createContextFromProject(context, plan.options);
-      const templateContext = {
-        ...baseContext,
-        hederaNetwork: 'testnet' as const // Override to ensure testnet
-      };
-
-      let generatedCount = 0;
-      for (const selection of plan.templates) {
-        generatedCount++;
-        logger.info(`📝 Generating ${generatedCount}/${plan.templates.length}: ${selection.outputPath}`);
-        try {
-          const generatedFile = await this.templateEngine.generateFile(
-            selection.templateId,
-            templateContext,
-            selection.outputPath
-          );
-          
-          // Actually write the file to disk
-          const fullPath = path.join(context.rootPath, generatedFile.path);
-          await fs.ensureDir(path.dirname(fullPath));
-          await fs.writeFile(fullPath, generatedFile.content, 'utf8');
-          logger.success(`✅ Generated: ${selection.outputPath}`);
-          
-          result.generatedFiles.push(generatedFile);
-        } catch (error) {
-          logger.error(`❌ Failed to generate ${selection.outputPath}:`, error);
-          throw error;
-        }
+      // Step 3: Write the rendered files (new ones, plus conflicts under force)
+      for (const [index, generatedFile] of toWrite.entries()) {
+        logger.info(`📝 Writing ${index + 1}/${toWrite.length}: ${generatedFile.path}`);
+        const fullPath = path.join(context.rootPath, generatedFile.path);
+        await fs.ensureDir(path.dirname(fullPath));
+        await fs.writeFile(fullPath, generatedFile.content, 'utf8');
+        logger.success(`✅ Generated: ${generatedFile.path}`);
+        result.generatedFiles.push(generatedFile);
       }
 
       // Step 3: Apply configuration updates
@@ -110,13 +154,38 @@ export class IntegrationGenerator {
       // await this.generateDocumentation(plan, context, result);
       
       // Step 5: Generate next steps
-      result.nextSteps = this.generateNextSteps(plan, context, result);
+      // From everything this integration produced, written now or already present
+      result.nextSteps = this.generateNextSteps(rendered);
 
       logger.success(`🎉 Integration completed! Generated ${result.generatedFiles.length} files`);
       return result;
 
     } catch (error) {
       logger.error('Integration generation failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add dependencies and run the install. If that fails, put package.json and
+   * the lockfile back as they were before rethrowing.
+   */
+  private async addDependenciesOrRestore(rootPath: string, deps: Dependency[]): Promise<void> {
+    const saved: Array<[string, string | null]> = [];
+    for (const name of ['package.json', 'package-lock.json']) {
+      const file = path.join(rootPath, name);
+      saved.push([file, await fs.pathExists(file) ? await fs.readFile(file, 'utf8') : null]);
+    }
+    try {
+      await this.packageManager.addDependencies(deps);
+    } catch (error) {
+      for (const [file, content] of saved) {
+        if (content === null) {
+          await fs.remove(file);
+        } else {
+          await fs.writeFile(file, content, 'utf8');
+        }
+      }
       throw error;
     }
   }
@@ -219,46 +288,44 @@ export class IntegrationGenerator {
     await fs.writeJSON(filePath, packageJson, { spaces: 2 });
   }
 
-  private generateNextSteps(
-    plan: IntegrationPlan,
-    context: ProjectContext,
-    result: GenerationResult
-  ): string[] {
+  /**
+   * Next steps built only from the files this integration produced (written
+   * or already up to date) and the environment variables they need.
+   */
+  private generateNextSteps(files: GeneratedFile[]): string[] {
     const steps: string[] = [];
+    const paths = files.map(file => file.path.split(/[\\/]/).join('/'));
 
-    // Basic next steps based on integration type
-    if (plan.type === 'hts') {
-      steps.push('🎯 Your HTS integration is ready!');
-      steps.push('📝 Update your Hedera account credentials in .env.local');
-      steps.push('🚀 Start your development server: npm run dev');
-      steps.push('🔗 Import and use the HTSManager in your components');
-      
-      if (result.generatedFiles.some(f => f.path.includes('TokenManager'))) {
-        steps.push('📦 Use the TokenManager component in your app');
-      }
+    // Server modules read the operator credentials at runtime
+    if (files.some(file => file.content.includes('HEDERA_PRIVATE_KEY'))) {
+      steps.push(
+        'Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY in .env.local (server-side only, never NEXT_PUBLIC_). ' +
+        'Get a free testnet account at https://portal.hedera.com/faucet'
+      );
     }
 
-    if (plan.type === 'wallet') {
-      steps.push('🎯 Your wallet integration is ready!');
-      steps.push('📱 Wrap your app with WalletProvider');
-      steps.push('🔌 Use the WalletConnect component');
-      steps.push('🔧 Test with HashPack wallet extension');
+    // API routes, with the HTTP methods they actually export
+    for (const file of files) {
+      const match = file.path.split(/[\\/]/).join('/').match(/(?:^|\/)app(\/api\/.*)\/route\.ts$/);
+      if (!match) continue;
+      const methods = Array.from(file.content.matchAll(/export async function (GET|POST|PUT|PATCH|DELETE)\b/g)).map(m => m[1]);
+      steps.push(`API route: ${methods.join(', ') || 'route'} ${match[1]}`);
     }
 
-    // Framework-specific steps
-    if (context.framework === 'next.js') {
-      steps.push('📁 Check the generated API routes in /api');
-      steps.push('🎨 Import components in your pages');
+    // Top-level components (not the small building blocks under components/hedera/)
+    for (const path of paths.filter(p => /\/components\/[^/]+\.tsx$/.test(p))) {
+      const name = path.slice(path.lastIndexOf('/') + 1, -'.tsx'.length);
+      steps.push(`Render <${name} /> (${path}) from a page`);
     }
 
-    // General steps
-    steps.push('📚 Read the generated README.md for detailed usage');
-    steps.push('🧪 Run tests to ensure everything works');
-    steps.push('🔍 Check the generated TypeScript definitions');
+    // Server-side helpers you can import from your own route handlers
+    for (const path of paths.filter(p => /\/lib\/hedera\/[^/]+-operations\.ts$/.test(p))) {
+      steps.push(`Server-side helpers: ${path}`);
+    }
 
+    steps.push('Start the dev server: npm run dev');
     return steps;
   }
-
   async generateFromTemplate(
     templateId: string,
     parameters: Record<string, any>,
@@ -283,7 +350,9 @@ export class IntegrationGenerator {
         generatedFiles: [generatedFile],
         installedDependencies: [],
         modifiedFiles: [],
-        nextSteps: [`Generated file from template: ${templateId}`]
+        nextSteps: [`Generated file from template: ${templateId}`],
+        overwrittenFiles: [],
+        unchangedFiles: []
       };
     } catch (error) {
       logger.error(`Failed to generate from template ${templateId}:`, error);
@@ -318,5 +387,3 @@ export class IntegrationGenerator {
     return true;
   }
 }
-
-export const integrationGenerator = new IntegrationGenerator();

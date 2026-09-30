@@ -107,7 +107,7 @@ case "$1" in
         run_cli recommend --industry "$industry"
         ;;
     "validate")
-        run_cli validate --testnet
+        run_cli validate
         ;;
     "generate")
         type="${2:-pharmaceutical-compliance}"

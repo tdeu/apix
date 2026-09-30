@@ -4,6 +4,7 @@ import path from 'path';
 import { SupportedFramework, ProjectContext, TemplateSelection, GeneratedFile } from '../types';
 import { logger } from '../utils/logger';
 import { debugLogger } from '../utils/debug-logger';
+import { relativeImport } from '../generation/module-paths';
 
 export interface TemplateContext {
   projectName: string;
@@ -55,6 +56,27 @@ export class TemplateEngine {
     // Helper for conditional logic based on framework
     this.handlebars.registerHelper('ifFramework', function(this: any, framework: string, expected: string, options: any) {
       return framework === expected ? options.fn(this) : options.inverse(this);
+    });
+
+    // Relative import from the file being generated to another generated
+    // module, by logical id (see src/generation/module-paths.ts):
+    //   import { htsManager } from '{{importFrom "hts-operations"}}';
+    this.handlebars.registerHelper('importFrom', function(moduleId: string, options: Handlebars.HelperOptions) {
+      const root = options.data?.root ?? {};
+      const target = root.__modulePaths?.[moduleId];
+      if (!root.__outputPath || !target) {
+        throw new Error(
+          `importFrom "${moduleId}": ${!root.__outputPath ? '__outputPath' : `module "${moduleId}"`} ` +
+          'is not in the template context'
+        );
+      }
+      return relativeImport(root.__outputPath, target);
+    });
+
+    // Block helper comparing a value, e.g. {{#ifEquals quotesStyle 'single'}}...{{else}}...{{/ifEquals}}
+    // (Handlebars' built-in #if takes exactly one argument)
+    this.handlebars.registerHelper('ifEquals', function(this: unknown, value: unknown, expected: unknown, options: Handlebars.HelperOptions) {
+      return value === expected ? options.fn(this) : options.inverse(this);
     });
 
     // Helper for conditional logic based on language
@@ -150,20 +172,46 @@ export class TemplateEngine {
 
   async loadTemplates(): Promise<void> {
     try {
-      const categories = ['components', 'api', 'hooks', 'utils', 'configs', 'types', 'contexts'];
-      
+      const categories = ['components', 'api', 'hooks', 'utils', 'types'];
+
       for (const category of categories) {
         const categoryPath = path.join(this.templatesPath, category);
         if (await fs.pathExists(categoryPath)) {
           await this.loadCategoryTemplates(category, categoryPath);
         }
       }
-      
+
       logger.debug(`Loaded ${this.loadedTemplates.size} templates`);
+
+      const unloaded = await this.findUnloadedTemplates();
+      if (unloaded.length > 0) {
+        logger.warn(`${unloaded.length} template file(s) can't be loaded (templates must live in <category>/<framework>/): ${unloaded.join(', ')}`);
+      }
     } catch (error) {
       logger.error('Failed to load templates:', error);
       throw error;
     }
+  }
+
+  /**
+   * .hbs files under templates/ that loadTemplates() did not pick up, relative
+   * to the templates directory.
+   */
+  async findUnloadedTemplates(): Promise<string[]> {
+    const loaded = new Set(Array.from(this.loadedTemplates.values()).map(t => path.resolve(t.path)));
+    const walk = async (dir: string): Promise<string[]> => {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      const nested = await Promise.all(entries.map(entry => {
+        const full = path.join(dir, entry.name);
+        return entry.isDirectory() ? walk(full) : Promise.resolve([full]);
+      }));
+      return nested.flat();
+    };
+    if (!await fs.pathExists(this.templatesPath)) return [];
+    return (await walk(this.templatesPath))
+      .filter(file => file.endsWith('.hbs') && !loaded.has(path.resolve(file)))
+      .map(file => path.relative(this.templatesPath, file).split(path.sep).join('/'))
+      .sort();
   }
 
   private async loadCategoryTemplates(category: string, categoryPath: string): Promise<void> {

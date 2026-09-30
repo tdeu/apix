@@ -1,32 +1,34 @@
 {{!-- META: {"name": "useTokens Hook", "description": "React hook for token operations", "language": "typescript"} --}}
-{{#ifLanguage language "typescript"}}import { useState, useCallback } from 'react';
-import { 
-  CreateTokenParams, 
-  MintTokenParams, 
-  BurnTokenParams, 
-  TransferTokenParams, 
-  TokenAssociateParams, 
-  TokenInfo, 
-  TokenBalance, 
-  TokenOperationResult,
-  TransactionResult,
-  UseTokensReturn 
-} from '@/types/hedera';
+'use client';
 
+{{#ifLanguage language "typescript"}}import { useState, useCallback } from 'react';
+import {
+  CreateTokenParams,
+  MintTokenParams,
+  TransferTokenParams,
+  TokenInfo,
+  TokenOperationResult,
+  UseTokensReturn
+} from '{{importFrom "hedera-types"}}';
+
+/**
+ * Calls the generated API routes: /api/tokens/create, /api/tokens/mint,
+ * /api/tokens/transfer and /api/tokens/info. The operator key stays on the
+ * server; nothing here talks to Hedera directly.
+ */
 export const useTokens = (): UseTokensReturn => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleApiCall = useCallback(async <T>(
+  const handleApiCall = useCallback(async <T,>(
     apiCall: () => Promise<T>,
     errorMessage: string
   ): Promise<T> => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
-      const result = await apiCall();
-      return result;
+      return await apiCall();
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : errorMessage;
       setError(errorMsg);
@@ -36,187 +38,51 @@ export const useTokens = (): UseTokensReturn => {
     }
   }, []);
 
-  const createToken = useCallback(async (params: CreateTokenParams): Promise<TokenOperationResult> => {
-    return handleApiCall(async () => {
-      const response = await fetch('/api/tokens/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(params),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create token');
-      }
-
-      const data = await response.json();
-      return data.data;
-    }, 'Failed to create token');
-  }, [handleApiCall]);
-
-  const mintToken = useCallback(async (params: MintTokenParams): Promise<TokenOperationResult> => {
-    return handleApiCall(async () => {
-      const response = await fetch('/api/tokens/mint', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(params),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to mint tokens');
-      }
-
-      const data = await response.json();
-      return data.data;
-    }, 'Failed to mint tokens');
-  }, [handleApiCall]);
-
-  const burnToken = useCallback(async (params: BurnTokenParams): Promise<TokenOperationResult> => {
-    return handleApiCall(async () => {
-      const response = await fetch('/api/tokens/burn', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(params),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to burn tokens');
-      }
-
-      const data = await response.json();
-      return data.data;
-    }, 'Failed to burn tokens');
-  }, [handleApiCall]);
-
-  const transferToken = useCallback(async (params: TransferTokenParams): Promise<TokenOperationResult> => {
-    return handleApiCall(async () => {
-      const response = await fetch('/api/tokens/transfer', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(params),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to transfer tokens');
-      }
-
-      const data = await response.json();
-      return data.data;
-    }, 'Failed to transfer tokens');
-  }, [handleApiCall]);
-
-  const getTokenInfo = useCallback(async (tokenId: string): Promise<TokenInfo> => {
-    return handleApiCall(async () => {
-      const response = await fetch(`/api/tokens/${encodeURIComponent(tokenId)}/info`);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to get token info');
-      }
-
-      const data = await response.json();
-      return data.data;
-    }, 'Failed to get token information');
-  }, [handleApiCall]);
-
-  const getTokenBalances = useCallback(async (accountId: string): Promise<TokenBalance[]> => {
-    return handleApiCall(async () => {
-      const response = await fetch(`/api/tokens/balances/${encodeURIComponent(accountId)}`);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to get token balances');
-      }
-
-      const data = await response.json();
-      return data.data;
-    }, 'Failed to get token balances');
-  }, [handleApiCall]);
-
-  const associateToken = useCallback(async (params: TokenAssociateParams): Promise<TransactionResult> => {
-    return handleApiCall(async () => {
-      const response = await fetch('/api/tokens/associate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(params),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to associate token');
-      }
-
-      const data = await response.json();
-      return data.data;
-    }, 'Failed to associate token');
-  }, [handleApiCall]);
-
-  // Utility functions
-  const createFungibleToken = useCallback(async (
-    name: string,
-    symbol: string,
-    initialSupply: number = 1000000,
-    decimals: number = 8
-  ): Promise<TokenOperationResult> => {
-    return createToken({
-      name,
-      symbol,
-      initialSupply,
-      decimals,
-      tokenType: 'FUNGIBLE_COMMON' as any,
-      supplyType: 'FINITE' as any
+  const post = useCallback(async <T,>(route: string, body: unknown, errorMessage: string): Promise<T> => {
+    const response = await fetch(route, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
-  }, [createToken]);
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.details || payload.error || errorMessage);
+    }
+    return payload.data as T;
+  }, []);
 
-  const createNFTCollection = useCallback(async (
-    name: string,
-    symbol: string,
-    maxSupply?: number
-  ): Promise<TokenOperationResult> => {
-    return createToken({
-      name,
-      symbol,
-      decimals: 0,
-      initialSupply: 0,
-      maxSupply,
-      tokenType: 'NON_FUNGIBLE_UNIQUE' as any,
-      supplyType: maxSupply ? 'FINITE' as any : 'INFINITE' as any
-    });
-  }, [createToken]);
+  const createToken = useCallback((params: CreateTokenParams) =>
+    handleApiCall(() => post<TokenOperationResult>('/api/tokens/create', params, 'Failed to create token'), 'Failed to create token'),
+  [handleApiCall, post]);
 
-  // Clear error function
+  const mintToken = useCallback((params: MintTokenParams) =>
+    handleApiCall(() => post<TokenOperationResult>('/api/tokens/mint', params, 'Failed to mint tokens'), 'Failed to mint tokens'),
+  [handleApiCall, post]);
+
+  const transferToken = useCallback((params: TransferTokenParams) =>
+    handleApiCall(() => post<TokenOperationResult>('/api/tokens/transfer', params, 'Failed to transfer tokens'), 'Failed to transfer tokens'),
+  [handleApiCall, post]);
+
+  const getTokenInfo = useCallback((tokenId: string) =>
+    handleApiCall(async () => {
+      const response = await fetch(`/api/tokens/info?tokenId=${encodeURIComponent(tokenId)}`);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.details || payload.error || 'Failed to get token info');
+      }
+      return payload.data as TokenInfo;
+    }, 'Failed to get token information'),
+  [handleApiCall]);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
   return {
-    // Core operations
     createToken,
     mintToken,
-    burnToken,
     transferToken,
     getTokenInfo,
-    getTokenBalances,
-    associateToken,
-
-    // Utility operations
-    createFungibleToken,
-    createNFTCollection,
-
-    // State
     isLoading,
     error,
     clearError,
@@ -224,6 +90,11 @@ export const useTokens = (): UseTokensReturn => {
 };
 {{else}}import { useState, useCallback } from 'react';
 
+/**
+ * Calls the generated API routes: /api/tokens/create, /api/tokens/mint,
+ * /api/tokens/transfer and /api/tokens/info. The operator key stays on the
+ * server; nothing here talks to Hedera directly.
+ */
 export const useTokens = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -231,10 +102,9 @@ export const useTokens = () => {
   const handleApiCall = useCallback(async (apiCall, errorMessage) => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
-      const result = await apiCall();
-      return result;
+      return await apiCall();
     } catch (err) {
       const errorMsg = err.message || errorMessage;
       setError(errorMsg);
@@ -244,72 +114,45 @@ export const useTokens = () => {
     }
   }, []);
 
-  const createToken = useCallback(async (params) => {
-    return handleApiCall(async () => {
-      const response = await fetch('/api/tokens/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(params),
-      });
+  const post = useCallback(async (route, body, errorMessage) => {
+    const response = await fetch(route, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.details || payload.error || errorMessage);
+    }
+    return payload.data;
+  }, []);
 
+  const createToken = useCallback((params) =>
+    handleApiCall(() => post('/api/tokens/create', params, 'Failed to create token'), 'Failed to create token'),
+  [handleApiCall, post]);
+
+  const mintToken = useCallback((params) =>
+    handleApiCall(() => post('/api/tokens/mint', params, 'Failed to mint tokens'), 'Failed to mint tokens'),
+  [handleApiCall, post]);
+
+  const transferToken = useCallback((params) =>
+    handleApiCall(() => post('/api/tokens/transfer', params, 'Failed to transfer tokens'), 'Failed to transfer tokens'),
+  [handleApiCall, post]);
+
+  const getTokenInfo = useCallback((tokenId) =>
+    handleApiCall(async () => {
+      const response = await fetch(`/api/tokens/info?tokenId=${encodeURIComponent(tokenId)}`);
+      const payload = await response.json();
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create token');
+        throw new Error(payload.details || payload.error || 'Failed to get token info');
       }
+      return payload.data;
+    }, 'Failed to get token information'),
+  [handleApiCall]);
 
-      const data = await response.json();
-      return data.data;
-    }, 'Failed to create token');
-  }, [handleApiCall]);
-
-  const mintToken = useCallback(async (params) => {
-    return handleApiCall(async () => {
-      const response = await fetch('/api/tokens/mint', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to mint tokens');
-      }
-
-      return (await response.json()).data;
-    }, 'Failed to mint tokens');
-  }, [handleApiCall]);
-
-  const transferToken = useCallback(async (params) => {
-    return handleApiCall(async () => {
-      const response = await fetch('/api/tokens/transfer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to transfer tokens');
-      }
-
-      return (await response.json()).data;
-    }, 'Failed to transfer tokens');
-  }, [handleApiCall]);
-
-  const getTokenInfo = useCallback(async (tokenId) => {
-    return handleApiCall(async () => {
-      const response = await fetch(`/api/tokens/${encodeURIComponent(tokenId)}/info`);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to get token info');
-      }
-
-      return (await response.json()).data;
-    }, 'Failed to get token information');
-  }, [handleApiCall]);
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
 
   return {
     createToken,
@@ -317,7 +160,8 @@ export const useTokens = () => {
     transferToken,
     getTokenInfo,
     isLoading,
-    error
+    error,
+    clearError,
   };
 };
 {{/ifLanguage}}

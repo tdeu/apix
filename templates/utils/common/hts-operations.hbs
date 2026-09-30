@@ -1,11 +1,11 @@
 {{!-- META: {"name": "HTS Operations", "description": "Hedera Token Service operations utility", "language": "typescript"} --}}
-{{#ifLanguage language "typescript"}}import { 
+{{#ifFramework framework "next.js"}}import 'server-only';
+{{/ifFramework}}{{#ifLanguage language "typescript"}}import {
   Client, 
   TokenCreateTransaction, 
   TokenMintTransaction,
   TokenBurnTransaction,
   TokenAssociateTransaction,
-  TokenTransferTransaction,
   TokenInfoQuery,
   TransferTransaction,
   Hbar,
@@ -17,7 +17,7 @@
   CustomFixedFee,
   CustomFractionalFee
 } from '@hashgraph/sdk';
-import { createDefaultClient } from './client';
+import { createDefaultClient } from '{{importFrom "hedera-client"}}';
 
 export interface CreateTokenParams {
   name: string;
@@ -66,16 +66,22 @@ export interface MintTokenParams {
 
 export interface TransferTokenParams {
   tokenId: string;
-  fromAccountId: string;
+  /** Defaults to the operator account; the generated routes never set it */
+  fromAccountId?: string;
   toAccountId: string;
   amount: number;
 }
 
 export class HTSManager {
-  private client: Client;
+  private readonly injectedClient?: Client;
 
   constructor(client?: Client) {
-    this.client = client || createDefaultClient().getClient();
+    this.injectedClient = client;
+  }
+
+  // Created on first use, never at import time (so `next build` needs no credentials)
+  private get client(): Client {
+    return this.injectedClient ?? createDefaultClient().getClient();
   }
 
   /**
@@ -98,7 +104,8 @@ export class HTSManager {
         pauseKey,
         customFees = [],
         tokenType = TokenType.FungibleCommon,
-        supplyType = TokenSupplyType.Finite,
+        // FINITE only with a cap; FINITE without maxSupply is rejected by the network
+        supplyType = maxSupply ? TokenSupplyType.Finite : TokenSupplyType.Infinite,
         freezeDefault = false
       } = params;
 
@@ -115,8 +122,15 @@ export class HTSManager {
         transaction.setMaxSupply(maxSupply);
       }
 
+      // The server's operator account (HEDERA_ACCOUNT_ID) is the treasury and
+      // holds the supply key unless server code says otherwise, so the
+      // generated mint route works
+      const operatorAccountId = this.client.operatorAccountId;
+      const operatorPublicKey = this.client.operatorPublicKey;
       if (treasuryAccountId) {
         transaction.setTreasuryAccountId(AccountId.fromString(treasuryAccountId));
+      } else if (operatorAccountId) {
+        transaction.setTreasuryAccountId(operatorAccountId);
       }
 
       if (adminKey) {
@@ -125,6 +139,8 @@ export class HTSManager {
 
       if (supplyKey) {
         transaction.setSupplyKey(supplyKey);
+      } else if (operatorPublicKey) {
+        transaction.setSupplyKey(operatorPublicKey);
       }
 
       if (freezeKey) {
@@ -243,10 +259,15 @@ export class HTSManager {
    */
   async transferToken(params: TransferTokenParams): Promise<{ transactionId: string }> {
     try {
-      const { tokenId, fromAccountId, toAccountId, amount } = params;
+      const { tokenId, toAccountId, amount } = params;
+      // Only the operator's key signs, so by default the operator sends
+      const from = params.fromAccountId ? AccountId.fromString(params.fromAccountId) : this.client.operatorAccountId;
+      if (!from) {
+        throw new Error('No sender: the Hedera client has no operator account');
+      }
 
       const transaction = new TransferTransaction()
-        .addTokenTransfer(TokenId.fromString(tokenId), AccountId.fromString(fromAccountId), -amount)
+        .addTokenTransfer(TokenId.fromString(tokenId), from, -amount)
         .addTokenTransfer(TokenId.fromString(tokenId), AccountId.fromString(toAccountId), amount);
 
       const txResponse = await transaction.execute(this.client);
@@ -277,18 +298,22 @@ export class HTSManager {
         symbol: tokenInfo.symbol,
         decimals: tokenInfo.decimals,
         totalSupply: tokenInfo.totalSupply.toString(),
-        treasuryAccountId: tokenInfo.treasuryAccountId.toString(),
+        treasuryAccountId: tokenInfo.treasuryAccountId?.toString() ?? '',
         adminKey: tokenInfo.adminKey?.toString(),
         supplyKey: tokenInfo.supplyKey?.toString(),
         freezeKey: tokenInfo.freezeKey?.toString(),
         wipeKey: tokenInfo.wipeKey?.toString(),
         kycKey: tokenInfo.kycKey?.toString(),
         pauseKey: tokenInfo.pauseKey?.toString(),
-        tokenType: tokenInfo.tokenType.toString(),
-        supplyType: tokenInfo.supplyType.toString(),
-        maxSupply: tokenInfo.maxSupply.toString(),
+        tokenType: tokenInfo.tokenType?.toString() ?? '',
+        supplyType: tokenInfo.supplyType?.toString() ?? '',
+        maxSupply: tokenInfo.maxSupply?.toString() ?? '0',
         freezeDefault: tokenInfo.defaultFreezeStatus === true,
-        customFees: tokenInfo.customFees.map(fee => fee.toJSON())
+        // CustomFee has no JSON form in the SDK: report its kind and collector
+        customFees: tokenInfo.customFees.map(fee => ({
+          type: fee instanceof CustomFixedFee ? 'fixed' : fee instanceof CustomFractionalFee ? 'fractional' : 'royalty',
+          feeCollectorAccountId: fee.feeCollectorAccountId?.toString() ?? null
+        }))
       };
     } catch (error) {
       console.error('Error getting token info:', error);
@@ -326,8 +351,7 @@ export class HTSManager {
       symbol,
       initialSupply,
       decimals,
-      tokenType: TokenType.FungibleCommon,
-      supplyType: TokenSupplyType.Finite
+      tokenType: TokenType.FungibleCommon
     });
   }
 
@@ -361,7 +385,6 @@ export default HTSManager;
   TokenMintTransaction,
   TokenBurnTransaction,
   TokenAssociateTransaction,
-  TokenTransferTransaction,
   TokenInfoQuery,
   TransferTransaction,
   Hbar,
@@ -371,11 +394,16 @@ export default HTSManager;
   TokenSupplyType,
   TokenType
 } = require('@hashgraph/sdk');
-const { createDefaultClient } = require('./client');
+const { createDefaultClient } = require('{{importFrom "hedera-client"}}');
 
 class HTSManager {
   constructor(client) {
-    this.client = client || createDefaultClient().getClient();
+    this.injectedClient = client;
+  }
+
+  // Created on first use, never at import time
+  get client() {
+    return this.injectedClient || createDefaultClient().getClient();
   }
 
   async createToken(params) {

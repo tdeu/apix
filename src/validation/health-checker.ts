@@ -4,6 +4,7 @@ import { execSync } from 'child_process';
 import chalk from 'chalk';
 import { logger } from '../utils/logger';
 import { ProjectContext } from '../types';
+import { EnvironmentValidator, HEDERA_CREDENTIALS_HELP } from '../utils/environment-validator';
 
 export interface HealthCheckResult {
   status: 'pass' | 'fail' | 'warning';
@@ -19,6 +20,20 @@ export interface HealthCheckReport {
   score: number; // 0-100
   criticalIssues: number;
   warnings: number;
+}
+
+export type HealthAreaStatus = 'ok' | 'not configured' | 'error';
+
+export interface HealthArea {
+  name: string;
+  status: HealthAreaStatus;
+  message: string;
+  hint?: string;
+}
+
+// Values copied unchanged from .env.example, e.g. "sk-ant-..." or "your-...-id"
+function looksLikePlaceholder(value: string): boolean {
+  return /your-|\.\.\.|x{4,}/i.test(value);
 }
 
 export class HealthChecker {
@@ -40,8 +55,6 @@ export class HealthChecker {
     // Hedera-specific checks
     checks['hedera-sdk'] = await this.checkHederaSDK();
     checks['environment'] = await this.checkEnvironmentConfiguration();
-    checks['blockchain-connectivity'] = await this.checkBlockchainConnectivity();
-    checks['live-validation'] = await this.checkLiveBlockchainValidation();
 
     // Integration-specific checks
     checks['hts-integration'] = await this.checkHTSIntegration();
@@ -768,30 +781,6 @@ export class HealthChecker {
     }
   }
 
-  // Quick health check for fast validation
-  async runQuickHealthCheck(): Promise<{ healthy: boolean; criticalIssues: string[] }> {
-    const criticalIssues: string[] = [];
-
-    // Check only critical items
-    const checks = [
-      await this.checkProjectStructure(),
-      await this.checkPackageJson(),
-      await this.checkDependencies(),
-      await this.checkHederaSDK()
-    ];
-
-    checks.forEach((check, index) => {
-      if (check.status === 'fail') {
-        criticalIssues.push(check.message);
-      }
-    });
-
-    return {
-      healthy: criticalIssues.length === 0,
-      criticalIssues
-    };
-  }
-
   // Format health report for display
   formatHealthReport(report: HealthCheckReport): string {
     const lines: string[] = [];
@@ -838,248 +827,147 @@ export class HealthChecker {
   }
 
   /**
-   * Check blockchain connectivity
+   * One status per area, for `apix health`. Needs no keys and makes no
+   * network calls: credentials are checked for presence and format only.
    */
-  private async checkBlockchainConnectivity(): Promise<HealthCheckResult> {
+  async checkAreas(): Promise<HealthArea[]> {
+    return [
+      await this.checkProjectArea(),
+      await this.checkDependenciesArea(),
+      await this.checkSdkArea(),
+      this.checkHederaCredentialsArea(),
+      this.checkAIKeyArea(),
+      this.checkWalletConnectArea()
+    ];
+  }
+
+  private async readPackageJson(): Promise<any | null> {
+    const packagePath = path.join(this.context.rootPath, 'package.json');
+    if (!await fs.pathExists(packagePath)) return null;
+    return fs.readJson(packagePath);
+  }
+
+  private async checkProjectArea(): Promise<HealthArea> {
     try {
-      const { hederaOperations } = await import('../services/hedera-operations');
-
-      // Try to initialize the service
-      await hederaOperations.initialize();
-
-      // Check if we have real credentials
-      const hasRealCredentials = process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY;
-
-      if (hasRealCredentials) {
-        // Try to get account balance to test connectivity
-        const accountId = hederaOperations.getCurrentAccountId();
-        if (accountId) {
-          return {
-            status: 'pass',
-            message: `Connected to Hedera ${hederaOperations.getNetwork()} with account ${accountId}`,
-            details: ['Live blockchain connectivity verified']
-          };
-        } else {
-          return {
-            status: 'warning',
-            message: 'Hedera service initialized but no account ID available',
-            fixSuggestion: 'Check HEDERA_ACCOUNT_ID environment variable'
-          };
-        }
-      } else {
-        return {
-          status: 'warning',
-          message: 'Using test account mode - no live blockchain credentials',
-          details: ['Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY for live connectivity'],
-          fixSuggestion: 'Add real Hedera credentials to .env file for production use'
-        };
+      const packageJson = await this.readPackageJson();
+      if (!packageJson) {
+        return { name: 'Project', status: 'error', message: `No package.json in ${this.context.rootPath}`, hint: 'Run apix from your project root' };
       }
-
+      return { name: 'Project', status: 'ok', message: `${this.context.framework} project (${this.context.language})` };
     } catch (error: any) {
-      return {
-        status: 'fail',
-        message: 'Failed to connect to Hedera blockchain',
-        details: [`Error: ${error.message}`],
-        fixSuggestion: 'Check network connectivity and Hedera service configuration'
-      };
+      return { name: 'Project', status: 'error', message: `Cannot read package.json: ${error.message}` };
     }
   }
 
-  /**
-   * Check live blockchain validation capabilities
-   */
-  private async checkLiveBlockchainValidation(): Promise<HealthCheckResult> {
+  private async checkDependenciesArea(): Promise<HealthArea> {
     try {
-      const { hederaOperations } = await import('../services/hedera-operations');
-
-      // Check if service is in fallback mode
-      const isFallbackMode = hederaOperations.isFallbackMode();
-      const network = hederaOperations.getNetwork();
-      const capabilities = hederaOperations.getCapabilities();
-
-      if (isFallbackMode) {
-        return {
-          status: 'warning',
-          message: 'Live blockchain validation running in mock mode',
-          details: [
-            'Token operations will be simulated',
-            'No real blockchain transactions will be performed',
-            'Suitable for development and testing'
-          ],
-          fixSuggestion: 'Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY for live validation'
-        };
-      } else {
-        // Test basic blockchain operations
-        const validationResults = [];
-
-        try {
-          // Test token creation capability (simulate parameters)
-          const mockTokenOptions = {
-            name: 'TestToken',
-            symbol: 'TEST',
-            decimals: 8,
-            initialSupply: 1000000
-          };
-
-          // This would be a dry run or validation check
-          validationResults.push('✓ Token creation parameters validated');
-          validationResults.push('✓ Account permissions verified');
-          validationResults.push(`✓ Connected to ${network} network`);
-
-          return {
-            status: 'pass',
-            message: 'Live blockchain validation fully operational',
-            details: validationResults
-          };
-
-        } catch (validationError: any) {
-          return {
-            status: 'warning',
-            message: 'Live blockchain validation partially functional',
-            details: [
-              ...validationResults,
-              `⚠ Validation issue: ${validationError.message}`
-            ],
-            fixSuggestion: 'Check account permissions and network configuration'
-          };
-        }
+      const packageJson = await this.readPackageJson();
+      if (!packageJson) {
+        return { name: 'Dependencies', status: 'error', message: 'No package.json, so no dependencies to check' };
       }
-
+      const declared = Object.keys({ ...packageJson.dependencies, ...packageJson.devDependencies });
+      if (declared.length === 0) {
+        return { name: 'Dependencies', status: 'not configured', message: 'No dependencies declared' };
+      }
+      if (!await fs.pathExists(path.join(this.context.rootPath, 'node_modules'))) {
+        return { name: 'Dependencies', status: 'error', message: `${declared.length} declared but not installed`, hint: 'Run npm install' };
+      }
+      return { name: 'Dependencies', status: 'ok', message: `${declared.length} declared, node_modules present` };
     } catch (error: any) {
-      return {
-        status: 'fail',
-        message: 'Live blockchain validation system unavailable',
-        details: [`Error: ${error.message}`],
-        fixSuggestion: 'Check Hedera operations service and dependencies'
-      };
+      return { name: 'Dependencies', status: 'error', message: `Cannot read package.json: ${error.message}` };
     }
   }
 
-  /**
-   * Perform comprehensive blockchain integration test
-   */
-  async performLiveIntegrationTest(): Promise<{
-    success: boolean;
-    results: { [key: string]: any };
-    recommendations: string[];
-  }> {
-    const results: { [key: string]: any } = {};
-    const recommendations: string[] = [];
-
+  private async checkSdkArea(): Promise<HealthArea> {
     try {
-      const { hederaOperations } = await import('../services/hedera-operations');
-
-      // Test 1: Service Initialization
-      results.initialization = {
-        success: true,
-        message: 'Hedera operations service initialized successfully'
-      };
-
-      // Test 2: Network Connectivity
-      const network = hederaOperations.getNetwork();
-      const accountId = hederaOperations.getCurrentAccountId();
-
-      results.connectivity = {
-        success: !!accountId,
-        network,
-        accountId,
-        message: accountId
-          ? `Connected to ${network} with account ${accountId}`
-          : 'Connected in test mode'
-      };
-
-      // Test 3: Mock Token Creation (safe test)
-      try {
-        const tokenResult = await hederaOperations.createToken({
-          name: 'HealthCheck',
-          symbol: 'HC',
-          decimals: 8,
-          initialSupply: 1
-        });
-
-        results.tokenCreation = {
-          success: tokenResult.success,
-          message: tokenResult.success ? 'Token creation test passed' : 'Token creation test failed',
-          tokenId: tokenResult.tokenId,
-          transactionId: tokenResult.transactionId,
-          isMock: !process.env.HEDERA_ACCOUNT_ID
-        };
-
-        if (tokenResult.success && tokenResult.tokenId) {
-          recommendations.push('Token creation functionality verified');
-        }
-
-      } catch (tokenError: any) {
-        results.tokenCreation = {
-          success: false,
-          message: `Token creation test failed: ${tokenError.message}`,
-          error: tokenError.message
-        };
-        recommendations.push('Review token creation configuration and permissions');
+      const packageJson = await this.readPackageJson();
+      const declared = packageJson?.dependencies?.['@hashgraph/sdk'] || packageJson?.devDependencies?.['@hashgraph/sdk'];
+      if (!declared) {
+        return { name: 'Hedera SDK', status: 'not configured', message: '@hashgraph/sdk is not a dependency', hint: 'Run: apix add hts' };
       }
-
-      // Test 4: Wallet Integration Availability
-      try {
-        const { walletIntegration } = await import('../services/wallet-integration');
-        const supportedWallets = await walletIntegration.getSupportedWallets();
-
-        results.walletIntegration = {
-          success: true,
-          message: `${supportedWallets.length} wallet integrations available`,
-          wallets: supportedWallets.map(w => ({
-            name: w.name,
-            installed: w.isInstalled,
-            available: w.isAvailable
-          }))
-        };
-
-        const installedWallets = supportedWallets.filter(w => w.isInstalled);
-        if (installedWallets.length > 0) {
-          recommendations.push(`${installedWallets.length} wallet(s) ready for integration`);
-        } else {
-          recommendations.push('Consider installing HashPack or Blade wallet for enhanced user experience');
-        }
-
-      } catch (walletError: any) {
-        results.walletIntegration = {
-          success: false,
-          message: `Wallet integration test failed: ${walletError.message}`,
-          error: walletError.message
-        };
+      const installedPath = path.join(this.context.rootPath, 'node_modules', '@hashgraph', 'sdk', 'package.json');
+      if (!await fs.pathExists(installedPath)) {
+        return { name: 'Hedera SDK', status: 'error', message: `@hashgraph/sdk ${declared} declared but not installed`, hint: 'Run npm install' };
       }
-
-      // Overall success assessment
-      const successfulTests = Object.values(results).filter(r => r.success).length;
-      const totalTests = Object.keys(results).length;
-      const success = successfulTests >= totalTests * 0.75; // 75% success rate
-
-      if (success) {
-        recommendations.push('🎉 Hedera integration is ready for production use');
-      } else {
-        recommendations.push('🔧 Address the failing tests before production deployment');
-      }
-
-      return {
-        success,
-        results,
-        recommendations
-      };
-
+      const installed = (await fs.readJson(installedPath)).version;
+      return { name: 'Hedera SDK', status: 'ok', message: `@hashgraph/sdk ${installed} installed (declared ${declared})` };
     } catch (error: any) {
-      return {
-        success: false,
-        results: {
-          error: {
-            success: false,
-            message: `Integration test failed: ${error.message}`,
-            error: error.message
-          }
-        },
-        recommendations: [
-          'Check system dependencies and configuration',
-          'Verify Hedera SDK installation and environment variables'
-        ]
-      };
+      return { name: 'Hedera SDK', status: 'error', message: `Cannot check @hashgraph/sdk: ${error.message}` };
     }
+  }
+
+  private checkHederaCredentialsArea(): HealthArea {
+    if (!EnvironmentValidator.hasHederaCredentials()) {
+      return { name: 'Hedera credentials', status: 'not configured', message: 'HEDERA_ACCOUNT_ID / HEDERA_PRIVATE_KEY not set', hint: HEDERA_CREDENTIALS_HELP.split('\n').join(' ') };
+    }
+    try {
+      const { accountId } = EnvironmentValidator.requireHederaCredentials();
+      const network = process.env.HEDERA_NETWORK || 'testnet';
+      return { name: 'Hedera credentials', status: 'ok', message: `${accountId} on ${network} (format checked, not verified against the network)` };
+    } catch (error: any) {
+      return { name: 'Hedera credentials', status: 'error', message: error.message.split('\n').slice(0, -2).join(' ').trim() };
+    }
+  }
+
+  private checkAIKeyArea(): HealthArea {
+    const providers = [
+      process.env.ANTHROPIC_API_KEY ? 'ANTHROPIC_API_KEY' : null,
+      process.env.OPENAI_API_KEY ? 'OPENAI_API_KEY' : null
+    ].filter((name): name is string => name !== null);
+    if (providers.length === 0) {
+      return { name: 'AI key', status: 'not configured', message: 'ANTHROPIC_API_KEY / OPENAI_API_KEY not set', hint: 'Needed for chat, generate, recommend, explain, compare, confidence and debug (and the experimental compose)' };
+    }
+    const placeholders = providers.filter(name => looksLikePlaceholder(process.env[name]!));
+    if (placeholders.length > 0) {
+      return { name: 'AI key', status: 'error', message: `${placeholders.join(', ')} still has the .env.example placeholder value` };
+    }
+    return { name: 'AI key', status: 'ok', message: `${providers.join(', ')} set (not verified)` };
+  }
+
+  private checkWalletConnectArea(): HealthArea {
+    const projectId = process.env.WALLETCONNECT_PROJECT_ID;
+    if (!projectId) {
+      return { name: 'WalletConnect project ID', status: 'not configured', message: 'WALLETCONNECT_PROJECT_ID not set', hint: 'Get one at https://cloud.reown.com' };
+    }
+    if (looksLikePlaceholder(projectId)) {
+      return { name: 'WalletConnect project ID', status: 'error', message: 'WALLETCONNECT_PROJECT_ID still has the .env.example placeholder value', hint: 'Get one at https://cloud.reown.com' };
+    }
+    return { name: 'WalletConnect project ID', status: 'ok', message: 'WALLETCONNECT_PROJECT_ID set (not verified)' };
+  }
+
+  /**
+   * Overall readiness line derived from the areas.
+   */
+  static summarizeAreas(areas: HealthArea[]): string {
+    if (areas.some(area => area.status === 'error')) {
+      return 'Not ready: fix the errors above';
+    }
+    const hedera = areas.find(area => area.name === 'Hedera credentials');
+    return hedera?.status === 'ok'
+      ? 'Ready for blockchain operations'
+      : 'Ready for local use (blockchain operations need Hedera credentials)';
+  }
+
+  /**
+   * `apix health` exits 0 by default; with --strict, 1 unless every area is ok.
+   */
+  static exitCode(areas: HealthArea[], strict: boolean): number {
+    return strict && areas.some(area => area.status !== 'ok') ? 1 : 0;
+  }
+
+  static formatAreas(areas: HealthArea[]): string {
+    const icons: Record<HealthAreaStatus, string> = { 'ok': '✅', 'not configured': '⚪', 'error': '❌' };
+    const colors: Record<HealthAreaStatus, (text: string) => string> = { 'ok': chalk.green, 'not configured': chalk.gray, 'error': chalk.red };
+    const width = Math.max(...areas.map(area => area.name.length));
+    const lines = [chalk.bold('\nHealth by area')];
+    for (const area of areas) {
+      lines.push(`${icons[area.status]} ${area.name.padEnd(width)}  ${colors[area.status](area.status.padEnd(14))} ${area.message}`);
+      if (area.hint && area.status !== 'ok') {
+        lines.push(chalk.gray(`   ${' '.repeat(width)}  ${area.hint}`));
+      }
+    }
+    lines.push('');
+    lines.push(chalk.bold(HealthChecker.summarizeAreas(areas)));
+    return lines.join('\n');
   }
 }

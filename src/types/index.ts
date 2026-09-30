@@ -1,4 +1,5 @@
 // Core Type Definitions
+import type { ProjectLayout } from '../analysis/project-layout';
 
 // CLI Command Options
 export interface AnalysisOptions {
@@ -15,6 +16,9 @@ export interface IntegrationOptions {
   provider?: string;
   type?: string;
   force?: boolean;
+  createToken?: boolean;
+  /** Skip the mainnet spending confirmation */
+  yes?: boolean;
 }
 
 // Project Analysis Types
@@ -99,6 +103,8 @@ export interface IntegrationPlan {
   newFiles: GeneratedFile[];
   modifications: FileModification[];
   configuration: ConfigurationUpdate[];
+  /** Project layout the output paths were computed for (set by the planner) */
+  layout?: ProjectLayout;
 }
 
 export interface TemplateSelection {
@@ -170,7 +176,6 @@ export interface WalletConfiguration {
 export type WalletProvider = 
   | 'hashpack'
   | 'blade'
-  | 'walletconnect'
   | 'metamask'
   | 'kabila';
 

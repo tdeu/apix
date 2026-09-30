@@ -1,6 +1,5 @@
-import { ChatOpenAI } from '@langchain/openai';
-import { ChatAnthropic } from '@langchain/anthropic';
-import { PromptTemplate } from '@langchain/core/prompts';
+import { AIClient, createAIClient } from '../provider';
+import { parseAIJson } from '../json';
 import { z } from 'zod';
 import { logger } from '../../utils/logger';
 import { 
@@ -22,14 +21,13 @@ import {
  * offers fallback strategies, and guides users toward successful outcomes.
  */
 export class LimitationHandler {
-  private primaryLLM!: ChatOpenAI;
-  private secondaryLLM!: ChatAnthropic;
-  private assessmentPrompt!: PromptTemplate;
+  private client: AIClient | null;
+  private readonly command?: string;
   private capabilityKnowledgeBase!: Map<string, CapabilityAssessment>;
 
-  constructor() {
-    this.initializeLLMs();
-    this.initializePrompts();
+  constructor(options: { client?: AIClient; command?: string } = {}) {
+    this.client = options.client ?? null;
+    this.command = options.command;
     this.initializeCapabilityKnowledge();
   }
 
@@ -40,7 +38,7 @@ export class LimitationHandler {
     requirement: string,
     classification?: EnterpriseClassification
   ): Promise<LimitationAssessment> {
-    try {
+    {
       logger.info('Assessing AI limitations for requirement');
 
       // Analyze requirement complexity and scope
@@ -65,11 +63,17 @@ export class LimitationHandler {
       };
 
       return assessment;
-
-    } catch (error) {
-      logger.error('Error assessing limitations:', error);
-      return this.createFallbackAssessment(requirement);
     }
+  }
+
+  /** Throws AIUnavailableError when no AI key is configured */
+  private getClient(): AIClient {
+    this.client ??= createAIClient({ tier: 'default', command: this.command });
+    return this.client;
+  }
+
+  private async ask(prompt: string): Promise<string> {
+    return this.getClient().complete({ prompt, maxTokens: 2000, temperature: 0.3 });
   }
 
   /**
@@ -124,8 +128,7 @@ export class LimitationHandler {
       "unknownAreas": ["area1", "area2"]
     }`;
 
-    const response = await this.primaryLLM.invoke([{ role: 'user', content: complexityPrompt }]);
-    return this.parseComplexityAnalysis(response.content as string);
+    return parseAIJson<ComplexityAnalysis>(this.getClient().provider, await this.ask(complexityPrompt), 'complexity analysis');
   }
 
   /**
@@ -185,8 +188,7 @@ export class LimitationHandler {
 
     Return JSON array of capability assessments.`;
 
-    const response = await this.primaryLLM.invoke([{ role: 'user', content: capabilityPrompt }]);
-    return this.parseCapabilityAreas(response.content as string);
+    return parseAIJson<CapabilityArea[]>(this.getClient().provider, await this.ask(capabilityPrompt), 'capability assessment');
   }
 
   /**
@@ -201,7 +203,7 @@ export class LimitationHandler {
       return [{
         approach: 'template-based',
         description: 'Use proven templates with AI enhancements',
-        pros: ['Fast implementation', 'High reliability', 'Production-ready'],
+        pros: ['Fast implementation', 'Tested templates', 'Builds as generated'],
         cons: ['Limited customization'],
         estimatedEffort: '1-2 days',
         successProbability: 0.95
@@ -243,8 +245,7 @@ export class LimitationHandler {
 
     Return array of fallback options in JSON format.`;
 
-    const response = await this.primaryLLM.invoke([{ role: 'user', content: fallbackPrompt }]);
-    return this.parseFallbackStrategies(response.content as string);
+    return parseAIJson<FallbackOption[]>(this.getClient().provider, await this.ask(fallbackPrompt), 'list of alternative approaches');
   }
 
   /**
@@ -344,12 +345,10 @@ export class LimitationHandler {
   async explainCapabilities(): Promise<CapabilityExplanation> {
     return {
       strengths: [
-        'Enterprise template library with 20+ industry-specific patterns',
-        'AI code composition for custom business logic generation',
-        'Live Hedera network validation and testing',
-        'Multi-framework support (Next.js, React, Vue, Angular)',
-        'Intelligent parameter generation and optimization',
-        'Comprehensive error handling and validation'
+        'Hedera integrations (HTS, HCS, smart contracts, wallet) generated for Next.js (App Router, TypeScript)',
+        'Wallet integration on React/Vite (experimental)',
+        'AI explanations, comparisons and assessments (needs an Anthropic or OpenAI key)',
+        'Input validation and clear errors before anything is sent to Hedera'
       ],
       limitations: [
         'Complex mathematical algorithms requiring domain expertise',
@@ -418,49 +417,6 @@ export class LimitationHandler {
   }
 
   /**
-   * Initialize LLM instances
-   */
-  private initializeLLMs(): void {
-    if (process.env.OPENAI_API_KEY) {
-      this.primaryLLM = new ChatOpenAI({
-        modelName: process.env.DEFAULT_LLM || 'gpt-4o-mini',
-        temperature: 0.3, // Lower temperature for more consistent assessments
-        maxTokens: 2000,
-        apiKey: process.env.OPENAI_API_KEY
-      });
-    }
-
-    if (process.env.ANTHROPIC_API_KEY) {
-      this.secondaryLLM = new ChatAnthropic({
-        modelName: 'claude-3-sonnet-20240229',
-        temperature: 0.3,
-        maxTokens: 2000,
-        apiKey: process.env.ANTHROPIC_API_KEY
-      });
-    }
-  }
-
-  /**
-   * Initialize assessment prompts
-   */
-  private initializePrompts(): void {
-    this.assessmentPrompt = PromptTemplate.fromTemplate(`
-      Assess AI limitations for this enterprise requirement:
-      
-      Requirement: {requirement}
-      Classification: {classification}
-      
-      Provide honest assessment of:
-      1. Areas of high confidence (>80%)
-      2. Areas of medium confidence (50-80%)
-      3. Areas of low confidence (<50%)
-      4. Recommended approach and fallback strategies
-      
-      Be transparent about limitations while providing constructive guidance.
-    `);
-  }
-
-  /**
    * Initialize capability knowledge base
    */
   private initializeCapabilityKnowledge(): void {
@@ -488,123 +444,6 @@ export class LimitationHandler {
     ]);
   }
 
-  /**
-   * Parse complexity analysis from LLM response
-   */
-  private parseComplexityAnalysis(response: string): ComplexityAnalysis {
-    try {
-      return JSON.parse(response);
-    } catch (error) {
-      logger.warn('Failed to parse complexity analysis, using fallback');
-      return {
-        technicalComplexity: { score: 3, reasoning: 'Moderate technical complexity assumed' },
-        businessLogicComplexity: { score: 3, reasoning: 'Moderate business logic complexity assumed' },
-        domainKnowledgeComplexity: { score: 3, reasoning: 'Moderate domain knowledge required' },
-        noveltyScore: { score: 3, reasoning: 'Moderate novelty assumed' },
-        overallComplexity: 3.0,
-        primaryChallenges: ['Integration complexity', 'Business logic implementation'],
-        knownPatterns: ['Standard enterprise patterns'],
-        unknownAreas: ['Custom requirements']
-      };
-    }
-  }
-
-  /**
-   * Parse capability areas from LLM response
-   */
-  private parseCapabilityAreas(response: string): CapabilityArea[] {
-    try {
-      return JSON.parse(response);
-    } catch (error) {
-      logger.warn('Failed to parse capability areas, using fallback');
-      return [
-        {
-          name: 'Template Matching & Selection',
-          description: 'Ability to select appropriate templates',
-          confidence: 0.8,
-          reasoning: 'Strong template library and classification system'
-        },
-        {
-          name: 'Code Generation & Composition',
-          description: 'Custom code generation capability',
-          confidence: 0.6,
-          reasoning: 'Good for standard patterns, challenging for novel requirements'
-        }
-      ];
-    }
-  }
-
-  /**
-   * Parse fallback strategies from LLM response
-   */
-  private parseFallbackStrategies(response: string): FallbackOption[] {
-    try {
-      return JSON.parse(response);
-    } catch (error) {
-      logger.warn('Failed to parse fallback strategies, using defaults');
-      return [
-        {
-          approach: 'template-based',
-          description: 'Use proven templates with minimal customization',
-          pros: ['Fast implementation', 'High reliability'],
-          cons: ['Limited customization'],
-          estimatedEffort: '1-2 days',
-          successProbability: 0.9
-        },
-        {
-          approach: 'hybrid-development',
-          description: 'AI foundation with manual development',
-          pros: ['Balanced automation and customization'],
-          cons: ['Requires development expertise'],
-          estimatedEffort: '1-2 weeks',
-          successProbability: 0.8
-        }
-      ];
-    }
-  }
-
-  /**
-   * Create fallback assessment for errors
-   */
-  private createFallbackAssessment(requirement: string): LimitationAssessment {
-    return {
-      overallConfidence: 0.5,
-      highConfidenceAreas: [],
-      mediumConfidenceAreas: [
-        {
-          name: 'Template-based Implementation',
-          description: 'Using proven enterprise templates',
-          confidence: 0.7,
-          reasoning: 'Fallback to known patterns'
-        }
-      ],
-      lowConfidenceAreas: [
-        {
-          name: 'Custom Requirements',
-          description: 'Novel or complex custom logic',
-          confidence: 0.3,
-          reasoning: 'Unable to assess due to analysis error'
-        }
-      ],
-      recommendedStrategy: 'Start with template-based approach and iterate',
-      nextSteps: [
-        'Use proven enterprise templates',
-        'Identify specific customization needs',
-        'Plan iterative development approach'
-      ],
-      expertConsultationAreas: ['Complex custom requirements'],
-      fallbackOptions: [
-        {
-          approach: 'template-based',
-          description: 'Use existing templates as foundation',
-          pros: ['Proven reliability', 'Quick start'],
-          cons: ['Limited initial customization'],
-          estimatedEffort: '1-2 days',
-          successProbability: 0.8
-        }
-      ]
-    };
-  }
 }
 
 /**

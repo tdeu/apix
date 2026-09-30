@@ -84,7 +84,7 @@ echo ""
 # Production readiness score
 total_issues=$((mock_count + todo_count))
 if [ "$total_issues" -eq 0 ]; then
-    echo -e "${GREEN}✅ Production ready: No mock implementations found${NC}"
+    echo -e "${GREEN}✅ No mock implementations found${NC}"
 elif [ "$total_issues" -le 5 ]; then
     echo -e "${YELLOW}⚠️  Nearly ready: Few remaining items${NC}"
 else
@@ -93,7 +93,7 @@ fi
 
 echo ""
 echo "📋 Next steps:"
-echo "1. Review MOCK_DATA_AUDIT.md for detailed analysis"
+echo "1. Follow the never-fake-success rule in CLAUDE.md"
 echo "2. Set up required environment variables"
 echo "3. Replace critical mock implementations"
 echo "4. Test with real API calls"

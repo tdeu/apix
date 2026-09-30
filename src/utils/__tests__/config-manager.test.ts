@@ -7,7 +7,12 @@ import { APIxConfig, HederaConfiguration } from '../../types';
 // Mock fs-extra
 jest.mock('fs-extra');
 
-const mockedFs = fs as jest.Mocked<typeof fs>;
+// fs-extra's overloaded signatures make jest.Mocked<typeof fs> resolve to `never`,
+// so type the functions ConfigurationManager uses as plain mocks.
+const mockedFs = fs as unknown as Record<
+  'access' | 'readJson' | 'ensureDir' | 'writeJson' | 'remove',
+  jest.Mock
+>;
 
 describe('ConfigurationManager', () => {
   let configManager: ConfigurationManager;
@@ -126,7 +131,14 @@ describe('ConfigurationManager', () => {
       mockedFs.ensureDir.mockResolvedValue(undefined);
       mockedFs.writeJson.mockResolvedValue(undefined);
 
-      const updates = { hedera: { accountId: '0.0.456' } };
+      // save() merges top-level keys only, so hedera must be a complete HederaConfiguration
+      const updates: Partial<APIxConfig> = {
+        hedera: {
+          network: 'testnet',
+          accountId: '0.0.456',
+          mirrorNodeUrl: 'https://testnet.mirrornode.hedera.com'
+        }
+      };
       await configManager.save(updates);
 
       expect(mockedFs.ensureDir).toHaveBeenCalledWith(path.dirname(testConfigPath));

@@ -2,6 +2,25 @@ import fs from 'fs-extra';
 import path from 'path';
 import { execSync } from 'child_process';
 import { logger } from './logger';
+import { HEDERA_SDK_VERSION_RANGE } from '../generation/dependency-versions';
+
+const OUTPUT_TAIL_LINES = 30;
+
+function tailLines(text: string, count: number): string {
+  return text.split(/\r?\n/).slice(-count).join('\n');
+}
+
+/** A package-manager command that exited non-zero, with what it printed */
+export class CommandError extends Error {
+  constructor(
+    readonly command: string,
+    readonly cwd: string,
+    readonly exitCode: number | null,
+    readonly output: string
+  ) {
+    super(`Command failed (exit ${exitCode ?? 'unknown'}): ${command}`);
+  }
+}
 
 export interface Dependency {
   name: string;
@@ -109,40 +128,7 @@ export class PackageManager {
     }
   }
 
-  async addDependency(name: string, version: string = 'latest', isDev: boolean = false): Promise<void> {
-    const dependency: Dependency = {
-      name,
-      version,
-      type: isDev ? 'devDependencies' : 'dependencies'
-    };
 
-    await this.addDependencies([dependency]);
-  }
-
-  async removeDependency(name: string): Promise<void> {
-    try {
-      const packageInfo = await this.getPackageInfo();
-      
-      // Remove from both dependencies and devDependencies
-      if (packageInfo.dependencies && packageInfo.dependencies[name]) {
-        delete packageInfo.dependencies[name];
-      }
-      
-      if (packageInfo.devDependencies && packageInfo.devDependencies[name]) {
-        delete packageInfo.devDependencies[name];
-      }
-
-      await fs.writeJSON(this.packageJsonPath, packageInfo, { spaces: 2 });
-      
-      // Uninstall the dependency
-      await this.runPackageCommand(['remove', name]);
-      
-      logger.debug(`Removed dependency: ${name}`);
-    } catch (error) {
-      logger.error(`Failed to remove dependency ${name}:`, error);
-      throw error;
-    }
-  }
 
   async installDependencies(): Promise<void> {
     try {
@@ -153,117 +139,26 @@ export class PackageManager {
 
       logger.debug('Dependencies installed successfully');
     } catch (error) {
-      logger.error('❌ Failed to install dependencies:', error);
-
+      const command = this.getInstallCommand().join(' ');
       let enhancedError = `Dependency installation failed with ${this.manager}\n\n`;
-      enhancedError += `Command: ${this.getInstallCommand()}\n`;
-      enhancedError += `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\n`;
-      enhancedError += `🔧 Troubleshooting steps:\n`;
-      enhancedError += `   • Check your internet connection\n`;
-      enhancedError += `   • Verify package.json exists and is valid\n`;
-      enhancedError += `   • Try running: ${this.getInstallCommand()}\n`;
-      enhancedError += `   • Clear npm cache: npm cache clean --force\n`;
-
-      if (this.manager === 'npm') {
-        enhancedError += `   • Try deleting node_modules and package-lock.json\n`;
-      } else if (this.manager === 'yarn') {
-        enhancedError += `   • Try deleting node_modules and yarn.lock\n`;
+      enhancedError += `Command: ${command} (in ${this.projectPath})\n`;
+      if (error instanceof CommandError) {
+        enhancedError += `Exit code: ${error.exitCode ?? 'unknown'}\n`;
+        enhancedError += error.output
+          ? `${this.manager} output (last ${OUTPUT_TAIL_LINES} lines):\n${tailLines(error.output, OUTPUT_TAIL_LINES)}\n`
+          : `${this.manager} printed nothing.\n`;
+      } else {
+        enhancedError += `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n`;
       }
-
+      enhancedError += `\nRun \`${command}\` yourself to see the full output.`;
       throw new Error(enhancedError);
     }
   }
 
-  async addScript(name: string, command: string): Promise<void> {
-    try {
-      const packageInfo = await this.getPackageInfo();
-      packageInfo.scripts = packageInfo.scripts || {};
-      packageInfo.scripts[name] = command;
 
-      await fs.writeJSON(this.packageJsonPath, packageInfo, { spaces: 2 });
-      logger.debug(`Added script: ${name}`);
-    } catch (error) {
-      logger.error(`Failed to add script ${name}:`, error);
-      throw error;
-    }
-  }
 
-  async removeScript(name: string): Promise<void> {
-    try {
-      const packageInfo = await this.getPackageInfo();
-      
-      if (packageInfo.scripts && packageInfo.scripts[name]) {
-        delete packageInfo.scripts[name];
-        await fs.writeJSON(this.packageJsonPath, packageInfo, { spaces: 2 });
-        logger.debug(`Removed script: ${name}`);
-      }
-    } catch (error) {
-      logger.error(`Failed to remove script ${name}:`, error);
-      throw error;
-    }
-  }
 
-  async runScript(name: string): Promise<string> {
-    try {
-      const command = `${this.manager} run ${name}`;
-      const output = await this.runCommand(command);
-      return output;
-    } catch (error) {
-      logger.error(`Failed to run script ${name}:`, error);
-      throw error;
-    }
-  }
 
-  async checkDependency(name: string): Promise<{ installed: boolean; version?: string; isDev?: boolean }> {
-    try {
-      const packageInfo = await this.getPackageInfo();
-      
-      if (packageInfo.dependencies && packageInfo.dependencies[name]) {
-        return {
-          installed: true,
-          version: packageInfo.dependencies[name],
-          isDev: false
-        };
-      }
-      
-      if (packageInfo.devDependencies && packageInfo.devDependencies[name]) {
-        return {
-          installed: true,
-          version: packageInfo.devDependencies[name],
-          isDev: true
-        };
-      }
-      
-      return { installed: false };
-    } catch (error) {
-      logger.error(`Failed to check dependency ${name}:`, error);
-      return { installed: false };
-    }
-  }
-
-  async getOutdatedDependencies(): Promise<Record<string, { current: string; wanted: string; latest: string }>> {
-    try {
-      let command: string;
-      
-      switch (this.manager) {
-        case 'npm':
-          command = 'npm outdated --json';
-          break;
-        case 'yarn':
-          command = 'yarn outdated --json';
-          break;
-        case 'pnpm':
-          command = 'pnpm outdated --format json';
-          break;
-      }
-      
-      const output = await this.runCommand(command);
-      return JSON.parse(output);
-    } catch (error) {
-      logger.warn('Failed to check outdated dependencies:', error);
-      return {};
-    }
-  }
 
   private getInstallCommand(): string[] {
     switch (this.manager) {
@@ -282,78 +177,26 @@ export class PackageManager {
   }
 
   private async runCommand(command: string | string[]): Promise<string> {
+    const cmd = Array.isArray(command) ? command.join(' ') : command;
     try {
-      const cmd = Array.isArray(command) ? command.join(' ') : command;
-      
       const output = execSync(cmd, {
         cwd: this.projectPath,
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'pipe']
       });
-      
+
       return output.trim();
     } catch (error: any) {
-      logger.error(`Command failed: ${command}`, error.message);
-      throw new Error(`Command failed: ${error.message}`);
+      // Keep what the command printed: it is the only real explanation
+      const output = `${error.stderr ?? ''}`.trim() || `${error.stdout ?? ''}`.trim();
+      logger.debug(`Command failed: ${cmd}`, error.message);
+      throw new CommandError(cmd, this.projectPath, error.status ?? null, output);
     }
   }
 
-  getManager(): string {
-    return this.manager;
-  }
 
-  // Hedera-specific dependencies
-  async addHederaDependencies(): Promise<void> {
-    const hederaDeps: Dependency[] = [
-      { name: '@hashgraph/sdk', version: '^2.68.0', type: 'dependencies' },
-      { name: '@hashgraph/hedera-wallet-connect', version: 'latest', type: 'dependencies' }
-    ];
 
-    await this.addDependencies(hederaDeps);
-  }
 
-  async addReactDependencies(): Promise<void> {
-    const reactDeps: Dependency[] = [
-      { name: 'react', version: '^18.0.0', type: 'dependencies' },
-      { name: 'react-dom', version: '^18.0.0', type: 'dependencies' },
-      { name: '@types/react', version: '^18.0.0', type: 'devDependencies' },
-      { name: '@types/react-dom', version: '^18.0.0', type: 'devDependencies' }
-    ];
 
-    await this.addDependencies(reactDeps);
-  }
 
-  async addNextJSDependencies(): Promise<void> {
-    const nextDeps: Dependency[] = [
-      { name: 'next', version: '^14.0.0', type: 'dependencies' },
-      { name: 'react', version: '^18.0.0', type: 'dependencies' },
-      { name: 'react-dom', version: '^18.0.0', type: 'dependencies' },
-      { name: '@types/node', version: '^20.0.0', type: 'devDependencies' },
-      { name: '@types/react', version: '^18.0.0', type: 'devDependencies' },
-      { name: '@types/react-dom', version: '^18.0.0', type: 'devDependencies' },
-      { name: 'typescript', version: '^5.0.0', type: 'devDependencies' }
-    ];
-
-    await this.addDependencies(nextDeps);
-  }
-
-  // Create a backup of package.json before making changes
-  async createBackup(): Promise<string> {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupPath = path.join(this.projectPath, `package.json.backup.${timestamp}`);
-    
-    await fs.copy(this.packageJsonPath, backupPath);
-    logger.debug(`Created package.json backup: ${backupPath}`);
-    
-    return backupPath;
-  }
-
-  async restoreBackup(backupPath: string): Promise<void> {
-    if (!await fs.pathExists(backupPath)) {
-      throw new Error(`Backup file not found: ${backupPath}`);
-    }
-    
-    await fs.copy(backupPath, this.packageJsonPath);
-    logger.debug(`Restored package.json from backup: ${backupPath}`);
-  }
 }

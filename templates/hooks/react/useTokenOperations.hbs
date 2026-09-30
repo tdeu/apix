@@ -1,6 +1,8 @@
 {{!-- META: {"name": "useTokenOperations Hook", "description": "React hook for HTS token operations", "language": "typescript"} --}}
+'use client';
+
 {{#ifLanguage language "typescript"}}import { useState, useCallback } from 'react';
-import { HTSManager, CreateTokenParams, MintTokenParams, TransferTokenParams, TokenInfo } from '@/utils/hts-operations';
+import { HTSManager, CreateTokenParams, MintTokenParams, TransferTokenParams, TokenInfo } from '{{importFrom "hts-operations"}}';
 
 export interface UseTokenOperationsReturn {
   // State
@@ -165,7 +167,7 @@ export const useTokenInfo = () => {
   };
 };
 {{else}}import { useState, useCallback } from 'react';
-import { HTSManager } from '@/utils/hts-operations';
+import { HTSManager } from '{{importFrom "hts-operations"}}';
 
 export const useTokenOperations = () => {
   const [isLoading, setIsLoading] = useState(false);

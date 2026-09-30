@@ -118,7 +118,7 @@ describe('Validation Functions', () => {
   describe('validateAccountId', () => {
     it('should validate correct account IDs', () => {
       expect(validateAccountId('0.0.123')).toBe(true);
-      expect(validateAccountId('0.0.4912345')).toBe(true);
+      expect(validateAccountId('0.0.1234567')).toBe(true);
       expect(validateAccountId('1.2.3')).toBe(true);
     });
 

@@ -8,13 +8,21 @@ import { ConfigurationManager } from '../utils/config-manager';
 import { logger, LogLevel } from '../utils/logger';
 import { debugLogger } from '../utils/debug-logger';
 import { createProgressManager, INTEGRATION_STEPS, trackSteps } from '../utils/progress';
-import { HealthChecker } from '../validation/health-checker';
+import { HealthChecker, HealthArea } from '../validation/health-checker';
 import { IntegrationValidator } from '../validation/integration-validator';
 import { IntegrationOptions, AnalysisOptions, ProjectContext } from '../types';
 import { hederaOperations, TokenCreationOptions } from '../services/hedera-operations';
+import { EnvironmentValidator } from '../utils/environment-validator';
+import { checkIntegrationSupport } from '../planning/support-policy';
+import { requireAIKey, selectProvider } from '../ai/provider';
+import { NOT_RETRIED } from '../ai/recovery/error-recovery-system';
+import { resolveModel } from '../ai/models';
+import { maskSecrets } from '../utils/secrets';
+import { confirmMainnetSpend } from './mainnet-guard';
+import { INTEGRATION_TYPES, describeIntegrations } from '../planning/integration-types';
 import { EnterpriseClassifier } from '../ai/classifiers/enterprise-classifier';
 import { ConversationEngine } from '../ai/conversation/conversation-engine';
-import { AICodeCompositionEngine } from '../ai/composition/ai-code-composition-engine';
+import { AICodeCompositionEngine, findUnimplementedStubs } from '../ai/composition/ai-code-composition-engine';
 import { LimitationHandler } from '../ai/limitations/limitation-handler';
 
 export class APIxCLI {
@@ -51,9 +59,16 @@ export class APIxCLI {
     return this._conversationEngine;
   }
 
+  /** e.g. "Anthropic (claude-sonnet-5)": which provider and model answered */
+  private aiLabel(): string {
+    const provider = selectProvider();
+    if (!provider) return 'the AI';
+    return `${provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} (${resolveModel(provider, 'default')})`;
+  }
+
   private get codeComposer(): AICodeCompositionEngine {
     if (!this._codeComposer) {
-      this._codeComposer = new AICodeCompositionEngine();
+      this._codeComposer = new AICodeCompositionEngine({ command: 'compose' });
     }
     return this._codeComposer;
   }
@@ -175,7 +190,7 @@ export class APIxCLI {
           console.log('📚 Create a React project: npx create-next-app@latest my-hedera-app\n');
         } else {
           debugLogger.error('Unexpected analysis error', error);
-          console.error('❌', error.message);
+          console.error('❌', maskSecrets(error.message));
         }
       }
 
@@ -192,9 +207,36 @@ export class APIxCLI {
     if (!this.isValidIntegration(integration)) {
       debugLogger.error('Invalid integration type', undefined, {
         integration,
-        validTypes: ['hts', 'wallet', 'smart-contract', 'hcs']
+        validTypes: INTEGRATION_TYPES
       });
-      throw new Error(`Unknown integration type: ${integration}`);
+      throw new Error(`Unknown integration type: ${integration}. Available: ${describeIntegrations()}`);
+    }
+
+    // Spending on mainnet is confirmed before anything else happens
+    if (integration === 'hts' && options.createToken && EnvironmentValidator.hasHederaCredentials()) {
+      await confirmMainnetSpend(hederaOperations.getNetwork(), { yes: options.yes });
+    }
+
+    // Refuse unsupported integrations before anything is written. Without a
+    // package.json, analyzeProject (below) reports that instead.
+    const stack = await this.analyzer.detectStack('.');
+    const support = stack ? checkIntegrationSupport(integration, stack) : {};
+    if (support.error) {
+      throw new Error(support.error);
+    }
+    if (support.notice) {
+      console.log(chalk.yellow(`⚠️  ${support.notice}`));
+    }
+
+    // Fail before generating anything if --create-token can't be honoured
+    if (options.createToken) {
+      if (integration !== 'hts') {
+        throw new Error('--create-token only applies to "apix add hts"');
+      }
+      if (!options.name || !options.symbol) {
+        throw new Error('--create-token requires --name and --symbol');
+      }
+      EnvironmentValidator.requireHederaCredentials();
     }
 
     // Select appropriate progress steps based on integration type
@@ -305,65 +347,10 @@ export class APIxCLI {
 
           const context = await this.analyzer.analyzeProject('.');
           const plan = await this.planner.createIntegrationPlan(integration, options, context);
-          const result = await this.generator.generateIntegration(plan, context);
+          const result = await this.generator.generateIntegration(plan, context, { force: options.force });
 
-          // If this is an HTS integration and user provided token details, offer to create real token
           if (integration === 'hts' && options.name && options.symbol) {
-            try {
-              console.log(chalk.blue('\n💡 Optional: Create Real Token on Hedera Testnet'));
-              console.log(chalk.gray(`   Token: ${options.name} (${options.symbol})`));
-              console.log(chalk.gray('   This will create an actual token on Hedera blockchain'));
-
-              // Only offer if we have basic setup
-              await hederaOperations.initialize();
-              if (hederaOperations.getCurrentAccountId()) {
-                const { createRealToken } = await inquirer.prompt([{
-                  type: 'confirm',
-                  name: 'createRealToken',
-                  message: 'Create real token on Hedera testnet?',
-                  default: false
-                }]);
-
-                if (createRealToken) {
-                  const tokenSpinner = ora('Creating token on Hedera testnet...').start();
-                  try {
-                    const tokenResult = await hederaOperations.createToken({
-                      name: options.name,
-                      symbol: options.symbol,
-                      decimals: 8,
-                      initialSupply: 1000000
-                    });
-
-                    if (tokenResult.success) {
-                      tokenSpinner.succeed(chalk.green('✅ Real token created on Hedera!'));
-                      console.log(chalk.blue(`   Token ID: ${chalk.bold(tokenResult.tokenId)}`));
-                      console.log(chalk.blue(`   Transaction: ${chalk.bold(tokenResult.transactionId)}`));
-
-                      if (tokenResult.explorerUrl) {
-                        console.log(chalk.blue(`   Explorer: ${chalk.underline(tokenResult.explorerUrl)}`));
-                      }
-
-                      // Add token info to next steps
-                      if (result && typeof result === 'object' && 'nextSteps' in result) {
-                        const steps = result.nextSteps as string[];
-                        steps.unshift(`Use Token ID: ${tokenResult.tokenId} in your application`);
-                        steps.unshift(`Token created on Hedera testnet: ${options.name} (${options.symbol})`);
-                      }
-                    } else {
-                      tokenSpinner.fail(chalk.yellow('⚠️  Token creation failed'));
-                      console.log(chalk.gray(`   ${tokenResult.error}`));
-                      console.log(chalk.gray('   You can create it later with: apix create-token'));
-                    }
-                  } catch (tokenError: any) {
-                    tokenSpinner.fail(chalk.yellow('⚠️  Token creation failed'));
-                    console.log(chalk.gray(`   ${tokenError.message}`));
-                  }
-                }
-              }
-            } catch (error: any) {
-              // Don't fail the entire integration if token creation fails
-              logger.warn('Token creation prompt failed:', error);
-            }
+            await this.offerRealTokenCreation(options, result);
           }
 
           return result;
@@ -413,7 +400,19 @@ export class APIxCLI {
           formatter.list(fileList);
           formatter.blank();
         }
-        
+
+        if (result.overwrittenFiles?.length > 0) {
+          formatter.subheader('Overwritten (--force)');
+          formatter.list(result.overwrittenFiles);
+          formatter.blank();
+        }
+
+        if (result.unchangedFiles?.length > 0) {
+          formatter.subheader('Already up to date (not rewritten)');
+          formatter.list(result.unchangedFiles);
+          formatter.blank();
+        }
+
         if (result.installedDependencies?.length > 0) {
           formatter.subheader('Installed Dependencies');
           formatter.list(result.installedDependencies);
@@ -444,6 +443,70 @@ export class APIxCLI {
       }
       
       throw error;
+    }
+  }
+
+  /**
+   * After `apix add hts`, create the token on Hedera only when credentials are
+   * present AND the user confirms (or passed --create-token). Without
+   * credentials no network call is made.
+   */
+  private async offerRealTokenCreation(options: IntegrationOptions, result: any): Promise<void> {
+    if (!EnvironmentValidator.hasHederaCredentials()) {
+      console.log(chalk.gray('\nℹ️  Files generated only. To also create this token on Hedera, set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY in .env and re-run with --create-token.'));
+      return;
+    }
+
+    const network = hederaOperations.getNetwork();
+    let createRealToken = !!options.createToken;
+    if (!createRealToken) {
+      if (!process.stdin.isTTY) {
+        console.log(chalk.gray(`\nℹ️  Hedera credentials found. Re-run with --create-token to also create this token on ${network}.`));
+        return;
+      }
+      console.log(chalk.blue(`\n💡 Optional: create ${options.name} (${options.symbol}) on Hedera ${network}`));
+      ({ createRealToken } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'createRealToken',
+        message: `Create this token on Hedera ${network} now? (uses your account's HBAR)`,
+        default: false
+      }]));
+      if (!createRealToken) return;
+      await confirmMainnetSpend(network, { yes: options.yes });
+    }
+
+    const tokenSpinner = ora(`Creating token on Hedera ${network}...`).start();
+    let tokenResult;
+    try {
+      // 1,000,000 whole tokens at 8 decimals; the operator holds the admin and
+      // supply keys so the generated mint route can sign
+      tokenResult = await hederaOperations.createToken({
+        name: options.name!,
+        symbol: options.symbol!,
+        decimals: 8,
+        initialSupply: 1_000_000 * 10 ** 8,
+        adminKey: true,
+        supplyKey: true
+      });
+    } catch (error: any) {
+      tokenResult = { success: false, error: error.message } as const;
+    }
+
+    if (!tokenResult.success) {
+      tokenSpinner.fail(chalk.red('❌ Token creation failed'));
+      throw new Error(`Files were generated, but token creation failed: ${tokenResult.error}`);
+    }
+
+    tokenSpinner.succeed(chalk.green(`✅ Token created on Hedera ${network}`));
+    console.log(chalk.blue(`   Token ID: ${chalk.bold(tokenResult.tokenId)}`));
+    console.log(chalk.blue(`   Transaction: ${chalk.bold(tokenResult.transactionId)}`));
+    if (tokenResult.explorerUrl) {
+      console.log(chalk.blue(`   Explorer: ${chalk.underline(tokenResult.explorerUrl)}`));
+    }
+
+    if (result && typeof result === 'object' && Array.isArray(result.nextSteps)) {
+      result.nextSteps.unshift(`Use Token ID: ${tokenResult.tokenId} in your application`);
+      result.nextSteps.unshift(`Token created on Hedera ${network}: ${options.name} (${options.symbol})`);
     }
   }
 
@@ -496,7 +559,7 @@ export class APIxCLI {
     }
   }
 
-  async health(options: { quick?: boolean; fix?: boolean }): Promise<void> {
+  async health(options: { quick?: boolean; fix?: boolean }): Promise<HealthArea[]> {
     try {
       const operations = [
         // Step 1: Analyze project
@@ -504,19 +567,17 @@ export class APIxCLI {
           return await this.analyzer.analyzeProject('.');
         },
 
-        // Step 2: Initialize health checker
+        // Step 2: Check each area (project, deps, SDK, credentials, keys)
         async () => {
           const context = await this.analyzer.analyzeProject('.');
-          return new HealthChecker(context);
+          return await new HealthChecker(context).checkAreas();
         },
 
-        // Step 3: Run health checks
+        // Step 3: Detailed project checks (skipped with --quick)
         async () => {
+          if (options.quick) return null;
           const context = await this.analyzer.analyzeProject('.');
-          const healthChecker = new HealthChecker(context);
-          return options.quick 
-            ? await healthChecker.runQuickHealthCheck() 
-            : await healthChecker.runCompleteHealthCheck();
+          return await new HealthChecker(context).runCompleteHealthCheck();
         },
 
         // Step 4: Display results
@@ -530,25 +591,13 @@ export class APIxCLI {
         operations,
         { showTimer: true, showSteps: true, compact: options.quick }
       );
-      
-      const report = results[2]; // Health report is at index 2
-      if (options.quick) {
-        const quickReport = report as { healthy: boolean; criticalIssues: string[] };
-        if (quickReport.healthy) {
-          console.log(chalk.green('\n✅ Project is healthy!'));
-        } else {
-          console.log(chalk.red('\n❌ Critical issues detected:'));
-          quickReport.criticalIssues.forEach(issue => {
-            console.log(chalk.red(`   • ${issue}`));
-          });
-          console.log(chalk.yellow('\nRun "apix health" for detailed analysis'));
-        }
-      } else {
-        const fullReport = report as any;
+
+      const areas = results[1] as HealthArea[];
+      const fullReport = results[2] as any;
+      if (fullReport) {
         const context = results[0] as ProjectContext;
-        const healthChecker = new HealthChecker(context);
-        console.log(healthChecker.formatHealthReport(fullReport));
-        
+        console.log(new HealthChecker(context).formatHealthReport(fullReport));
+
         // Show suggestions for fixes if requested
         if (options.fix && (fullReport.criticalIssues > 0 || fullReport.warnings > 0)) {
           console.log(chalk.cyan.bold('\n🔧 Auto-fix Suggestions:'));
@@ -558,6 +607,9 @@ export class APIxCLI {
           console.log(chalk.gray('   • Create .env.local with Hedera credentials'));
         }
       }
+
+      console.log(HealthChecker.formatAreas(areas));
+      return areas;
 
     } catch (error) {
       logger.error('Health check failed');
@@ -655,13 +707,14 @@ export class APIxCLI {
     }]);
 
     if (selectedAction !== 'exit') {
-      const command = selectedAction === 'token' ? 'hts' : 
-                     selectedAction === 'consensus' ? 'hcs' :
-                     selectedAction === 'smart-contract' ? 'smart-contract' :
-                     selectedAction === 'account' ? 'account' : selectedAction;
-      
-      console.log(chalk.cyan(`\n🚀 Run: apix add ${command}`));
-      console.log(chalk.gray('   This will generate the integration files and setup code for your project.'));
+      const command = selectedAction === 'token' ? 'hts' : selectedAction;
+
+      if (command === 'account') {
+        console.log(chalk.yellow('\n`apix add account` is not available in this version.'));
+      } else {
+        console.log(chalk.cyan(`\n🚀 Run: apix add ${command}`));
+        console.log(chalk.gray('   This will generate the integration files and setup code for your project.'));
+      }
     }
   }
 
@@ -686,9 +739,9 @@ export class APIxCLI {
     ]);
   }
 
+  // Aliases (hcs, contract) are mapped when the command is parsed (cli/index.ts)
   private isValidIntegration(integration: string): boolean {
-    const validIntegrations = ['hts', 'wallet', 'smart-contract', 'hcs', 'contract', 'consensus', 'account'];
-    return validIntegrations.includes(integration);
+    return (INTEGRATION_TYPES as readonly string[]).includes(integration);
   }
 
   private showNextSteps(plan: any): void {
@@ -736,35 +789,18 @@ export class APIxCLI {
    * Start conversational interface
    */
   async startConversationalInterface(options: any): Promise<void> {
-    try {
-      const { ChatInterface } = await import('./chat-interface');
-      const chatInterface = new ChatInterface();
-      await chatInterface.startChat({
-        sessionFile: options.sessionFile,
-        industry: options.industry,
-        context: options.context,
-        verbose: options.verbose,
-        debug: options.debug,
-        cleanMode: options.clean
-      });
-    } catch (error: any) {
-      logger.error('Failed to start conversational interface:', error);
-      console.error('❌ ERROR: Failed to start conversational interface:');
-      console.error('❌ ERROR:', error.message || error);
-      
-      // Show stack trace for debugging when in debug mode
-      if (error.stack) {
-        console.error('❌ STACK TRACE:', error.stack);
-      }
-      
-      // Provide helpful suggestions
-      console.error('\n💡 Suggestions:');
-      console.error('   • Try using clean mode: apix chat --clean');
-      console.error('   • Check your API keys are set correctly');
-      console.error('   • Run with debug mode: apix chat --debug');
-      
-      throw error;
-    }
+    requireAIKey('chat');
+    // Errors (no key, failed AI request) propagate; `apix chat` reports them and exits 1
+    const { ChatInterface } = await import('./chat-interface');
+    const chatInterface = new ChatInterface();
+    await chatInterface.startChat({
+      sessionFile: options.sessionFile,
+      industry: options.industry,
+      context: options.context,
+      verbose: options.verbose,
+      debug: options.debug,
+      cleanMode: options.clean
+    });
   }
 
   // =========================================================================
@@ -772,118 +808,82 @@ export class APIxCLI {
   // =========================================================================
 
   async generateEnterpriseIntegration(integration: string, options: any): Promise<void> {
+    requireAIKey('generate');
+    logger.info('Enterprise integration generation with AI classification:', { integration, options });
+
+    console.log(chalk.blue.bold('\n🤖 AI-Powered Enterprise Integration\n'));
+    const spinner = ora('Analyzing enterprise requirements...').start();
+
+    const requirementDescription = `Generate ${integration} integration for enterprise use case: ${options.description || 'Standard enterprise implementation'}`;
+
+    let classification;
     try {
-      logger.info('Enterprise integration generation with AI classification:', { integration, options });
-
-      console.log(chalk.blue.bold('\n🤖 AI-Powered Enterprise Integration\n'));
-
-      const spinner = ora('Analyzing enterprise requirements...').start();
-
-      // Step 1: Use AI to classify the enterprise requirements
-      const requirementDescription = `Generate ${integration} integration for enterprise use case: ${options.description || 'Standard enterprise implementation'}`;
-
-      try {
-        const classification = await this.enterpriseClassifier.classifyRequirement(
-          requirementDescription,
-          {
-            industry: options.industry,
-            size: options.companySize || 'enterprise',
-            technicalStack: {
-              frameworks: [integration as any], // Type assertion for framework compatibility
-              databases: [],
-              cloudProviders: [],
-              securityTools: [],
-              monitoringTools: [],
-              cicd: []
-            }
+      classification = await this.enterpriseClassifier.classifyRequirement(
+        requirementDescription,
+        {
+          industry: options.industry,
+          size: options.companySize || 'enterprise',
+          technicalStack: {
+            frameworks: [integration as any], // Type assertion for framework compatibility
+            databases: [],
+            cloudProviders: [],
+            securityTools: [],
+            monitoringTools: [],
+            cicd: []
           }
-        );
-
-        spinner.succeed(chalk.green('✅ Enterprise requirements analyzed with AI'));
-
-        // Display AI analysis results
-        console.log(chalk.blue('\n📋 AI Classification Results:'));
-        console.log(chalk.white(`   Business Intent: ${chalk.bold(classification.businessIntent.primary)}`));
-        console.log(chalk.white(`   Industry: ${chalk.bold(classification.industrySpecific.industry)}`));
-        console.log(chalk.white(`   Technical Complexity: ${chalk.bold(classification.technicalComplexity.overallScore)}/100`));
-        console.log(chalk.white(`   AI Confidence: ${chalk.bold(classification.confidence.overall)}%`));
-
-        if (classification.confidence.overall >= 80) {
-          console.log(chalk.green('   ✅ High confidence - AI-enhanced generation'));
-        } else if (classification.confidence.overall >= 60) {
-          console.log(chalk.yellow('   ⚠️  Medium confidence - template-based with AI guidance'));
-        } else {
-          console.log(chalk.yellow('   ⚠️  Low confidence - template-based implementation'));
         }
-
-        // Display recommended services
-        if (classification.recommendedServices.length > 0) {
-          console.log(chalk.blue('\n🔧 Recommended Hedera Services:'));
-          classification.recommendedServices.forEach(service => {
-            console.log(chalk.gray(`   • ${service}`));
-          });
-        }
-
-        // Display compliance requirements
-        if (classification.complianceRequirements.applicableFrameworks.length > 0) {
-          console.log(chalk.blue('\n📋 Compliance Requirements:'));
-          classification.complianceRequirements.applicableFrameworks.forEach(framework => {
-            console.log(chalk.gray(`   • ${framework}`));
-          });
-        }
-
-        // Proceed with enhanced integration generation
-        const enhancedOptions = {
-          ...options,
-          aiClassification: classification,
-          enhancedMode: true
-        };
-
-        console.log(chalk.blue('\n🚀 Generating AI-enhanced integration...'));
-        return this.addIntegration(integration, enhancedOptions);
-
-      } catch (error: any) {
-        spinner.warn(chalk.yellow('⚠️  AI analysis failed, using template-based generation'));
-        logger.warn('Enterprise classification failed, falling back to templates:', error?.message);
-
-        console.log(chalk.yellow('\n🔧 Falling back to template-based generation'));
-
-        try {
-          return await this.addIntegration(integration, options);
-        } catch (fallbackError: any) {
-          logger.error('Fallback template generation also failed:', fallbackError);
-          throw new Error(`Enterprise generation failed:\n\nAI Analysis Error: ${error?.message}\nTemplate Fallback Error: ${fallbackError?.message}\n\n🔧 Try running: apix add ${integration} --name YourName --symbol SYMB`);
-        }
-      }
-
-    } catch (error: any) {
-      logger.error('Enterprise integration generation failed:', error);
-      console.log(chalk.red('\n❌ Enterprise integration failed'));
-      console.log(chalk.yellow(`   Error: ${error.message}`));
+      );
+    } catch (error) {
+      spinner.fail(chalk.red('❌ AI analysis failed'));
       throw error;
     }
+
+    spinner.succeed(chalk.green(`✅ Requirements analyzed by ${this.aiLabel()}`));
+
+    console.log(chalk.blue('\n📋 AI Classification Results:'));
+    console.log(chalk.white(`   Business Intent: ${chalk.bold(classification.businessIntent.primary)}`));
+    console.log(chalk.white(`   Industry: ${chalk.bold(classification.industrySpecific.industry)}`));
+    console.log(chalk.white(`   Technical Complexity: ${chalk.bold(classification.technicalComplexity.overallScore)}/100`));
+    console.log(chalk.white(`   AI Confidence: ${chalk.bold(classification.confidence.overall)}%`));
+
+    if (classification.recommendedServices.length > 0) {
+      console.log(chalk.blue('\n🔧 Recommended Hedera Services:'));
+      classification.recommendedServices.forEach(service => {
+        console.log(chalk.gray(`   • ${service}`));
+      });
+    }
+
+    if (classification.complianceRequirements.applicableFrameworks.length > 0) {
+      console.log(chalk.blue('\n📋 Compliance Requirements:'));
+      classification.complianceRequirements.applicableFrameworks.forEach(framework => {
+        console.log(chalk.gray(`   • ${framework}`));
+      });
+    }
+
+    // The files come from the same templates as `apix add`; the analysis
+    // above is advice, it doesn't change them
+    console.log(chalk.blue(`\n🚀 Generating the ${integration} integration from APIX's templates (same files as \`apix add ${integration}\`)...`));
+    return this.addIntegration(integration, options);
   }
 
   async composeCustomCode(options: any): Promise<void> {
-    try {
-      logger.info('AI-powered custom code composition:', options);
+    requireAIKey('compose');
+    logger.info('AI-powered custom code composition:', options);
 
-      console.log(chalk.blue.bold('\n🤖 AI Custom Code Composition\n'));
+    console.log(chalk.blue.bold('\n🤖 AI Custom Code Composition (experimental)\n'));
 
-      if (!options.requirement) {
-        console.log(chalk.red('❌ Please provide a requirement description'));
-        console.log(chalk.gray('   Example: apix compose --requirement "Create a supply chain tracking system"'));
-        return;
-      }
+    if (!options.requirements) {
+      throw new Error('Please describe what to build, e.g. apix compose --experimental --requirements "Create a supply chain tracking system"');
+    }
 
-      const spinner = ora('Analyzing code composition requirements...').start();
+    const spinner = ora('Analyzing code composition requirements...').start();
 
       try {
         // Create AI composition request
         const compositionRequest = {
           requirement: {
             id: 'custom-' + Date.now(),
-            description: options.requirement,
+            description: options.requirements,
             industry: options.industry || 'technology',
             businessContext: {
               businessGoals: [options.businessContext || 'Custom code generation request'],
@@ -971,7 +971,9 @@ export class APIxCLI {
         if (result.deploymentGuidance) {
           console.log(chalk.blue('\n🚀 Deployment Guidance:'));
           const guidance = result.deploymentGuidance as any;
-          console.log(chalk.gray(`   Estimated Time: ${guidance.estimatedTime || '15-30 minutes'}`));
+          if (guidance.estimatedTime) {
+            console.log(chalk.gray(`   Estimated Time: ${guidance.estimatedTime}`));
+          }
           if (guidance.steps && guidance.steps.length > 0) {
             console.log(chalk.gray('   Next Steps:'));
             guidance.steps.slice(0, 3).forEach((step: any) => {
@@ -980,111 +982,54 @@ export class APIxCLI {
           }
         }
 
-        console.log(chalk.green('\n✅ Custom code composition completed successfully!'));
+        console.log(chalk.yellow('\nℹ️  compose does not write these files to disk; nothing in your project was changed.'));
 
-      } catch (error: any) {
-        spinner.fail(chalk.red('❌ AI code composition failed'));
-        logger.warn('Code composition failed, AI unavailable:', error?.message);
+        const stubs = findUnimplementedStubs(result.generatedCode);
+        if (stubs.length > 0) {
+          console.log(chalk.yellow('\n⚠️  Unimplemented stubs (`TODO: Implement`) in:'));
+          stubs.forEach(path => console.log(chalk.yellow(`   • ${path}`)));
+        } else {
+          console.log(chalk.gray('\nNo `TODO: Implement` stubs in the generated files.'));
+        }
 
-        console.log(chalk.yellow('\n🔧 AI code composition not available'));
-        console.log(chalk.gray('   Possible causes:'));
-        console.log(chalk.gray('   • OpenAI/Anthropic API keys not configured'));
-        console.log(chalk.gray('   • Network connectivity issues'));
-        console.log(chalk.gray('   • Complex requirements need manual implementation'));
-        console.log(chalk.blue('\n💡 Alternatives:'));
-        console.log(chalk.gray('   • Use template-based generation: apix add <integration>'));
-        console.log(chalk.gray('   • Configure API keys: export OPENAI_API_KEY=your_key'));
-        console.log(chalk.gray('   • Break down complex requirements into smaller parts'));
+      } catch (error) {
+        spinner.fail(chalk.red('AI code composition failed'));
+        throw error;
       }
-
-    } catch (error: any) {
-      logger.error('Custom code composition failed:', error);
-      console.log(chalk.red('\n❌ Code composition failed'));
-      console.log(chalk.yellow(`   Error: ${error.message}`));
-    }
   }
 
   async comprehensiveValidation(options: any): Promise<void> {
+    console.log(chalk.blue.bold('\n🔍 Comprehensive Hedera Validation\n'));
+    const networkSource = process.env.HEDERA_NETWORK ? 'from HEDERA_NETWORK' : 'default; set HEDERA_NETWORK to change';
+    console.log(chalk.cyan(`Network: Hedera ${hederaOperations.getNetwork()} (${networkSource})`));
+
+    const spinner = ora('Initializing Hedera validation...').start();
+
     try {
-      console.log(chalk.blue.bold('\n🔍 Comprehensive Hedera Validation\n'));
+      await hederaOperations.initialize();
 
-      if (options.testnet) {
-        console.log(chalk.cyan('Network: Hedera Testnet'));
-      } else if (options.mainnet) {
-        console.log(chalk.cyan('Network: Hedera Mainnet'));
-      } else {
-        console.log(chalk.cyan('Network: Hedera Testnet (default)'));
+      spinner.text = 'Validating Hedera client configuration...';
+      if (!(await this.validateHederaConnection())) {
+        throw new Error('Hedera client has no operator account after initialization');
       }
+      spinner.succeed(chalk.green('✅ Hedera client configured'));
 
-      const spinner = ora('Initializing Hedera validation...').start();
-
-      try {
-        // Initialize Hedera operations for validation
-        await hederaOperations.initialize();
-
-        spinner.text = 'Validating Hedera network connection...';
-        const connectionValid = await this.validateHederaConnection();
-
-        if (connectionValid) {
-          spinner.succeed(chalk.green('✅ Hedera network connection validated'));
-
-          console.log(chalk.blue('\n📋 Validation Results:'));
-          console.log(chalk.green(`   ✅ Network: ${hederaOperations.getNetwork().toUpperCase()}`));
-          console.log(chalk.green(`   ✅ Account: ${hederaOperations.getCurrentAccountId()}`));
-          console.log(chalk.green('   ✅ SDK Integration: Working'));
-
-          if (hederaOperations.isFallbackMode()) {
-            console.log(chalk.yellow('   ⚠️  Mode: Development (using test accounts)'));
-            console.log(chalk.gray('   💡 Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY for live validation'));
-          } else if (hederaOperations.isUsingAgentKit()) {
-            console.log(chalk.green('   ✅ Mode: Live blockchain operations (AgentKit)'));
-          } else {
-            console.log(chalk.green('   ✅ Mode: Live blockchain operations (Direct SDK)'));
-          }
-
-          // Additional validations based on options
-          if (options.enterprise) {
-            console.log(chalk.blue('\n🏢 Enterprise Validation:'));
-            console.log(chalk.green('   ✅ Security patterns: Implemented'));
-            console.log(chalk.green('   ✅ Error handling: Robust'));
-            console.log(chalk.green('   ✅ Logging: Comprehensive'));
-          }
-
-          if (options.performance) {
-            console.log(chalk.blue('\n⚡ Performance Check:'));
-            console.log(chalk.green('   ✅ Client initialization: Optimized'));
-            console.log(chalk.green('   ✅ Connection pooling: Enabled'));
-            console.log(chalk.green('   ✅ Caching: Active'));
-          }
-
-        } else {
-          spinner.fail(chalk.red('❌ Hedera network validation failed'));
-          console.log(chalk.yellow('\n🔧 Troubleshooting:'));
-          console.log(chalk.gray('   • Check internet connection'));
-          console.log(chalk.gray('   • Verify Hedera credentials (if using live mode)'));
-          console.log(chalk.gray('   • Try: npm run validate:env'));
-        }
-
-      } catch (error: any) {
-        spinner.fail(chalk.red('❌ Validation failed'));
-        console.log(chalk.red('\n🚨 Validation Error:'));
-        console.log(chalk.yellow(`   ${error.message}`));
-
-        console.log(chalk.cyan('\n💡 Next Steps:'));
-        console.log(chalk.gray('   • Run basic health check: apix health --quick'));
-        console.log(chalk.gray('   • Check configuration: apix status'));
-        console.log(chalk.gray('   • Validate environment: npm run validate:env'));
-      }
+      console.log(chalk.blue('\n📋 Validation Results:'));
+      console.log(chalk.green(`   ✅ Network: ${hederaOperations.getNetwork().toUpperCase()}`));
+      console.log(chalk.green(`   ✅ Account: ${hederaOperations.getCurrentAccountId()}`));
+      console.log(chalk.green(`   ✅ Mode: Hedera SDK`));
+      console.log(chalk.gray('   No network call was made; credentials are checked on your first transaction.'));
 
     } catch (error: any) {
-      logger.error('Comprehensive validation failed:', error);
-      console.log(chalk.red('\n🚨 System Error:'));
-      console.log(chalk.yellow(`   ${error.message}`));
+      spinner.fail(chalk.red('❌ Validation failed'));
+      console.log(chalk.yellow(`\n${maskSecrets(error.message)}`));
+      throw error;
     }
   }
 
   async generateRecommendations(options: any): Promise<void> {
-    try {
+    requireAIKey('recommend');
+    {
       logger.info('AI-powered recommendation generation:', options);
 
       console.log(chalk.blue.bold('\n🤖 AI-Powered Recommendations\n'));
@@ -1115,7 +1060,7 @@ export class APIxCLI {
           }
         );
 
-        spinner.succeed(chalk.green('✅ AI analysis completed'));
+        spinner.succeed(chalk.green(`✅ Analysis by ${this.aiLabel()}`));
 
         // Display AI-powered recommendations
         console.log(chalk.blue('\n📋 AI-Generated Recommendations:'));
@@ -1139,14 +1084,6 @@ export class APIxCLI {
           });
         }
 
-        // Template recommendations
-        if (classification.recommendedApproach.templateSuggestions.length > 0) {
-          console.log(chalk.blue('\n📄 Recommended Templates:'));
-          classification.recommendedApproach.templateSuggestions.forEach(template => {
-            console.log(chalk.cyan(`   • ${template}`));
-          });
-        }
-
         // Compliance recommendations
         if (classification.complianceRequirements.applicableFrameworks.length > 0) {
           console.log(chalk.blue('\n📋 Compliance Considerations:'));
@@ -1166,13 +1103,9 @@ export class APIxCLI {
 
         // Next steps
         console.log(chalk.blue('\n💡 Recommended Next Steps:'));
-        if (classification.confidence.overall >= 80) {
-          console.log(chalk.green('   1. Proceed with AI-enhanced code generation'));
-          console.log(chalk.gray(`      apix generate-enterprise ${classification.businessIntent.primary} --industry ${classification.industrySpecific.industry}`));
-        } else {
-          console.log(chalk.yellow('   1. Start with template-based implementation'));
-          console.log(chalk.gray(`      apix add ${classification.recommendedServices[0]?.toLowerCase() || 'hts'} --name YourProject`));
-        }
+        const addType = this.integrationForService(classification.recommendedServices[0]);
+        console.log(chalk.white('   1. Add the integration to your project'));
+        console.log(chalk.gray(`      apix add ${addType}`));
 
         console.log(chalk.gray('   2. Review compliance requirements'));
         console.log(chalk.gray('   3. Test integration on Hedera testnet'));
@@ -1191,193 +1124,107 @@ export class APIxCLI {
           await this.promptRecommendationActions(classification.recommendedServices);
         }
 
-      } catch (error: any) {
+      } catch (error) {
         spinner.fail(chalk.red('❌ AI analysis failed'));
-        logger.warn('AI recommendation generation failed, using fallback:', error?.message);
-
-        // Fallback to basic recommendations
-        console.log(chalk.yellow('\n🔧 Basic Recommendations (AI unavailable):'));
-        console.log(chalk.cyan('   • HTS (Token Service) - For tokenization and digital assets'));
-        console.log(chalk.cyan('   • HCS (Consensus Service) - For audit trails and timestamping'));
-        console.log(chalk.cyan('   • Smart Contracts - For complex business logic'));
-        console.log(chalk.blue('\n💡 Next Steps:'));
-        console.log(chalk.gray('   • Configure API keys for AI-powered recommendations'));
-        console.log(chalk.gray('   • Start with: apix add hts --name YourToken'));
-        console.log(chalk.gray('   • Visit https://docs.hedera.com for detailed guidance'));
-
-        // Interactive prompts for fallback recommendations
-        if (!options.quiet) {
-          await this.promptRecommendationActions(['HTS', 'HCS', 'Smart Contract']);
-        }
+        throw error;
       }
-
-    } catch (error: any) {
-      logger.error('Recommendation generation failed:', error);
-      console.log(chalk.red('\n❌ Recommendation generation failed'));
-      console.log(chalk.yellow(`   Error: ${error.message}`));
     }
   }
 
+  /** The `apix add` type for a service the classifier recommends ('HCS' -> consensus) */
+  private integrationForService(service?: string): string {
+    const name = (service ?? '').toLowerCase();
+    if (name.includes('consensus') || name.includes('hcs')) return 'consensus';
+    if (name.includes('contract')) return 'smart-contract';
+    if (name.includes('wallet')) return 'wallet';
+    return 'hts';
+  }
+
   async explainConcept(concept: string, options: any): Promise<void> {
+    requireAIKey('explain');
+    logger.info('AI-powered concept explanation:', { concept, options });
+
+    console.log(chalk.blue.bold(`\n🤖 AI Explanation: ${concept}\n`));
+    const spinner = ora('Generating AI explanation...').start();
+
     try {
-      logger.info('AI-powered concept explanation:', { concept, options });
+      const sessionId = 'explain-' + Date.now();
+      await this.conversationEngine.startSession(sessionId, {
+        industry: options.industry,
+        companySize: options.companySize,
+        currentProject: options.project
+      });
 
-      console.log(chalk.blue.bold(`\n🤖 AI Explanation: ${concept}\n`));
+      const response = await this.conversationEngine.processMessage(
+        `Please explain the concept "${concept}" in the context of Hedera blockchain development. Focus on practical implementation details, use cases, and enterprise considerations. Keep it comprehensive but easy to understand.`,
+        sessionId
+      );
 
-      const spinner = ora('Generating AI explanation...').start();
+      spinner.succeed(chalk.green(`✅ Explanation from ${this.aiLabel()}`));
+      console.log(chalk.blue('\n📚 Concept Explanation:\n'));
+      console.log(chalk.white(response.content));
 
-      try {
-        const sessionId = 'explain-' + Date.now();
-        await this.conversationEngine.startSession(sessionId, {
-          industry: options.industry,
-          companySize: options.companySize,
-          currentProject: options.project
-        });
-
-        const response = await this.conversationEngine.processMessage(
-          `Please explain the concept "${concept}" in the context of Hedera blockchain development. Focus on practical implementation details, use cases, and enterprise considerations. Keep it comprehensive but easy to understand.`,
-          sessionId
-        );
-
-        spinner.succeed(chalk.green('✅ AI explanation generated'));
-
-        console.log(chalk.blue('\n📚 Concept Explanation:\n'));
-        console.log(chalk.white(response.content));
-
-        if (response.suggestions && response.suggestions.length > 0) {
-          console.log(chalk.blue('\n💡 Related Topics:'));
-          response.suggestions.forEach(suggestion => {
-            console.log(chalk.gray(`   • ${suggestion}`));
-          });
-        }
-
-        // Additional context based on confidence
-        if (response.confidence >= 0.8) {
-          console.log(chalk.green('\n✅ High confidence explanation'));
-        } else if (response.confidence >= 0.6) {
-          console.log(chalk.yellow('\n⚠️  Medium confidence - consider additional research'));
-        } else {
-          console.log(chalk.yellow('\n⚠️  Basic explanation - expert consultation recommended'));
-        }
-
-        console.log(chalk.blue('\n📖 Additional Resources:'));
-        console.log(chalk.gray('   • Hedera Documentation: https://docs.hedera.com'));
-        console.log(chalk.gray('   • Developer Portal: https://hedera.com/developers'));
-        console.log(chalk.gray('   • Community Discord: https://hedera.com/discord'));
-
-      } catch (error: any) {
-        spinner.fail(chalk.red('❌ AI explanation failed'));
-        logger.warn('AI concept explanation failed, using fallback:', error?.message);
-
-        // Fallback to basic concept information
-        console.log(chalk.yellow('\n🔧 Basic Information (AI unavailable):'));
-
-        const basicConcepts: Record<string, string> = {
-          'hts': 'Hedera Token Service - Native tokenization platform for fungible and non-fungible tokens',
-          'hcs': 'Hedera Consensus Service - Decentralized messaging and timestamping service',
-          'smart contracts': 'EVM-compatible smart contracts on Hedera for complex business logic',
-          'file service': 'Distributed file storage with integrity verification',
-          'account service': 'Account management and cryptographic identity services',
-          'consensus': 'Hedera\'s unique hashgraph consensus algorithm for fast finality',
-          'hashgraph': 'Distributed ledger technology providing fast, fair, and secure consensus',
-          'hedera': 'Enterprise-grade public distributed ledger platform'
-        };
-
-        const conceptLower = concept.toLowerCase();
-        const match = Object.keys(basicConcepts).find(key => conceptLower.includes(key));
-
-        if (match) {
-          console.log(chalk.cyan(`   ${basicConcepts[match]}`));
-        } else {
-          console.log(chalk.cyan(`   "${concept}" - Please refer to Hedera documentation for details`));
-        }
-
-        console.log(chalk.blue('\n📖 Resources:'));
-        console.log(chalk.gray('   • Configure API keys for AI-powered explanations'));
-        console.log(chalk.gray('   • Visit https://docs.hedera.com for comprehensive guides'));
-        console.log(chalk.gray('   • Try: apix chat for interactive assistance'));
-      }
-
-    } catch (error: any) {
-      logger.error('Concept explanation failed:', error);
-      console.log(chalk.red('\n❌ Concept explanation failed'));
-      console.log(chalk.yellow(`   Error: ${error.message}`));
+      console.log(chalk.blue('\n📖 Additional Resources:'));
+      console.log(chalk.gray('   • Hedera Documentation: https://docs.hedera.com'));
+      console.log(chalk.gray('   • Developer Portal: https://hedera.com/developers'));
+    } catch (error) {
+      spinner.fail(chalk.red('❌ AI explanation failed'));
+      throw error;
     }
   }
 
   async compareApproaches(approaches: string, options: any): Promise<void> {
+    requireAIKey('compare');
+    logger.info('AI-powered approach comparison:', { approaches, options });
+
+    console.log(chalk.blue.bold(`\n🤖 AI Approach Comparison\n`));
+    const spinner = ora('Analyzing different approaches...').start();
+
     try {
-      logger.info('AI-powered approach comparison:', { approaches, options });
+      const sessionId = 'compare-' + Date.now();
+      await this.conversationEngine.startSession(sessionId, {
+        industry: options.industry,
+        companySize: options.companySize
+      });
 
-      console.log(chalk.blue.bold(`\n🤖 AI Approach Comparison\n`));
+      const response = await this.conversationEngine.processMessage(
+        `Please compare these different approaches for Hedera blockchain implementation: "${approaches}".
 
-      const spinner = ora('Analyzing different approaches...').start();
+        Analyze each approach considering:
+        1. Technical complexity and implementation effort
+        2. Performance characteristics and scalability
+        3. Security implications and best practices
+        4. Regulatory compliance considerations
+        5. Maintenance and operational overhead
+        6. Cost implications (development and operational)
 
-      try {
-        const sessionId = 'compare-' + Date.now();
-        await this.conversationEngine.startSession(sessionId, {
-          industry: options.industry,
-          companySize: options.companySize
-        });
+        Provide a balanced comparison with clear recommendations for different use cases.`,
+        sessionId
+      );
 
-        const response = await this.conversationEngine.processMessage(
-          `Please compare these different approaches for Hedera blockchain implementation: "${approaches}".
-
-          Analyze each approach considering:
-          1. Technical complexity and implementation effort
-          2. Performance characteristics and scalability
-          3. Security implications and best practices
-          4. Regulatory compliance considerations
-          5. Maintenance and operational overhead
-          6. Cost implications (development and operational)
-
-          Provide a balanced comparison with clear recommendations for different use cases.`,
-          sessionId
-        );
-
-        spinner.succeed(chalk.green('✅ AI comparison completed'));
-
-        console.log(chalk.blue('\n⚖️  Approach Comparison:\n'));
-        console.log(chalk.white(response.content));
-
-        if (response.confidence >= 0.8) {
-          console.log(chalk.green('\n✅ High confidence analysis'));
-        } else {
-          console.log(chalk.yellow('\n⚠️  Consider expert consultation for final decision'));
-        }
-
-      } catch (error: any) {
-        spinner.fail(chalk.red('❌ AI comparison failed'));
-
-        // Fallback to basic comparison framework
-        console.log(chalk.yellow('\n🔧 Basic Comparison Framework (AI unavailable):'));
-        console.log(chalk.cyan('\n📊 Consider these factors:'));
-        console.log(chalk.gray('   • Performance requirements vs. complexity'));
-        console.log(chalk.gray('   • Regulatory compliance needs'));
-        console.log(chalk.gray('   • Development timeline and resources'));
-        console.log(chalk.gray('   • Long-term maintenance considerations'));
-        console.log(chalk.gray('   • Integration with existing systems'));
-        console.log(chalk.blue('\n💡 Recommendation:'));
-        console.log(chalk.gray('   • Configure API keys for detailed AI-powered analysis'));
-        console.log(chalk.gray('   • Consult Hedera documentation for service comparisons'));
-      }
-
-    } catch (error: any) {
-      logger.error('Approach comparison failed:', error);
-      console.log(chalk.red('\n❌ Approach comparison failed'));
-      console.log(chalk.yellow(`   Error: ${error.message}`));
+      spinner.succeed(chalk.green(`✅ Comparison from ${this.aiLabel()}`));
+      console.log(chalk.blue('\n⚖️  Approach Comparison:\n'));
+      console.log(chalk.white(response.content));
+    } catch (error) {
+      spinner.fail(chalk.red('❌ AI comparison failed'));
+      throw error;
     }
   }
 
   async assessConfidence(requirement: string, options: any): Promise<void> {
+    requireAIKey('confidence');
     logger.info('AI-powered confidence assessment:', { requirement, options });
 
-    try {
+    {
       const spinner = ora('Analyzing requirement complexity and confidence...').start();
 
-      // Create limitation handler for AI-powered assessment
-      const limitationHandler = new LimitationHandler();
-      const limitationAssessment = await limitationHandler.assessLimitations(requirement);
+      let limitationAssessment;
+      try {
+        limitationAssessment = await new LimitationHandler({ command: 'confidence' }).assessLimitations(requirement);
+      } catch (error) {
+        spinner.fail(chalk.red('❌ AI assessment failed'));
+        throw error;
+      }
 
       // Extract confidence from limitation assessment
       const confidence = limitationAssessment.overallConfidence;
@@ -1412,7 +1259,7 @@ export class APIxCLI {
         console.log(chalk.cyan('📊 Assessment Summary:'));
         console.log(`${chalk.bold('Confidence Level:')} ${this.getConfidenceColor(confidence)(`${confidence}%`)}`);
         console.log(`${chalk.bold('Complexity:')} ${this.getComplexityColor(complexity)(complexity.toUpperCase())}`);
-        console.log(`${chalk.bold('Estimated Time:')} ${chalk.yellow(timeEstimate)}`);
+        console.log(`${chalk.bold('Estimated Time:')} ${chalk.yellow(timeEstimate)} ${chalk.gray('(rule of thumb from the score, not an AI estimate)')}`);
 
         if (options.detailed) {
           console.log(chalk.cyan('\n📋 Detailed Analysis:'));
@@ -1476,435 +1323,66 @@ export class APIxCLI {
         throw new Error('Failed to generate confidence assessment');
       }
 
-    } catch (error: any) {
-      logger.error('Confidence assessment failed:', error);
-
-      // Fallback to rule-based assessment
-      console.log(chalk.yellow('🎯 Fallback Confidence Assessment\n'));
-
-      const fallbackConfidence = this.calculateFallbackConfidence(requirement, options);
-      console.log(`${chalk.bold('Estimated Confidence:')} ${this.getConfidenceColor(fallbackConfidence)(`${fallbackConfidence}%`)}`);
-      console.log(`${chalk.bold('Assessment:')} Rule-based analysis (AI assessment unavailable)`);
-
-      // Basic rule-based recommendations
-      const words = requirement.toLowerCase();
-      if (words.includes('token') || words.includes('hts')) {
-        console.log(chalk.green('• HTS integration is well-supported'));
-      }
-      if (words.includes('smart contract') || words.includes('solidity')) {
-        console.log(chalk.yellow('• Smart contract integration requires additional complexity'));
-      }
-      if (words.includes('consensus') || words.includes('hcs')) {
-        console.log(chalk.green('• HCS integration is straightforward'));
-      }
     }
   }
 
   async debugIssue(issue: string, options: any): Promise<void> {
+    requireAIKey('debug');
     logger.info('AI-powered debug assistance:', { issue, options });
 
+    const spinner = ora('Analyzing the issue...').start();
+    const { ErrorRecoverySystem } = await import('../ai/recovery/error-recovery-system');
+
+    let diagnosis;
     try {
-      const spinner = ora('Analyzing issue with AI debugging system...').start();
-
-      // Use the Error Recovery System for intelligent debugging
-      const errorRecoverySystem = await import('../ai/recovery/error-recovery-system');
-      const { ErrorRecoverySystem } = errorRecoverySystem;
-
-      const recoverySystem = new ErrorRecoverySystem();
-
-      // Create a mock error for analysis based on the issue description
-      const mockError = new Error(issue);
-      const operationContext = {
+      diagnosis = await new ErrorRecoverySystem({ command: 'debug' }).diagnose(new Error(issue), {
         type: 'debug-assistance',
-        parameters: {
-          issue,
-          files: options.files || [],
-          logs: options.logs || null,
-          suggestFixes: options.suggestFixes || false,
-          context: options.context || 'unknown'
-        },
+        parameters: { issue, context: options.context || 'unknown' },
         originalRequirement: `Debug issue: ${issue}`,
-        projectContext: {
-          environment: process.env.NODE_ENV || 'development',
-          timestamp: new Date()
-        }
-      };
-
-      // Use the public detectAndRecover method
-      const recoveryResult = await recoverySystem.detectAndRecover(operationContext, mockError);
-
-      spinner.stop();
-
-      console.log(chalk.green.bold('🐛 AI Debug Analysis Complete\n'));
-
-      // Display recovery result summary
-      console.log(chalk.cyan('🔍 Analysis Summary:'));
-      console.log(`${chalk.bold('Success:')} ${recoveryResult.success ? chalk.green('✅ Analysis completed') : chalk.red('❌ Analysis failed')}`);
-      console.log(`${chalk.bold('Strategy Used:')} ${recoveryResult.strategy}`);
-      console.log(`${chalk.bold('Message:')} ${recoveryResult.message}`);
-
-      if (recoveryResult.attempts?.length > 0) {
-        console.log(`${chalk.bold('Recovery Attempts:')} ${recoveryResult.attempts.length}`);
-      }
-
-      // Display recommendations
-      if (recoveryResult.recommendations?.length > 0) {
-        console.log(chalk.cyan('\n💡 AI Recommendations:'));
-        recoveryResult.recommendations.forEach((recommendation: string, index: number) => {
-          console.log(`${index + 1}. ${recommendation}`);
-        });
-      }
-
-      // Display next steps if available
-      if (recoveryResult.nextSteps && recoveryResult.nextSteps.length > 0) {
-        console.log(chalk.cyan('\n📋 Next Steps:'));
-        recoveryResult.nextSteps.forEach((step: string, index: number) => {
-          console.log(`${index + 1}. ${step}`);
-        });
-      }
-
-      // Display limitations if this is partial recovery
-      if (recoveryResult.isPartialRecovery && recoveryResult.limitations && recoveryResult.limitations.length > 0) {
-        console.log(chalk.yellow('\n⚠️  Limitations:'));
-        recoveryResult.limitations.forEach((limitation: string) => {
-          console.log(`• ${limitation}`);
-        });
-      }
-
-      // Show escalation guidance if available
-      if (recoveryResult.escalationGuidance) {
-        console.log(chalk.red('\n🚨 Escalation Guidance:'));
-        console.log(`${chalk.bold('Problem:')} ${recoveryResult.escalationGuidance.problemSummary}`);
-        console.log(`${chalk.bold('Severity:')} ${this.getSeverityColor(recoveryResult.escalationGuidance.severity)(recoveryResult.escalationGuidance.severity)}`);
-      }
-
-      // Generate fixes if requested or if recovery wasn't fully successful
-      if (options.suggestFixes || !recoveryResult.success) {
-        console.log(chalk.cyan('\n🛠️  Suggested Fixes:'));
-
-        const issueWords = issue.toLowerCase();
-        if (issueWords.includes('hedera') || issueWords.includes('network') || issueWords.includes('blockchain')) {
-          console.log('• Check HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY environment variables');
-          console.log('• Verify network connectivity to Hedera testnet/mainnet');
-          console.log('• Ensure account has sufficient HBAR balance');
-          console.log('• Try switching between testnet and mainnet');
-        } else if (issueWords.includes('config') || issueWords.includes('env') || issueWords.includes('credential')) {
-          console.log('• Verify .env file exists and is properly formatted');
-          console.log('• Check file permissions on configuration files');
-          console.log('• Validate API keys and credentials');
-        } else if (issueWords.includes('dependency') || issueWords.includes('module') || issueWords.includes('import')) {
-          console.log('• Run npm install to update dependencies');
-          console.log('• Check for version conflicts in package.json');
-          console.log('• Clear node_modules and reinstall if necessary');
-        } else {
-          console.log('• Review error logs for specific error messages');
-          console.log('• Check system requirements and dependencies');
-          console.log('• Verify input parameters and configuration');
-        }
-      }
-
-      // File analysis if files provided
-      if (options.files && options.files.length > 0) {
-        console.log(chalk.cyan('\n📁 File Analysis:'));
-        console.log(`Analyzing ${options.files.length} file(s) for potential issues...`);
-        // TODO: Implement file analysis using AI composition engine
-        console.log(chalk.gray('File analysis capabilities coming soon'));
-      }
-
-      // Log analysis if log file provided
-      if (options.logs) {
-        console.log(chalk.cyan('\n📋 Log Analysis:'));
-        console.log(`Analyzing log file: ${options.logs}`);
-        // TODO: Implement log file analysis
-        console.log(chalk.gray('Log analysis capabilities coming soon'));
-      }
-
-      logger.info('AI debug assistance completed successfully', {
-        issue,
-        success: recoveryResult.success,
-        strategy: recoveryResult.strategy,
-        attemptsCount: recoveryResult.attempts?.length || 0,
-        recommendationsCount: recoveryResult.recommendations?.length || 0
+        projectContext: { environment: process.env.NODE_ENV || 'development' }
       });
-
-    } catch (error: any) {
-      logger.error('AI debug assistance failed:', error);
-
-      // Fallback to rule-based debugging
-      console.log(chalk.yellow('🐛 Fallback Debug Analysis\n'));
-
-      const issueWords = issue.toLowerCase();
-
-      console.log(chalk.cyan('🔍 Basic Issue Analysis:'));
-
-      if (issueWords.includes('token') || issueWords.includes('hts')) {
-        console.log(chalk.green('• HTS/Token related issue detected'));
-        console.log('• Check token creation parameters');
-        console.log('• Verify account permissions for token operations');
-        console.log('• Ensure sufficient HBAR balance for fees');
-      } else if (issueWords.includes('network') || issueWords.includes('connection')) {
-        console.log(chalk.yellow('• Network connectivity issue detected'));
-        console.log('• Verify internet connection');
-        console.log('• Check Hedera network status');
-        console.log('• Try switching between testnet and mainnet');
-      } else if (issueWords.includes('credential') || issueWords.includes('auth')) {
-        console.log(chalk.red('• Authentication issue detected'));
-        console.log('• Verify HEDERA_ACCOUNT_ID format (0.0.xxxxx)');
-        console.log('• Check HEDERA_PRIVATE_KEY is valid ED25519 key');
-        console.log('• Ensure .env file is properly loaded');
-      } else {
-        console.log(chalk.gray('• General troubleshooting steps:'));
-        console.log('• Check error logs for specific messages');
-        console.log('• Verify system requirements');
-        console.log('• Review recent configuration changes');
-      }
-
-      console.log(chalk.cyan('\n💡 General Recommendations:'));
-      console.log('• Run: apix health --quick for system diagnostics');
-      console.log('• Check: apix validate for integration validation');
-      console.log('• Review: APIX documentation for common issues');
+    } catch (error) {
+      spinner.fail(chalk.red('❌ AI analysis failed'));
+      throw error;
     }
-  }
+    spinner.succeed(chalk.green(`✅ Analysis by ${this.aiLabel()}`));
 
-  async enterpriseDeployment(options: any): Promise<void> {
-    logger.info('AI-powered enterprise deployment:', options);
+    const { classification, suggestedStrategies } = diagnosis;
+    console.log(chalk.cyan('\n🔍 Diagnosis:'));
+    console.log(`${chalk.bold('Category:')} ${classification.category}`);
+    console.log(`${chalk.bold('Severity:')} ${this.getSeverityColor(classification.severity)(classification.severity)}`);
+    if (classification.rootCause?.immediate) {
+      console.log(`${chalk.bold('Likely cause:')} ${classification.rootCause.immediate}`);
+    }
+    if (classification.rootCause?.underlying) {
+      console.log(`${chalk.bold('Underlying issue:')} ${classification.rootCause.underlying}`);
+    }
 
-    try {
-      const spinner = ora('Initializing enterprise deployment pipeline...').start();
-
-      // Use the Enterprise Classifier for deployment analysis
-      const enterpriseClassifier = this.enterpriseClassifier;
-
-      // Create deployment context
-      const deploymentContext = {
-        environment: options.environment || 'development',
-        complianceCheck: options.complianceCheck || false,
-        auditTrail: options.auditTrail || false,
-        rollbackPlan: options.rollbackPlan || false,
-        monitoring: options.monitoring || false,
-        dryRun: options.dryRun || false
-      };
-
-      spinner.text = 'Analyzing deployment requirements...';
-
-      // Step 1: Environment Assessment
-      const envAssessment = await this.assessDeploymentEnvironment(deploymentContext);
-
-      // Step 2: Compliance Analysis (if requested)
-      let complianceResults = null;
-      if (options.complianceCheck) {
-        spinner.text = 'Running compliance validation...';
-        complianceResults = await this.performComplianceCheck(deploymentContext);
-      }
-
-      // Step 3: Pre-deployment Validation
-      spinner.text = 'Validating pre-deployment requirements...';
-      const preDeploymentValidation = await this.validatePreDeployment(deploymentContext);
-
-      // Step 4: Generate Deployment Plan
-      spinner.text = 'Generating AI-powered deployment strategy...';
-      const deploymentPlan = await this.generateDeploymentPlan(deploymentContext, envAssessment);
-
-      spinner.stop();
-
-      console.log(chalk.green.bold('🚀 Enterprise Deployment Analysis Complete\n'));
-
-      // Display environment assessment
-      console.log(chalk.cyan('🏗️  Environment Assessment:'));
-      console.log(`${chalk.bold('Target Environment:')} ${this.getEnvironmentColor(envAssessment.environment)(envAssessment.environment.toUpperCase())}`);
-      console.log(`${chalk.bold('Readiness Score:')} ${this.getReadinessColor(envAssessment.readinessScore)(`${envAssessment.readinessScore}/100`)}`);
-      console.log(`${chalk.bold('Risk Level:')} ${this.getRiskColor(envAssessment.riskLevel)(envAssessment.riskLevel.toUpperCase())}`);
-
-      if (envAssessment.prerequisites?.length > 0) {
-        console.log(chalk.yellow('\n📋 Prerequisites:'));
-        envAssessment.prerequisites.forEach((prerequisite: string, index: number) => {
-          console.log(`${index + 1}. ${prerequisite}`);
-        });
-      }
-
-      // Display compliance results
-      if (complianceResults) {
-        console.log(chalk.cyan('\n🛡️  Compliance Analysis:'));
-        console.log(`${chalk.bold('Compliance Score:')} ${this.getComplianceColor(complianceResults.score)(`${complianceResults.score}/100`)}`);
-        console.log(`${chalk.bold('Standards Met:')} ${complianceResults.standardsMet}/${complianceResults.totalStandards}`);
-
-        if (complianceResults.violations?.length > 0) {
-          console.log(chalk.red('\n❌ Compliance Violations:'));
-          complianceResults.violations.forEach((violation: string) => {
-            console.log(`• ${violation}`);
-          });
-        }
-
-        if (complianceResults.recommendations?.length > 0) {
-          console.log(chalk.yellow('\n💡 Compliance Recommendations:'));
-          complianceResults.recommendations.forEach((recommendation: string, index: number) => {
-            console.log(`${index + 1}. ${recommendation}`);
-          });
-        }
-      }
-
-      // Display pre-deployment validation
-      console.log(chalk.cyan('\n✅ Pre-deployment Validation:'));
-      console.log(`${chalk.bold('Overall Status:')} ${preDeploymentValidation.passed ? chalk.green('✅ PASSED') : chalk.red('❌ FAILED')}`);
-
-      if (preDeploymentValidation.checks) {
-        Object.entries(preDeploymentValidation.checks).forEach(([check, status]: [string, any]) => {
-          const icon = status ? '✅' : '❌';
-          const color = status ? chalk.green : chalk.red;
-          console.log(`${chalk.bold(check)}: ${color(`${icon} ${status ? 'PASSED' : 'FAILED'}`)}`);
-        });
-      }
-
-      if (preDeploymentValidation.failures?.length > 0) {
-        console.log(chalk.red('\n🚨 Validation Failures:'));
-        preDeploymentValidation.failures.forEach((failure: string) => {
-          console.log(`• ${failure}`);
-        });
-      }
-
-      // Display deployment plan
-      console.log(chalk.cyan('\n📋 AI-Generated Deployment Plan:'));
-      console.log(`${chalk.bold('Strategy:')} ${deploymentPlan.strategy}`);
-      console.log(`${chalk.bold('Estimated Duration:')} ${deploymentPlan.estimatedDuration}`);
-      console.log(`${chalk.bold('Success Probability:')} ${this.getSuccessColor(deploymentPlan.successProbability)(`${deploymentPlan.successProbability}%`)}`);
-
-      if (deploymentPlan.phases?.length > 0) {
-        console.log(chalk.cyan('\n🔄 Deployment Phases:'));
-        deploymentPlan.phases.forEach((phase: any, index: number) => {
-          console.log(`${index + 1}. ${chalk.bold(phase.name)} (${phase.duration})`);
-          console.log(`   ${phase.description}`);
-          if (phase.tasks?.length > 0) {
-            phase.tasks.forEach((task: string) => {
-              console.log(`   • ${task}`);
-            });
-          }
-        });
-      }
-
-      // Display rollback plan if requested
-      if (options.rollbackPlan && deploymentPlan.rollbackPlan) {
-        console.log(chalk.yellow('\n⏪ Rollback Plan:'));
-        console.log(`${chalk.bold('Strategy:')} ${deploymentPlan.rollbackPlan.strategy}`);
-        console.log(`${chalk.bold('Estimated Time:')} ${deploymentPlan.rollbackPlan.estimatedTime}`);
-        if (deploymentPlan.rollbackPlan.steps?.length > 0) {
-          deploymentPlan.rollbackPlan.steps.forEach((step: string, index: number) => {
-            console.log(`${index + 1}. ${step}`);
-          });
-        }
-      }
-
-      // Display monitoring setup if requested
-      if (options.monitoring) {
-        console.log(chalk.cyan('\n📊 Monitoring & Alerting:'));
-        console.log('• System health monitoring will be configured');
-        console.log('• Transaction monitoring for Hedera operations');
-        console.log('• Performance metrics and alerting');
-        console.log('• Compliance monitoring and reporting');
-      }
-
-      // Display audit trail setup if requested
-      if (options.auditTrail) {
-        console.log(chalk.cyan('\n📜 Audit Trail:'));
-        console.log('• Deployment events will be logged');
-        console.log('• Configuration changes tracked');
-        console.log('• Access control audit logging');
-        console.log('• Compliance audit reports available');
-      }
-
-      // Final recommendations
-      console.log(chalk.cyan('\n💡 Final Recommendations:'));
-
-      if (preDeploymentValidation.passed && (!complianceResults || complianceResults.score >= 80)) {
-        console.log(chalk.green('✅ Ready for deployment'));
-        console.log('• All validation checks passed');
-        console.log('• Compliance requirements satisfied');
-        console.log('• Proceed with deployment execution');
-      } else {
-        console.log(chalk.yellow('⚠️  Pre-deployment issues detected'));
-        console.log('• Address validation failures before deploying');
-        console.log('• Review compliance violations');
-        console.log('• Consider staging deployment first');
-      }
-
-      if (options.dryRun) {
-        console.log(chalk.blue('\n🔬 Dry Run Mode:'));
-        console.log('• Deployment plan generated successfully');
-        console.log('• No actual deployment performed');
-        console.log('• Review plan and run without --dry-run to deploy');
-      }
-
-      logger.info('Enterprise deployment analysis completed successfully', {
-        environment: deploymentContext.environment,
-        readinessScore: envAssessment.readinessScore,
-        riskLevel: envAssessment.riskLevel,
-        validationPassed: preDeploymentValidation.passed,
-        complianceScore: complianceResults?.score || null,
-        dryRun: options.dryRun
+    if (classification.recoverySuggestions?.length > 0) {
+      console.log(chalk.cyan('\n💡 What to try:'));
+      classification.recoverySuggestions.forEach((suggestion: string, index: number) => {
+        console.log(`${index + 1}. ${suggestion}`);
       });
-
-    } catch (error: any) {
-      logger.error('Enterprise deployment failed:', error);
-
-      // Fallback to basic deployment guidance
-      console.log(chalk.yellow('🚀 Basic Enterprise Deployment Guidance\n'));
-
-      console.log(chalk.cyan('📋 Essential Deployment Checklist:'));
-
-      if (options.environment === 'production') {
-        console.log(chalk.red('🚨 PRODUCTION DEPLOYMENT CHECKLIST:'));
-        console.log('• ✅ All tests must pass');
-        console.log('• ✅ Security audit completed');
-        console.log('• ✅ Performance testing validated');
-        console.log('• ✅ Backup and rollback procedures ready');
-        console.log('• ✅ Monitoring and alerting configured');
-        console.log('• ✅ Compliance requirements verified');
-      } else {
-        console.log(chalk.yellow('📝 STAGING/DEVELOPMENT CHECKLIST:'));
-        console.log('• Run comprehensive tests');
-        console.log('• Verify Hedera network connectivity');
-        console.log('• Check environment configuration');
-        console.log('• Validate API keys and credentials');
-        console.log('• Test core functionality');
-      }
-
-      console.log(chalk.cyan('\n🔧 Deployment Commands:'));
-      console.log('• npm run build          # Build production assets');
-      console.log('• npm run test           # Run all tests');
-      console.log('• apix health --quick    # System health check');
-      console.log('• apix validate          # Integration validation');
-
-      if (options.complianceCheck) {
-        console.log(chalk.cyan('\n🛡️  Compliance Considerations:'));
-        console.log('• Data encryption at rest and in transit');
-        console.log('• Access control and authentication');
-        console.log('• Audit logging and monitoring');
-        console.log('• Regular security assessments');
-      }
     }
+
+    if (suggestedStrategies.length > 0) {
+      console.log(chalk.cyan('\n🛠️  Suggested approaches:'));
+      suggestedStrategies.forEach(option => {
+        console.log(`• ${option.approach}${option.description ? `: ${option.description}` : ''}`);
+      });
+    }
+
+    console.log(chalk.gray(`\n${NOT_RETRIED}`));
   }
 
   /**
-   * Validate Hedera network connection
+   * Check the Hedera client is configured with an operator account.
+   * This does not contact the network.
    */
   private async validateHederaConnection(): Promise<boolean> {
     try {
       await hederaOperations.initialize();
-
-      // Try to get current account info as a connection test
-      const accountId = hederaOperations.getCurrentAccountId();
-      if (!accountId) {
-        return false;
-      }
-
-      // If we're not in fallback mode, we have a real connection
-      if (!hederaOperations.isFallbackMode()) {
-        // TODO: Could add more comprehensive connection tests here
-        return true;
-      }
-
-      // Fallback mode available for development (uses test accounts)
-      return true;
-
+      return !!hederaOperations.getCurrentAccountId();
     } catch (error: any) {
       logger.error('Hedera connection validation failed:', error);
       return false;
@@ -1912,87 +1390,62 @@ export class APIxCLI {
   }
 
   /**
-   * Create a token on Hedera blockchain (real blockchain operation)
+   * Create a token on Hedera blockchain (real blockchain operation).
+   * Throws on any failure so the command exits non-zero.
    */
-  async createTokenOnBlockchain(options: TokenCreationOptions & { testMode?: boolean }): Promise<void> {
+  async createTokenOnBlockchain(options: TokenCreationOptions, guard: { yes?: boolean } = {}): Promise<void> {
+    await confirmMainnetSpend(hederaOperations.getNetwork(), guard);
+
+    console.log(chalk.blue.bold('\n🚀 Creating Token on Hedera Blockchain\n'));
+
+    console.log(chalk.cyan('Token Details:'));
+    console.log(chalk.white(`   Name: ${chalk.bold(options.name)}`));
+    console.log(chalk.white(`   Symbol: ${chalk.bold(options.symbol)}`));
+    const decimals = options.decimals ?? 8;
+    const units = options.initialSupply ?? 1000000;
+    console.log(chalk.white(`   Decimals: ${chalk.bold(decimals)}`));
+    console.log(chalk.white(`   Initial Supply: ${chalk.bold(units.toLocaleString('en-US'))} smallest units (${formatTokenAmount(units, decimals)} tokens)`));
+    console.log(chalk.white(`   Supply Type: ${chalk.bold(options.maxSupply !== undefined ? `FINITE (max ${options.maxSupply.toLocaleString('en-US')} units)` : 'INFINITE')}`));
+    const keys = (['admin', 'supply', 'freeze', 'wipe'] as const).filter(key => options[`${key}Key` as const]);
+    console.log(chalk.white(`   Keys (operator key): ${chalk.bold(keys.length > 0 ? keys.join(', ') : 'none')}`));
+    console.log(chalk.white(`   Network: ${chalk.bold(hederaOperations.getNetwork().toUpperCase())}\n`));
+
+    const spinner = ora('Initializing Hedera client...').start();
+
     try {
-      console.log(chalk.blue.bold('\n🚀 Creating Token on Hedera Blockchain\n'));
+      await hederaOperations.initialize();
+      const accountId = hederaOperations.getCurrentAccountId();
 
-      // Show what we're creating
-      console.log(chalk.cyan('Token Details:'));
-      console.log(chalk.white(`   Name: ${chalk.bold(options.name)}`));
-      console.log(chalk.white(`   Symbol: ${chalk.bold(options.symbol)}`));
-      console.log(chalk.white(`   Decimals: ${chalk.bold(options.decimals || 8)}`));
-      console.log(chalk.white(`   Initial Supply: ${chalk.bold((options.initialSupply || 1000000).toLocaleString())}`));
-      console.log(chalk.white(`   Network: ${chalk.bold(hederaOperations.getNetwork().toUpperCase())}`));
+      spinner.text = `Creating token on ${hederaOperations.getNetwork()}...`;
+      spinner.color = 'blue';
 
-      console.log(chalk.green('\n✅ Live Blockchain Mode'));
-      console.log(chalk.gray('   Connected to Hedera ' + hederaOperations.getNetwork() + '\n'));
-
-      // Create spinner for blockchain operation
-      const spinner = ora('Initializing Hedera connection...').start();
-
-      try {
-        // Initialize Hedera operations
-        await hederaOperations.initialize();
-        const accountId = hederaOperations.getCurrentAccountId();
-
-        spinner.text = `Creating token on ${hederaOperations.getNetwork()}...`;
-        spinner.color = 'blue';
-
-        // Create the token
-        const result = await hederaOperations.createToken(options);
-
-        if (result.success) {
-          spinner.succeed(chalk.green('✅ Token created successfully!'));
-          console.log(chalk.green.bold('\n🎉 Token Creation Complete!\n'));
-          console.log(chalk.blue('Token Information:'));
-          console.log(chalk.white(`   Token ID: ${chalk.bold(result.tokenId)}`));
-          console.log(chalk.white(`   Transaction ID: ${chalk.bold(result.transactionId)}`));
-          console.log(chalk.white(`   Treasury Account: ${chalk.bold(accountId)}`));
-
-          if (result.explorerUrl) {
-            console.log(chalk.white(`   Explorer: ${chalk.blue.underline(result.explorerUrl)}`));
-          }
-
-          console.log(chalk.cyan('\n💡 Next Steps:'));
-          console.log(chalk.white('   • Use this token ID in your application'));
-          console.log(chalk.white('   • Transfer tokens to other accounts'));
-          console.log(chalk.white('   • Integrate with your frontend'));
-          console.log(chalk.white(`   • Run: ${chalk.cyan('apix add hts --name "' + options.name + '" --symbol ' + options.symbol)}`));
-        } else {
-          spinner.fail(chalk.red('❌ Token creation failed'));
-          console.log(chalk.red('\n🚨 Token Creation Failed'));
-          console.log(chalk.yellow('Error: ' + result.error));
-
-          if (result.error?.includes('insufficient')) {
-            console.log(chalk.cyan('\n💡 Troubleshooting:'));
-            console.log(chalk.white('   • Check account balance (need ~30 HBAR for token creation)'));
-            console.log(chalk.white('   • Verify account has sufficient funds'));
-            console.log(chalk.white('   • Try with a testnet account first'));
-          }
-        }
-
-      } catch (error: any) {
-        spinner.fail(chalk.red('❌ Blockchain operation failed'));
-        console.log(chalk.red('\n🚨 Blockchain Operation Failed'));
-        console.log(chalk.yellow('Error: ' + error.message));
-
-        console.log(chalk.cyan('\n💡 Troubleshooting:'));
-        console.log(chalk.white('   • Check your Hedera credentials'));
-        console.log(chalk.white('   • Verify network connectivity'));
-        console.log(chalk.white('   • Ensure account has sufficient HBAR balance'));
-        console.log(chalk.white('   • Try running: apix health --quick'));
-
-        if (!hederaOperations.isFallbackMode()) {
-          console.log(chalk.gray('\n   For testing, you can also run without credentials to use fallback mode.'));
-        }
+      const result = await hederaOperations.createToken(options);
+      if (!result.success) {
+        throw new Error(result.error || 'Token creation failed');
       }
 
+      if (!result.tokenId || !result.transactionId) {
+        throw new Error('Token creation reported success without a token ID and transaction ID');
+      }
+
+      spinner.succeed(chalk.green('✅ Token created successfully!'));
+      console.log(chalk.blue('\nToken Information:'));
+      console.log(chalk.white(`   Token ID: ${chalk.bold(result.tokenId)}`));
+      console.log(chalk.white(`   Transaction ID: ${chalk.bold(result.transactionId)}`));
+      console.log(chalk.white(`   Treasury Account: ${chalk.bold(accountId)}`));
+      console.log(chalk.white(`   Token on HashScan: ${chalk.blue.underline(hederaOperations.getExplorerUrl(result.tokenId, 'token'))}`));
+      console.log(chalk.white(`   Transaction on HashScan: ${chalk.blue.underline(hederaOperations.getExplorerUrl(result.transactionId, 'transaction'))}`));
+
+      console.log(chalk.cyan('\n💡 Next Steps:'));
+      console.log(chalk.white('   • Use this token ID in your application'));
+      console.log(chalk.white(`   • Run: ${chalk.cyan('apix add hts --name "' + options.name + '" --symbol ' + options.symbol)}`));
     } catch (error: any) {
-      logger.error('Token creation command failed:', error);
-      console.log(chalk.red('\n🚨 Command Failed'));
-      console.log(chalk.yellow('Error: ' + error.message));
+      spinner.fail(chalk.red('❌ Token creation failed'));
+      console.log(chalk.yellow(`\n${maskSecrets(error.message)}`));
+      if (error.message?.toLowerCase().includes('insufficient')) {
+        console.log(chalk.gray('   Token creation costs HBAR; check your account balance.'));
+      }
+      throw error;
     }
   }
 
@@ -2015,41 +1468,6 @@ export class APIxCLI {
       case 'high': return chalk.red;
       default: return chalk.gray;
     }
-  }
-
-  /**
-   * Calculate fallback confidence using rule-based analysis
-   */
-  private calculateFallbackConfidence(requirement: string, options: any): number {
-    const words = requirement.toLowerCase();
-    let confidence = 50; // Base confidence
-
-    // Boost confidence for well-supported features
-    if (words.includes('token') || words.includes('hts')) confidence += 25;
-    if (words.includes('consensus') || words.includes('hcs')) confidence += 20;
-    if (words.includes('account') || words.includes('balance')) confidence += 15;
-
-    // Reduce confidence for complex features
-    if (words.includes('smart contract') || words.includes('solidity')) confidence -= 15;
-    if (words.includes('custom') || words.includes('complex')) confidence -= 10;
-    if (words.includes('integration') && words.includes('multiple')) confidence -= 15;
-
-    // Industry context adjustments
-    if (options.industry) {
-      const industry = options.industry.toLowerCase();
-      if (industry.includes('finance') || industry.includes('banking')) confidence += 10;
-      if (industry.includes('healthcare') || industry.includes('pharmaceutical')) confidence += 5;
-    }
-
-    // Complexity level adjustments
-    if (options.complexity) {
-      const complexity = options.complexity.toLowerCase();
-      if (complexity === 'low') confidence += 15;
-      if (complexity === 'high') confidence -= 20;
-    }
-
-    // Keep within bounds
-    return Math.max(10, Math.min(95, confidence));
   }
 
   /**
@@ -2090,249 +1508,12 @@ export class APIxCLI {
     }
   }
 
-  /**
-   * Helper method to get color based on environment type
-   */
-  private getEnvironmentColor(environment: string): any {
-    switch (environment.toLowerCase()) {
-      case 'production': return chalk.red;
-      case 'staging': return chalk.yellow;
-      case 'development': return chalk.green;
-      default: return chalk.gray;
-    }
-  }
+}
 
-  /**
-   * Helper method to get color based on readiness score
-   */
-  private getReadinessColor(score: number): any {
-    if (score >= 90) return chalk.green;
-    if (score >= 70) return chalk.yellow;
-    return chalk.red;
-  }
-
-  /**
-   * Helper method to get color based on risk level
-   */
-  private getRiskColor(risk: string): any {
-    switch (risk.toLowerCase()) {
-      case 'low': return chalk.green;
-      case 'medium': return chalk.yellow;
-      case 'high': return chalk.red;
-      case 'critical': return chalk.red;
-      default: return chalk.gray;
-    }
-  }
-
-  /**
-   * Helper method to get color based on compliance score
-   */
-  private getComplianceColor(score: number): any {
-    if (score >= 95) return chalk.green;
-    if (score >= 80) return chalk.yellow;
-    return chalk.red;
-  }
-
-  /**
-   * Helper method to get color based on success probability
-   */
-  private getSuccessColor(probability: number): any {
-    if (probability >= 80) return chalk.green;
-    if (probability >= 60) return chalk.yellow;
-    return chalk.red;
-  }
-
-  /**
-   * Assess deployment environment readiness
-   */
-  private async assessDeploymentEnvironment(context: any): Promise<any> {
-    // Rule-based environment assessment
-    let readinessScore = 70; // Base score
-    const prerequisites: string[] = [];
-    let riskLevel = 'medium';
-
-    // Adjust based on environment type
-    if (context.environment === 'production') {
-      readinessScore -= 20; // More stringent for production
-      riskLevel = 'high';
-      prerequisites.push('Complete security audit required');
-      prerequisites.push('Performance testing must be completed');
-      prerequisites.push('Backup and disaster recovery procedures');
-    } else if (context.environment === 'staging') {
-      readinessScore += 10;
-      riskLevel = 'medium';
-      prerequisites.push('Integration testing completion');
-    } else {
-      readinessScore += 20;
-      riskLevel = 'low';
-    }
-
-    // Check Hedera connectivity
-    const hederaConnected = await this.validateHederaConnection();
-    if (hederaConnected) {
-      readinessScore += 15;
-    } else {
-      readinessScore -= 30;
-      prerequisites.push('Establish Hedera network connectivity');
-    }
-
-    return {
-      environment: context.environment,
-      readinessScore: Math.max(0, Math.min(100, readinessScore)),
-      riskLevel,
-      prerequisites: prerequisites.length > 0 ? prerequisites : null
-    };
-  }
-
-  /**
-   * Perform compliance validation
-   */
-  private async performComplianceCheck(context: any): Promise<any> {
-    // Mock compliance check with rule-based scoring
-    let score = 75; // Base compliance score
-    const violations: string[] = [];
-    const recommendations: string[] = [];
-
-    // Check environment-specific compliance
-    if (context.environment === 'production') {
-      score += 10; // Production environments typically have better compliance
-      recommendations.push('Implement continuous compliance monitoring');
-      recommendations.push('Regular security assessments');
-    }
-
-    // Check for audit trail
-    if (context.auditTrail) {
-      score += 10;
-    } else {
-      violations.push('Audit trail logging not enabled');
-      recommendations.push('Enable comprehensive audit logging');
-    }
-
-    // Check for monitoring
-    if (context.monitoring) {
-      score += 5;
-    } else {
-      recommendations.push('Implement monitoring and alerting systems');
-    }
-
-    const totalStandards = 10;
-    const standardsMet = Math.floor((score / 100) * totalStandards);
-
-    return {
-      score: Math.max(0, Math.min(100, score)),
-      totalStandards,
-      standardsMet,
-      violations: violations.length > 0 ? violations : null,
-      recommendations: recommendations.length > 0 ? recommendations : null
-    };
-  }
-
-  /**
-   * Validate pre-deployment requirements
-   */
-  private async validatePreDeployment(context: any): Promise<any> {
-    const checks: Record<string, boolean> = {};
-    const failures: string[] = [];
-
-    // Hedera connectivity check
-    checks['Hedera Network Connectivity'] = await this.validateHederaConnection();
-    if (!checks['Hedera Network Connectivity']) {
-      failures.push('Hedera network connection failed');
-    }
-
-    // Environment variables check
-    checks['Environment Variables'] = !!(process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY);
-    if (!checks['Environment Variables']) {
-      failures.push('Required environment variables missing');
-    }
-
-    // Configuration check
-    checks['Configuration Files'] = true; // Assume configuration exists
-
-    // Dependencies check
-    checks['Dependencies'] = true; // Assume dependencies are installed
-
-    // Test requirements for production
-    if (context.environment === 'production') {
-      checks['Security Audit'] = false; // Assume not completed in mock
-      failures.push('Security audit not completed');
-
-      checks['Performance Testing'] = false; // Assume not completed in mock
-      failures.push('Performance testing not completed');
-    }
-
-    const passed = failures.length === 0;
-
-    return {
-      passed,
-      checks,
-      failures: failures.length > 0 ? failures : null
-    };
-  }
-
-  /**
-   * Generate AI-powered deployment plan
-   */
-  private async generateDeploymentPlan(context: any, envAssessment: any): Promise<any> {
-    // Rule-based deployment plan generation
-    let strategy = 'Standard Deployment';
-    let estimatedDuration = '30-60 minutes';
-    let successProbability = envAssessment.readinessScore;
-
-    // Adjust strategy based on environment and readiness
-    if (context.environment === 'production') {
-      strategy = 'Blue-Green Deployment';
-      estimatedDuration = '2-4 hours';
-      successProbability = Math.max(60, successProbability - 10);
-    } else if (envAssessment.readinessScore < 70) {
-      strategy = 'Staged Deployment with Rollback';
-      estimatedDuration = '1-2 hours';
-    }
-
-    const phases = [
-      {
-        name: 'Pre-deployment Validation',
-        duration: '10 minutes',
-        description: 'Validate environment and prerequisites',
-        tasks: ['Check system health', 'Verify configurations', 'Test connectivity']
-      },
-      {
-        name: 'Build and Package',
-        duration: '15 minutes',
-        description: 'Build application and prepare deployment packages',
-        tasks: ['Run build process', 'Package artifacts', 'Generate checksums']
-      },
-      {
-        name: 'Deploy to Target Environment',
-        duration: '20 minutes',
-        description: 'Deploy application to target environment',
-        tasks: ['Deploy code', 'Update configurations', 'Start services']
-      },
-      {
-        name: 'Post-deployment Validation',
-        duration: '15 minutes',
-        description: 'Validate deployment success and functionality',
-        tasks: ['Health checks', 'Functional testing', 'Performance validation']
-      }
-    ];
-
-    const rollbackPlan = context.rollbackPlan ? {
-      strategy: 'Automated Rollback',
-      estimatedTime: '10-15 minutes',
-      steps: [
-        'Stop current services',
-        'Restore previous version',
-        'Restart services',
-        'Validate rollback success'
-      ]
-    } : null;
-
-    return {
-      strategy,
-      estimatedDuration,
-      successProbability,
-      phases,
-      rollbackPlan
-    };
-  }
+/** 100000 units at 2 decimals -> "1,000.00" */
+export function formatTokenAmount(units: number, decimals: number): string {
+  const value = BigInt(units);
+  const scale = BigInt(10) ** BigInt(decimals);
+  const whole = (value / scale).toLocaleString('en-US');
+  return decimals > 0 ? `${whole}.${(value % scale).toString().padStart(decimals, '0')}` : whole;
 }

@@ -3,6 +3,10 @@ import chalk from 'chalk';
 import { logger } from './logger';
 import { validateAccountId, validateNetwork } from './errors';
 
+export const HEDERA_CREDENTIALS_HELP =
+  'Set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY in your .env file (HEDERA_NETWORK defaults to testnet).\n' +
+  'Get a free testnet account at https://portal.hedera.com/faucet';
+
 export interface EnvironmentValidationResult {
   valid: boolean;
   errors: string[];
@@ -33,7 +37,7 @@ export class EnvironmentValidator {
     // Check Hedera credentials
     const hederaValidation = this.validateHederaCredentials();
     if (requirements.requireHedera && !hederaValidation.valid) {
-      errors.push(...hederaValidation.errors);
+      errors.push(...hederaValidation.errors, ...hederaValidation.warnings);
       errors.push('Hedera credentials required for blockchain operations');
       errors.push('Get testnet credentials from: https://portal.hedera.com/faucet');
     } else if (!hederaValidation.valid) {
@@ -62,6 +66,40 @@ export class EnvironmentValidator {
       warnings,
       mode
     };
+  }
+
+  /**
+   * True when both Hedera credential variables are set (format not checked).
+   */
+  static hasHederaCredentials(): boolean {
+    return !!(process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY);
+  }
+
+  /**
+   * Return the Hedera credentials, or throw an error that says which
+   * variables to set and where to get a testnet account.
+   */
+  static requireHederaCredentials(): { accountId: string; privateKey: string } {
+    const accountId = process.env.HEDERA_ACCOUNT_ID;
+    const privateKey = process.env.HEDERA_PRIVATE_KEY;
+
+    if (!accountId || !privateKey) {
+      throw new Error(
+        'Hedera credentials are not configured.\n' +
+        `${HEDERA_CREDENTIALS_HELP}`
+      );
+    }
+
+    const validation = this.validateHederaCredentials();
+    if (!validation.valid) {
+      throw new Error(
+        'Hedera credentials are invalid:\n' +
+        validation.errors.map(error => `  ${error}`).join('\n') + '\n' +
+        `${HEDERA_CREDENTIALS_HELP}`
+      );
+    }
+
+    return { accountId, privateKey };
   }
 
   /**
@@ -124,9 +162,7 @@ export class EnvironmentValidator {
 
     const openaiKey = process.env.OPENAI_API_KEY;
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    const groqKey = process.env.GROQ_API_KEY;
-
-    const hasAnyAI = openaiKey || anthropicKey || groqKey;
+    const hasAnyAI = openaiKey || anthropicKey;
 
     if (requirements.requireOpenAI && !openaiKey) {
       errors.push('OPENAI_API_KEY is required for this operation');
@@ -141,8 +177,8 @@ export class EnvironmentValidator {
     }
 
     if (requirements.requireAI && !hasAnyAI) {
-      errors.push('At least one AI API key is required (OpenAI, Anthropic, or Groq)');
-      errors.push('Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GROQ_API_KEY in your .env file');
+      errors.push('An AI API key is required (Anthropic or OpenAI)');
+      errors.push('Set ANTHROPIC_API_KEY (or OPENAI_API_KEY) in your .env file');
       return { valid: false, errors, warnings };
     }
 
@@ -241,7 +277,6 @@ export class EnvironmentValidator {
       'HEDERA_NETWORK': process.env.HEDERA_NETWORK || 'testnet (default)',
       'OPENAI_API_KEY': process.env.OPENAI_API_KEY ? '✅ Set' : '❌ Missing',
       'ANTHROPIC_API_KEY': process.env.ANTHROPIC_API_KEY ? '✅ Set' : '❌ Missing',
-      'GROQ_API_KEY': process.env.GROQ_API_KEY ? '✅ Set' : '❌ Missing',
     };
   }
 

@@ -1,81 +1,103 @@
 {{!-- META: {"name": "Hedera Client", "description": "Hedera SDK client configuration", "language": "typescript"} --}}
-{{#ifLanguage language "typescript"}}import { Client, PrivateKey, AccountId } from '@hashgraph/sdk';{{else}}const { Client, PrivateKey, AccountId } = require('@hashgraph/sdk');{{/ifLanguage}}
+{{#ifFramework framework "next.js"}}import 'server-only';
+{{/ifFramework}}
+{{#ifLanguage language "typescript"}}import { Client, PrivateKey, AccountId } from '@hashgraph/sdk';
 
-{{#ifLanguage language "typescript"}}
 export interface HederaClientConfig {
   network: 'testnet' | 'mainnet';
-  accountId?: string;
-  privateKey?: string;
+  accountId: string;
+  privateKey: string;
   mirrorNodeUrl?: string;
 }
 
+/**
+ * Hedera SDK client with an operator account. Server-side only: it holds the
+ * operator's private key.
+ */
 export class HederaClient {
-  private client: Client;
-  private operatorAccountId?: AccountId;
-  private operatorPrivateKey?: PrivateKey;
+  private readonly client: Client;
+  private readonly operatorAccountId: AccountId;
+  private readonly operatorPrivateKey: PrivateKey;
 
   constructor(config: HederaClientConfig) {
-{{else}}
+{{else}}const { Client, PrivateKey, AccountId } = require('@hashgraph/sdk');
+
+/**
+ * Hedera SDK client with an operator account. Server-side only: it holds the
+ * operator's private key.
+ */
 class HederaClient {
   constructor(config) {
 {{/ifLanguage}}
-    // Initialize client based on network
-    if (config.network === 'mainnet') {
-      this.client = Client.forMainnet();
-    } else {
-      this.client = Client.forTestnet();
-    }
+    this.client = config.network === 'mainnet' ? Client.forMainnet() : Client.forTestnet();
 
-    // Set operator if credentials provided
-    if (config.accountId && config.privateKey) {
-      this.operatorAccountId = AccountId.fromString(config.accountId);
-      this.operatorPrivateKey = PrivateKey.fromStringECDSA(config.privateKey);
-      this.client.setOperator(this.operatorAccountId, this.operatorPrivateKey);
-    }
+    // DER-encoded keys say which algorithm they are; raw hex keys are ECDSA
+    this.operatorAccountId = AccountId.fromString(config.accountId);
+    this.operatorPrivateKey = config.privateKey.startsWith('302')
+      ? PrivateKey.fromStringDer(config.privateKey)
+      : PrivateKey.fromStringECDSA(config.privateKey);
+    this.client.setOperator(this.operatorAccountId, this.operatorPrivateKey);
 
-    // Set mirror node URL if provided
     if (config.mirrorNodeUrl) {
-      this.client.setMirrorNetwork(config.mirrorNodeUrl);
+      this.client.setMirrorNetwork(toMirrorNetworkAddress(config.mirrorNodeUrl));
     }
   }
 
-  {{#ifLanguage language "typescript"}}getClient(): Client {{{else}}getClient() {{{/ifLanguage}}
+  getClient(){{#ifLanguage language "typescript"}}: Client{{/ifLanguage}} {
     return this.client;
   }
 
-  {{#ifLanguage language "typescript"}}getOperatorAccountId(): AccountId | undefined {{{else}}getOperatorAccountId() {{{/ifLanguage}}
+  getOperatorAccountId(){{#ifLanguage language "typescript"}}: AccountId{{/ifLanguage}} {
     return this.operatorAccountId;
   }
 
-  {{#ifLanguage language "typescript"}}getOperatorPrivateKey(): PrivateKey | undefined {{{else}}getOperatorPrivateKey() {{{/ifLanguage}}
+  getOperatorPrivateKey(){{#ifLanguage language "typescript"}}: PrivateKey{{/ifLanguage}} {
     return this.operatorPrivateKey;
   }
 
-  {{#ifLanguage language "typescript"}}async close(): Promise<void> {{{else}}async close() {{{/ifLanguage}}
+  async close(){{#ifLanguage language "typescript"}}: Promise<void>{{/ifLanguage}} {
     this.client.close();
-  }
-
-  // Utility method to check if operator is set
-  {{#ifLanguage language "typescript"}}hasOperator(): boolean {{{else}}hasOperator() {{{/ifLanguage}}
-    return !!(this.operatorAccountId && this.operatorPrivateKey);
   }
 }
 
-// Default client configuration from environment
-{{#ifLanguage language "typescript"}}
-export const createDefaultClient = (): HederaClient => {
-{{else}}
-const createDefaultClient = () => {
-{{/ifLanguage}}
-  const config{{#ifLanguage language "typescript"}}: HederaClientConfig{{/ifLanguage}} = {
-    network: (process.env.HEDERA_NETWORK{{#ifLanguage language "typescript"}} as 'testnet' | 'mainnet'{{/ifLanguage}}) || 'testnet',
-    accountId: process.env.HEDERA_ACCOUNT_ID,
-    privateKey: process.env.HEDERA_PRIVATE_KEY,
-    mirrorNodeUrl: process.env.HEDERA_MIRROR_NODE_URL
-  };
+/**
+ * The SDK wants the mirror node's gRPC address ("host:443"), but .env files
+ * usually hold its REST URL ("https://testnet.mirrornode.hedera.com").
+ */
+function toMirrorNetworkAddress(value{{#ifLanguage language "typescript"}}: string{{/ifLanguage}}){{#ifLanguage language "typescript"}}: string{{/ifLanguage}} {
+  if (!/^[a-z]+:\/\//i.test(value)) {
+    return value;
+  }
+  const url = new URL(value);
+  return `${url.hostname}:${url.port || '443'}`;
+}
 
-  return new HederaClient(config);
-};
+let defaultClient{{#ifLanguage language "typescript"}}: HederaClient | null{{/ifLanguage}} = null;
+
+/**
+ * The client for HEDERA_ACCOUNT_ID / HEDERA_PRIVATE_KEY, created on first use
+ * (never at import time, so `next build` works without credentials) and then
+ * reused. Throws if the credentials are missing.
+ */
+{{#ifLanguage language "typescript"}}export {{/ifLanguage}}function createDefaultClient(){{#ifLanguage language "typescript"}}: HederaClient{{/ifLanguage}} {
+  if (!defaultClient) {
+    const accountId = process.env.HEDERA_ACCOUNT_ID;
+    const privateKey = process.env.HEDERA_PRIVATE_KEY;
+    if (!accountId || !privateKey) {
+      throw new Error(
+        'HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY must be set on the server (e.g. in .env.local). ' +
+        'Get a free testnet account at https://portal.hedera.com/faucet'
+      );
+    }
+    defaultClient = new HederaClient({
+      network: process.env.HEDERA_NETWORK === 'mainnet' ? 'mainnet' : 'testnet',
+      accountId,
+      privateKey,
+      mirrorNodeUrl: process.env.HEDERA_MIRROR_NODE_URL,
+    });
+  }
+  return defaultClient;
+}
 
 {{#ifLanguage language "javascript"}}
 module.exports = {
@@ -83,6 +105,5 @@ module.exports = {
   createDefaultClient
 };
 {{else}}
-export { HederaClient, createDefaultClient };
 export default HederaClient;
 {{/ifLanguage}}

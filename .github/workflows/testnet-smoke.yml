@@ -1,0 +1,43 @@
+name: Testnet smoke (nightly)
+
+# Creates a token and a topic on Hedera testnet with APIX's hedera-operations
+# and submits one message, each verified on the mirror node
+# (scripts/testnet-proof.ts --smoke). Skips cleanly when the repo secrets
+# HEDERA_ACCOUNT_ID / HEDERA_PRIVATE_KEY are not set (forks, new clones).
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testnet-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HEDERA_NETWORK: testnet
+      HEDERA_ACCOUNT_ID: ${{ secrets.HEDERA_ACCOUNT_ID }}
+      HEDERA_PRIVATE_KEY: ${{ secrets.HEDERA_PRIVATE_KEY }}
+    steps:
+      - name: Check for testnet credentials
+        id: credentials
+        run: |
+          if [ -z "$HEDERA_ACCOUNT_ID" ] || [ -z "$HEDERA_PRIVATE_KEY" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::HEDERA_ACCOUNT_ID / HEDERA_PRIVATE_KEY secrets are not set; skipping the testnet smoke."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.credentials.outputs.configured == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.credentials.outputs.configured == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: steps.credentials.outputs.configured == 'true'
+      - run: npm run proof:testnet -- --smoke
+        if: steps.credentials.outputs.configured == 'true'

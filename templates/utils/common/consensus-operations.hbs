@@ -1,0 +1,128 @@
+{{!-- META: {"name": "Consensus Operations", "description": "Hedera Consensus Service (HCS) topics and messages", "language": "typescript"} --}}
+{{#ifFramework framework "next.js"}}import 'server-only';
+{{/ifFramework}}import { Client, TopicCreateTransaction, TopicId, TopicMessageSubmitTransaction } from '@hashgraph/sdk';
+import { createDefaultClient } from '{{importFrom "hedera-client"}}';
+
+// Hedera limits (same rules as APIX's InputSanitizer)
+const MAX_MESSAGE_BYTES = 1024;
+const MAX_MEMO_BYTES = 100;
+const ENTITY_ID = /^\d+\.\d+\.\d+$/;
+
+export interface CreateTopicParams {
+  memo?: string;
+  /** Only the operator account may submit messages to the topic */
+  restrictSubmit?: boolean;
+}
+
+export interface CreateTopicResult {
+  topicId: string;
+  transactionId: string;
+}
+
+export interface SubmitMessageParams {
+  topicId: string;
+  message: string;
+}
+
+export interface SubmitMessageResult {
+  topicId: string;
+  sequenceNumber: string;
+  transactionId: string;
+}
+
+/** Thrown for bad input, before anything is sent to Hedera */
+export class ConsensusInputError extends Error {}
+
+const byteLength = (value: string): number => new TextEncoder().encode(value).length;
+
+export function validateTopicId(topicId: unknown): string {
+  if (typeof topicId !== 'string' || !ENTITY_ID.test(topicId.trim())) {
+    throw new ConsensusInputError('Invalid topic ID. Expected format: 0.0.123');
+  }
+  return topicId.trim();
+}
+
+export function validateMessage(message: unknown): string {
+  if (typeof message !== 'string' || message.length === 0) {
+    throw new ConsensusInputError('Message is required and must be a non-empty string');
+  }
+  const bytes = byteLength(message);
+  if (bytes > MAX_MESSAGE_BYTES) {
+    throw new ConsensusInputError(`Message exceeds ${MAX_MESSAGE_BYTES} bytes (got ${bytes})`);
+  }
+  return message;
+}
+
+export function validateMemo(memo: unknown): string | undefined {
+  if (memo === undefined || memo === null || memo === '') return undefined;
+  if (typeof memo !== 'string') {
+    throw new ConsensusInputError('Memo must be a string');
+  }
+  const bytes = byteLength(memo);
+  if (bytes > MAX_MEMO_BYTES) {
+    throw new ConsensusInputError(`Memo exceeds ${MAX_MEMO_BYTES} bytes (got ${bytes})`);
+  }
+  return memo;
+}
+
+/**
+ * Hedera Consensus Service operations, signed by the server's operator
+ * account (HEDERA_ACCOUNT_ID / HEDERA_PRIVATE_KEY). Server-side only.
+ */
+export class ConsensusManager {
+  private readonly injectedClient?: Client;
+
+  constructor(client?: Client) {
+    this.injectedClient = client;
+  }
+
+  // Created on first use, never at import time (so `next build` needs no credentials)
+  private get client(): Client {
+    return this.injectedClient ?? createDefaultClient().getClient();
+  }
+
+  async createTopic(params: CreateTopicParams = {}): Promise<CreateTopicResult> {
+    const memo = validateMemo(params.memo);
+
+    const transaction = new TopicCreateTransaction();
+    if (memo) {
+      transaction.setTopicMemo(memo);
+    }
+    if (params.restrictSubmit) {
+      transaction.setSubmitKey(createDefaultClient().getOperatorPrivateKey().publicKey);
+    }
+
+    const response = await transaction.execute(this.client);
+    const receipt = await response.getReceipt(this.client);
+    if (!receipt.topicId) {
+      throw new Error('Topic creation receipt has no topic ID');
+    }
+
+    return {
+      topicId: receipt.topicId.toString(),
+      transactionId: response.transactionId.toString(),
+    };
+  }
+
+  async submitMessage(params: SubmitMessageParams): Promise<SubmitMessageResult> {
+    const topicId = validateTopicId(params.topicId);
+    const message = validateMessage(params.message);
+
+    const response = await new TopicMessageSubmitTransaction()
+      .setTopicId(TopicId.fromString(topicId))
+      .setMessage(message)
+      .execute(this.client);
+    const receipt = await response.getReceipt(this.client);
+    if (!receipt.topicSequenceNumber) {
+      throw new Error('Message receipt has no sequence number');
+    }
+
+    return {
+      topicId,
+      sequenceNumber: receipt.topicSequenceNumber.toString(),
+      transactionId: response.transactionId.toString(),
+    };
+  }
+}
+
+export const consensusManager = new ConsensusManager();

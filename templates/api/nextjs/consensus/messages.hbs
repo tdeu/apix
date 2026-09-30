@@ -1,0 +1,25 @@
+{{!-- META: {"name": "Consensus Message API Route", "description": "Next.js App Router route that submits an HCS message", "language": "typescript"} --}}
+// App Router route handler: app/api/consensus/messages/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { consensusManager, ConsensusInputError } from '{{importFrom "consensus-operations"}}';
+
+// POST /api/consensus/messages  { "topicId": "0.0.123", "message": string (max 1024 bytes) }
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const result = await consensusManager.submitMessage({
+      topicId: body.topicId,
+      message: body.message,
+    });
+    return NextResponse.json({ success: true, data: result });
+  } catch (error) {
+    if (error instanceof ConsensusInputError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    console.error('Message submission error:', error);
+    return NextResponse.json(
+      { error: 'Failed to submit message', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}

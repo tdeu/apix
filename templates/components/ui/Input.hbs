@@ -1,6 +1,7 @@
 {{!-- META: {"name": "Input UI Component", "description": "Reusable input component with label and validation", "language": "typescript"} --}}
+'use client';
+
 {{#ifLanguage language "typescript"}}import React, { InputHTMLAttributes, forwardRef } from 'react';
-import { cn } from '@/lib/utils';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -27,7 +28,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     const inputId = id || label?.toLowerCase().replace(/\s+/g, '-');
 
     return (
-      <div className={cn('space-y-2', containerClassName)}>
+      <div className={classNames('space-y-2', containerClassName)}>
         {label && (
           <label 
             htmlFor={inputId}
@@ -51,7 +52,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             type={type}
             id={inputId}
-            className={cn(
+            className={classNames(
               // Base styles
               'block w-full rounded-md border border-gray-300 shadow-sm',
               'px-3 py-2 text-base placeholder-gray-400',
@@ -127,7 +128,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
     const textareaId = id || label?.toLowerCase().replace(/\s+/g, '-');
 
     return (
-      <div className={cn('space-y-2', containerClassName)}>
+      <div className={classNames('space-y-2', containerClassName)}>
         {label && (
           <label 
             htmlFor={textareaId}
@@ -142,7 +143,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           ref={ref}
           id={textareaId}
           rows={rows}
-          className={cn(
+          className={classNames(
             // Base styles
             'block w-full rounded-md border border-gray-300 shadow-sm',
             'px-3 py-2 text-base placeholder-gray-400 resize-vertical',
@@ -184,10 +185,13 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
 Textarea.displayName = 'Textarea';
 
 // Utility function for class names (if not available)
-function cn(...classes: (string | undefined | null | false)[]): string {
-  return classes.filter(Boolean).join(' ');
+function classNames(...classes: unknown[]): string {
+  return classes.filter((c): c is string => typeof c === 'string' && c.length > 0).join(' ');
 }
 {{else}}import React, { forwardRef } from 'react';
+
+// Joins Tailwind class names, skipping empty ones (self-contained: no cn()/clsx)
+const classNames = (...classes) => classes.filter(Boolean).join(' ');
 
 export const Input = forwardRef(({ 
   className = '',

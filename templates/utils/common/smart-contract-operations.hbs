@@ -1,20 +1,18 @@
 {{!-- META: {"name": "Smart Contract Operations", "description": "Hedera smart contract integration", "language": "typescript"} --}}
-{{#ifLanguage language "typescript"}}import {
+{{#ifFramework framework "next.js"}}import 'server-only';
+{{/ifFramework}}{{#ifLanguage language "typescript"}}import {
   Client,
-  ContractCreateTransaction,
+  ContractCreateFlow,
   ContractCallQuery,
   ContractExecuteTransaction,
   ContractFunctionParameters,
   ContractId,
-  AccountId,
-  PrivateKey,
-  Hbar,
-  FileCreateTransaction,
-  FileAppendTransaction
+  Hbar
 } from '@hashgraph/sdk';
-import { createDefaultClient } from './client';
+import { createDefaultClient } from '{{importFrom "hedera-client"}}';
 
 export interface ContractDeployParams {
+  /** Compiled contract bytecode as a 0x-prefixed hex string (e.g. from solc or Hardhat) */
   bytecode: string;
   constructorParams?: ContractFunctionParameters;
   gas?: number;
@@ -40,54 +38,68 @@ export interface ContractInfo {
   balance: string;
 }
 
+/**
+ * Check compiled bytecode: a non-empty, even-length hex string with a 0x prefix.
+ * Returns the hex digits without the prefix.
+ */
+export function validateBytecode(bytecode: unknown): string {
+  if (typeof bytecode !== 'string' || !bytecode.trim().startsWith('0x')) {
+    throw new Error('Bytecode must be a hex string starting with "0x"');
+  }
+  const hex = bytecode.trim().slice(2);
+  if (hex.length === 0) {
+    throw new Error('Bytecode cannot be empty');
+  }
+  if (!/^[0-9a-fA-F]+$/.test(hex)) {
+    throw new Error('Bytecode must be valid hexadecimal');
+  }
+  if (hex.length % 2 !== 0) {
+    throw new Error('Bytecode must have an even number of hex characters');
+  }
+  return hex;
+}
+
 export class SmartContractManager {
-  private client: Client;
+  private readonly injectedClient?: Client;
 
   constructor(client?: Client) {
-    this.client = client || createDefaultClient().getClient();
+    this.injectedClient = client;
+  }
+
+  // Created on first use, never at import time (so `next build` needs no credentials)
+  private get client(): Client {
+    return this.injectedClient ?? createDefaultClient().getClient();
   }
 
   /**
-   * Deploy a smart contract to Hedera
+   * Deploy compiled contract bytecode to Hedera. The operator account
+   * (HEDERA_ACCOUNT_ID) pays and is the admin of the bytecode file.
    */
   async deployContract(params: ContractDeployParams): Promise<{ contractId: string; transactionId: string }> {
+    const hex = validateBytecode(params.bytecode);
+    const { constructorParams, gas = 100000, initialBalance = 0 } = params;
+
     try {
-      const {
-        bytecode,
-        constructorParams,
-        gas = 100000,
-        initialBalance = 0
-      } = params;
-
-      // Create file with bytecode
-      const fileCreateTx = new FileCreateTransaction()
-        .setContents(bytecode)
-        .setKeys([this.client.operatorPublicKey!]);
-
-      const fileResponse = await fileCreateTx.execute(this.client);
-      const fileReceipt = await fileResponse.getReceipt(this.client);
-      const bytecodeFileId = fileReceipt.fileId!;
-
-      // Create contract
-      const contractCreateTx = new ContractCreateTransaction()
-        .setBytecodeFileId(bytecodeFileId)
+      // Uploads the bytecode (in chunks if it is large) and creates the contract
+      const flow = new ContractCreateFlow()
+        .setBytecode(hex)
         .setGas(gas)
         .setInitialBalance(Hbar.fromTinybars(initialBalance));
 
       if (constructorParams) {
-        contractCreateTx.setConstructorParameters(constructorParams);
+        flow.setConstructorParameters(constructorParams);
       }
 
-      const contractResponse = await contractCreateTx.execute(this.client);
-      const contractReceipt = await contractResponse.getReceipt(this.client);
+      const response = await flow.execute(this.client);
+      const receipt = await response.getReceipt(this.client);
 
-      if (!contractReceipt.contractId) {
+      if (!receipt.contractId) {
         throw new Error('Contract deployment failed - no contract ID in receipt');
       }
 
       return {
-        contractId: contractReceipt.contractId.toString(),
-        transactionId: contractResponse.transactionId.toString()
+        contractId: receipt.contractId.toString(),
+        transactionId: response.transactionId.toString()
       };
     } catch (error) {
       console.error('Error deploying contract:', error);
@@ -143,41 +155,17 @@ export class SmartContractManager {
       }
 
       const response = await transaction.execute(this.client);
-      const receipt = await response.getReceipt(this.client);
+      // The function's return value is on the transaction record, not the receipt
+      const record = await response.getRecord(this.client);
 
       return {
         transactionId: response.transactionId.toString(),
-        result: receipt.contractFunctionResult
+        result: record.contractFunctionResult
       };
     } catch (error) {
       console.error('Error executing contract:', error);
       throw new Error(`Failed to execute contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }
-
-  /**
-   * Deploy an ERC-20 token contract
-   */
-  async deployERC20Token(
-    name: string,
-    symbol: string,
-    decimals: number = 18,
-    totalSupply: number = 1000000
-  ): Promise<{ contractId: string; transactionId: string }> {
-    // This is a simplified ERC-20 bytecode - in production, you'd use a proper compiler
-    const erc20Bytecode = "0x608060405234801561001057600080fd5b50"; // Placeholder bytecode
-
-    const constructorParams = new ContractFunctionParameters()
-      .addString(name)
-      .addString(symbol)
-      .addUint256(decimals)
-      .addUint256(totalSupply);
-
-    return this.deployContract({
-      bytecode: erc20Bytecode,
-      constructorParams,
-      gas: 200000
-    });
   }
 }
 
@@ -198,11 +186,16 @@ export default SmartContractManager;
   FileCreateTransaction,
   FileAppendTransaction
 } = require('@hashgraph/sdk');
-const { createDefaultClient } = require('./client');
+const { createDefaultClient } = require('{{importFrom "hedera-client"}}');
 
 class SmartContractManager {
   constructor(client) {
-    this.client = client || createDefaultClient().getClient();
+    this.injectedClient = client;
+  }
+
+  // Created on first use, never at import time
+  get client() {
+    return this.injectedClient || createDefaultClient().getClient();
   }
 
   // JavaScript implementation would go here

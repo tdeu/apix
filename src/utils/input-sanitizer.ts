@@ -30,8 +30,8 @@ export class InputSanitizer {
     // Sanitize inputs
     const name = params.name?.trim() || '';
     const symbol = params.symbol?.trim().toUpperCase() || '';
-    const decimals = params.decimals !== undefined ? Math.floor(Math.abs(params.decimals)) : 8;
-    const initialSupply = params.initialSupply !== undefined ? Math.floor(Math.abs(params.initialSupply)) : 1000000;
+    const decimals = params.decimals ?? 8;
+    const initialSupply = params.initialSupply ?? 1000000;
 
     // Validate token name
     if (!validateTokenName(name)) {
@@ -57,15 +57,19 @@ export class InputSanitizer {
       }
     }
 
-    // Validate decimals
-    if (decimals < 0) {
+    // Validate decimals (reject rather than silently fix NaN, fractions, negatives)
+    if (!Number.isInteger(decimals)) {
+      errors.push('Token decimals must be a whole number');
+    } else if (decimals < 0) {
       errors.push('Token decimals must be non-negative');
     } else if (decimals > 18) {
       errors.push('Token decimals must be at most 18 (Hedera limitation)');
     }
 
     // Validate initial supply
-    if (initialSupply < 0) {
+    if (!Number.isInteger(initialSupply)) {
+      errors.push('Initial supply must be a whole number');
+    } else if (initialSupply < 0) {
       errors.push('Initial supply must be non-negative');
     } else if (initialSupply > Number.MAX_SAFE_INTEGER) {
       errors.push('Initial supply exceeds maximum safe integer');
@@ -121,6 +125,35 @@ export class InputSanitizer {
       };
     }
 
+    return { valid: true };
+  }
+
+  /**
+   * Validate any Hedera entity ID (contract, topic, ...) in 0.0.123 format
+   */
+  static validateEntityIdFormat(id: string, label: string): { valid: boolean; error?: string } {
+    if (!id || typeof id !== 'string') {
+      return { valid: false, error: `${label} is required and must be a string` };
+    }
+
+    const trimmed = id.trim();
+    if (!validateAccountId(trimmed)) {
+      return { valid: false, error: `Invalid ${label} format: "${trimmed}". Expected format: 0.0.123` };
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Validate an optional amount that may be zero (e.g. tinybars sent with a call)
+   */
+  static validateOptionalAmount(amount: number | undefined, label: string): { valid: boolean; error?: string } {
+    if (amount === undefined) {
+      return { valid: true };
+    }
+    if (!Number.isSafeInteger(amount) || amount < 0) {
+      return { valid: false, error: `${label} must be a non-negative whole number` };
+    }
     return { valid: true };
   }
 

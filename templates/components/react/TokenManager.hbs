@@ -1,12 +1,19 @@
 {{!-- META: {"name": "Token Manager Component", "description": "React component for comprehensive token management", "language": "typescript"} --}}
-{{#ifLanguage language "typescript"}}import React, { useState, useCallback } from 'react';
-import { useWallet } from '@/hooks/useWallet';
-import { useTokens } from '@/hooks/useTokens';
-import { CreateTokenParams, MintTokenParams, TransferTokenParams, TokenInfo } from '@/types/hedera';
-import { TransactionStatus } from './TransactionStatus';
-import { Button } from './ui/Button';
-import { Input } from './ui/Input';
-import { Card } from './ui/Card';
+'use client';
+
+{{#ifLanguage language "typescript"}}import React, { useState, useCallback, useEffect } from 'react';
+import { useWallet } from '{{importFrom "use-wallet"}}';
+import { useTokens } from '{{importFrom "use-tokens"}}';
+import { CreateTokenParams, MintTokenParams, TransferTokenParams, TokenInfo } from '{{importFrom "hedera-types"}}';
+import { TransactionStatus } from '{{importFrom "transaction-status"}}';
+import { Button } from '{{importFrom "ui-button"}}';
+import { Input } from '{{importFrom "ui-input"}}';
+import { Card } from '{{importFrom "ui-card"}}';
+
+// Signing model: every operation below is signed on the server by the
+// operator account (HEDERA_ACCOUNT_ID). It is the token treasury, holds the
+// supply key and sends every transfer. The connected wallet is only shown and
+// pre-fills the transfer recipient; its account is never sent as a signer or sender.
 
 interface TokenManagerProps {
   onTokenCreated?: (token: TokenInfo) => void;
@@ -21,7 +28,7 @@ export const TokenManager: React.FC<TokenManagerProps> = ({
   onTokenTransferred,
   initialTokenId = ''
 }) => {
-  const { wallet } = useWallet();
+  const wallet = useWallet();
   const { 
     createToken, 
     mintToken, 
@@ -60,17 +67,17 @@ export const TokenManager: React.FC<TokenManagerProps> = ({
   // Info Token Form State
   const [infoTokenId, setInfoTokenId] = useState(initialTokenId);
 
-  const handleCreateToken = useCallback(async () => {
-    if (!wallet.isConnected || !wallet.currentAccount) {
-      alert('Please connect your wallet first');
-      return;
+  // Pre-fill the transfer recipient with the connected wallet
+  useEffect(() => {
+    if (wallet.accountId) {
+      setTransferForm(prev => (prev.toAccountId ? prev : { ...prev, toAccountId: wallet.accountId! }));
     }
+  }, [wallet.accountId]);
 
+  const handleCreateToken = useCallback(async () => {
     try {
-      const params: CreateTokenParams = {
-        ...createForm,
-        treasuryAccountId: wallet.currentAccount.accountId
-      };
+      // The operator account is the treasury (set on the server)
+      const params: CreateTokenParams = { ...createForm };
 
       const result = await createToken(params);
       setLastTransaction(result);
@@ -82,13 +89,9 @@ export const TokenManager: React.FC<TokenManagerProps> = ({
     } catch (err) {
       console.error('Create token error:', err);
     }
-  }, [createForm, createToken, getTokenInfo, onTokenCreated, wallet]);
+  }, [createForm, createToken, getTokenInfo, onTokenCreated]);
 
   const handleMintToken = useCallback(async () => {
-    if (!wallet.isConnected) {
-      alert('Please connect your wallet first');
-      return;
-    }
 
     try {
       const result = await mintToken(mintForm);
@@ -97,19 +100,12 @@ export const TokenManager: React.FC<TokenManagerProps> = ({
     } catch (err) {
       console.error('Mint token error:', err);
     }
-  }, [mintForm, mintToken, onTokenMinted, wallet]);
+  }, [mintForm, mintToken, onTokenMinted]);
 
   const handleTransferToken = useCallback(async () => {
-    if (!wallet.isConnected || !wallet.currentAccount) {
-      alert('Please connect your wallet first');
-      return;
-    }
-
     try {
-      const params: TransferTokenParams = {
-        ...transferForm,
-        fromAccountId: wallet.currentAccount.accountId
-      };
+      // Sent from the operator account; the recipient may be the connected wallet
+      const params: TransferTokenParams = { ...transferForm };
 
       const result = await transferToken(params);
       setLastTransaction(result);
@@ -117,7 +113,7 @@ export const TokenManager: React.FC<TokenManagerProps> = ({
     } catch (err) {
       console.error('Transfer token error:', err);
     }
-  }, [transferForm, transferToken, onTokenTransferred, wallet]);
+  }, [transferForm, transferToken, onTokenTransferred]);
 
   const handleGetTokenInfo = useCallback(async () => {
     try {
@@ -137,6 +133,11 @@ export const TokenManager: React.FC<TokenManagerProps> = ({
 
   return (
     <div className="token-manager space-y-6">
+      <p className="text-center text-sm text-gray-600">
+        {wallet.accountId
+          ? `Connected wallet: ${wallet.accountId} (transfer recipient; the server's operator account signs)`
+          : 'No wallet connected. Operations are signed by the server\'s operator account.'}
+      </p>
       <div className="flex justify-center">
         <div className="bg-gray-100 rounded-lg p-1 flex">
           {tabs.map((tab) => (
@@ -337,8 +338,8 @@ export const TokenManager: React.FC<TokenManagerProps> = ({
   );
 };
 {{else}}import React, { useState, useCallback } from 'react';
-import { useWallet } from '@/hooks/useWallet';
-import { useTokens } from '@/hooks/useTokens';
+import { useWallet } from '{{importFrom "use-wallet"}}';
+import { useTokens } from '{{importFrom "use-tokens"}}';
 
 export const TokenManager = ({
   onTokenCreated,
@@ -346,7 +347,7 @@ export const TokenManager = ({
   onTokenTransferred,
   initialTokenId = ''
 }) => {
-  const { wallet } = useWallet();
+  const wallet = useWallet();
   const { 
     createToken, 
     mintToken, 

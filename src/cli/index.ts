@@ -6,11 +6,26 @@ require('dotenv').config();
 import { program } from 'commander';
 import chalk from 'chalk';
 import { APIxCLI } from './cli-core';
+import { HealthChecker } from '../validation/health-checker';
+import { describeIntegrations, normalizeIntegration } from '../planning/integration-types';
+import { maskSecrets } from '../utils/secrets';
 import { logger, LogLevel } from '../utils/logger';
 import { debugLogger, LogLevel as DebugLogLevel } from '../utils/debug-logger';
 import { formatter, createFormatter } from '../utils/output-formatter';
 
 const packageJson = require('../../package.json');
+
+/** APIX_EXPERIMENTAL=1 unlocks experimental commands (currently only compose) */
+function experimentalEnabled(): boolean {
+  return process.env.APIX_EXPERIMENTAL === '1';
+}
+
+/** Print the error's own message (secrets masked) and exit 1 */
+function reportFailure(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(chalk.red(`❌ ${maskSecrets(message)}`));
+  process.exit(1);
+}
 let cli: APIxCLI;
 
 // Initialize CLI asynchronously
@@ -67,7 +82,6 @@ function setupLogging(options: any) {
   // Configure output formatter
   formatter.configure({
     quiet: options.quiet,
-    jsonMode: options.json,
     maxWidth: process.stdout.columns || 80
   });
 
@@ -81,23 +95,11 @@ function setupLogging(options: any) {
     debugLogger.setLevel(DebugLogLevel.INFO);
   }
 
-  // Handle file logging options
-  if (options.noFileLogging) {
-    debugLogger.setFileLogging(false);
-  }
-
-  // Handle custom log file path
-  if (options.logFile) {
-    debugLogger.info('Custom log file path specified', { path: options.logFile });
-  }
 
   // Internal debug logging only in debug mode
   if (options.debug) {
     debugLogger.debug('Logging configured', {
-      level: options.quiet ? 'QUIET' : options.debug ? 'DEBUG' : options.verbose ? 'VERBOSE' : 'INFO',
-      jsonMode: options.json,
-      fileLogging: !options.noFileLogging,
-      customLogFile: options.logFile || null
+      level: options.quiet ? 'QUIET' : options.debug ? 'DEBUG' : options.verbose ? 'VERBOSE' : 'INFO'
     });
   }
 }
@@ -109,17 +111,14 @@ program
   .option('-q, --quiet', 'Minimal output (errors only)')
   .option('-v, --verbose', 'Detailed output')
   .option('--debug', 'Debug output with internal details')
-  .option('--json', 'JSON output format')
   .option('--trace', 'Trace logging with stack traces')
-  .option('--log-file <path>', 'Custom log file path')
-  .option('--no-file-logging', 'Disable file logging')
   .hook('preAction', (thisCommand, actionCommand) => {
     // Setup logging and formatting based on global options
     const options = program.opts();
     setupLogging(options);
 
     // Show minimal header unless in quiet mode
-    if (!options.quiet && !options.json) {
+    if (!options.quiet) {
       console.log(chalk.bold('APIX AI'), chalk.gray(`v${packageJson.version}`));
       if (options.verbose) {
         console.log(chalk.gray('Enterprise Hedera Development Assistant\n'));
@@ -159,13 +158,16 @@ program
 
 program
   .command('add <integration>')
-  .description('Add Hedera integration to your project')
+  .description(`Add a Hedera integration to your project: ${describeIntegrations()}`)
+  .addHelpText('after', `\nIntegrations: ${describeIntegrations()}\nNext.js App Router + TypeScript only in this version.`)
   .option('-n, --name <n>', 'Integration name')
   .option('-s, --symbol <symbol>', 'Token symbol (for HTS)')
-  .option('-p, --provider <provider>', 'Wallet provider')
-  .option('-t, --type <type>', 'Contract type')
   .option('-f, --force', 'Force overwrite existing files')
-  .action(async (integration, options) => {
+  .option('--create-token', 'HTS only: also create the token on Hedera (needs HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY)')
+  .option('-y, --yes', 'Skip the confirmation before spending HBAR on mainnet')
+  .action(async (rawIntegration, options) => {
+    // The one place aliases (hcs, contract) become canonical names
+    const integration = normalizeIntegration(rawIntegration);
     const globalOptions = program.opts();
     const allOptions = { ...options, ...globalOptions };
 
@@ -189,7 +191,8 @@ program
         options: allOptions,
         stack: error?.stack
       });
-      console.error(chalk.red(`❌ Integration '${integration}' failed. Use --debug for detailed error information.`));
+      console.error(chalk.red(`❌ Integration '${integration}' failed: ${maskSecrets(String(error?.message ?? error))}`));
+      console.error(chalk.gray('   Use --debug for detailed error information.'));
       process.exit(1);
     }
   });
@@ -234,6 +237,7 @@ program
   .description('Run health checks on your project and integrations')
   .option('-q, --quick', 'Run quick health check')
   .option('--fix', 'Show auto-fix suggestions')
+  .option('--strict', 'Exit 1 unless every area is ok')
   .action(async (options) => {
     const globalOptions = program.opts();
     const allOptions = { ...options, ...globalOptions };
@@ -243,10 +247,10 @@ program
 
     try {
       await ensureCliInitialized(allOptions);
-      const result = await cli.health(options);
-      debugLogger.endCommand(true, result);
+      const areas = await cli.health(options);
+      debugLogger.endCommand(true, areas);
       debugLogger.success('Health check completed successfully');
-      process.exit(0);
+      process.exit(HealthChecker.exitCode(areas, !!options.strict));
     } catch (error: any) {
       debugLogger.endCommand(false);
       debugLogger.error('Health check failed', error, {
@@ -265,15 +269,8 @@ program
 
 program
   .command('generate <integration>')
-  .description('Generate enterprise Hedera integration with AI-powered code composition')
+  .description('Classify your requirement with AI, then write the same files as apix add')
   .option('--industry <industry>', 'Target industry (pharmaceutical, financial-services, insurance, etc.)')
-  .option('--regulation <regulations...>', 'Applicable regulations (FDA-21CFR11, SOX, GDPR, etc.)')
-  .option('--business-context <context>', 'Business context description')
-  .option('--business-goals <goals...>', 'Business goals (compliance, automation, cost-reduction, etc.)')
-  .option('--integration-type <type>', 'Integration complexity (simple, moderate, complex, novel)')
-  .option('--framework <framework>', 'Target framework override')
-  .option('--custom-logic', 'Enable AI custom logic generation')
-  .option('--validate-live', 'Perform live Hedera blockchain validation')
   .option('-f, --force', 'Force overwrite existing files')
   .action(async (integration, options) => {
     const globalOptions = program.opts();
@@ -299,28 +296,28 @@ program
         options: allOptions,
         stack: error?.stack
       });
-      console.error(chalk.red(`❌ Enterprise generation '${integration}' failed. Use --debug for detailed error information.`));
-      process.exit(1);
+      reportFailure(error);
     }
   });
 
 program
-  .command('compose')
-  .description('AI-powered custom code composition for novel requirements')
+  // Experimental: listed in --help only when APIX_EXPERIMENTAL=1
+  .command('compose', { hidden: !experimentalEnabled() })
+  .description('(experimental) AI-powered custom code composition for novel requirements')
+  .option('--experimental', 'Acknowledge that compose is experimental')
   .option('--requirements <requirements>', 'Natural language requirement description')
   .option('--industry <industry>', 'Target industry context')
   .option('--constraints <constraints...>', 'Technical or business constraints')
-  .option('--templates <templates...>', 'Base templates to combine')
-  .option('--novel-pattern', 'Create entirely new implementation pattern')
-  .option('--validate-live', 'Perform live Hedera validation')
   .action(async (options) => {
+    if (!options.experimental && !experimentalEnabled()) {
+      reportFailure(new Error('compose is experimental; re-run with --experimental'));
+    }
     try {
       await ensureCliInitialized();
       await cli.composeCustomCode(options);
       process.exit(0);
     } catch (error) {
-      logger.error('AI composition failed:', error);
-      process.exit(1);
+      reportFailure(error); // compose
     }
   });
 
@@ -339,28 +336,26 @@ program
       await ensureCliInitialized(allOptions);
       await cli.startConversationalInterface(options);
     } catch (error) {
-      logger.error('Conversational interface failed:', error);
-      process.exit(1);
+      reportFailure(error); // chat
     }
   });
 
 program
   .command('validate')
-  .description('Comprehensive validation with live Hedera blockchain testing')
-  .option('--testnet', 'Use Hedera testnet for validation')
-  .option('--mainnet', 'Use Hedera mainnet for validation (production)')
-  .option('--enterprise', 'Run enterprise-grade compliance validation')
-  .option('--compliance <frameworks...>', 'Test specific compliance frameworks')
-  .option('--performance', 'Include performance testing')
-  .option('--security', 'Include security vulnerability scanning')
-  .option('--files <files...>', 'Validate specific files')
+  .description('Check your Hedera configuration locally (network from HEDERA_NETWORK; no network call)')
   .action(async (options) => {
     try {
       await ensureCliInitialized();
+    } catch (error) {
+      console.error(chalk.red(`❌ ${maskSecrets(error instanceof Error ? error.message : String(error))}`));
+      process.exit(1);
+    }
+
+    try {
       await cli.comprehensiveValidation(options);
       process.exit(0);
-    } catch (error) {
-      logger.error('Comprehensive validation failed:', error);
+    } catch {
+      // comprehensiveValidation has already printed the error
       process.exit(1);
     }
   });
@@ -368,13 +363,7 @@ program
 program
   .command('recommend')
   .description('AI-powered enterprise Hedera service recommendations')
-  .option('--business-goals <goals...>', 'Business objectives')
   .option('--industry <industry>', 'Industry context')
-  .option('--current-systems <systems...>', 'Existing systems to integrate')
-  .option('--regulations <regulations...>', 'Regulatory requirements')
-  .option('--budget <budget>', 'Budget constraints')
-  .option('--timeline <timeline>', 'Implementation timeline')
-  .option('--interactive', 'Interactive recommendation wizard')
   .action(async (options) => {
     const globalOptions = program.opts();
     const allOptions = { ...options, ...globalOptions };
@@ -384,8 +373,7 @@ program
       await cli.generateRecommendations(allOptions);
       process.exit(0);
     } catch (error) {
-      logger.error('Recommendation generation failed:', error);
-      process.exit(1);
+      reportFailure(error); // recommend
     }
   });
 
@@ -394,17 +382,13 @@ program
   .description('AI-powered explanations of Hedera concepts and enterprise patterns')
   .argument('<concept>', 'Concept to explain (e.g., "HTS vs smart contracts for loyalty points")')
   .option('--industry <industry>', 'Industry-specific explanation')
-  .option('--detailed', 'Provide detailed technical explanation')
-  .option('--examples', 'Include practical examples')
-  .option('--regulations', 'Include regulatory considerations')
   .action(async (concept, options) => {
     try {
       await ensureCliInitialized();
       await cli.explainConcept(concept, options);
       process.exit(0);
     } catch (error) {
-      logger.error('Concept explanation failed:', error);
-      process.exit(1);
+      reportFailure(error); // explain
     }
   });
 
@@ -412,17 +396,14 @@ program
   .command('compare')
   .description('AI-powered comparison of Hedera approaches for enterprise use cases')
   .argument('<approaches>', 'Approaches to compare (e.g., "HCS vs smart contracts for audit trails")')
-  .option('--use-case <usecase>', 'Specific use case context')
   .option('--industry <industry>', 'Industry context')
-  .option('--criteria <criteria...>', 'Comparison criteria (cost, performance, compliance, etc.)')
   .action(async (approaches, options) => {
     try {
       await ensureCliInitialized();
       await cli.compareApproaches(approaches, options);
       process.exit(0);
     } catch (error) {
-      logger.error('Approach comparison failed:', error);
-      process.exit(1);
+      reportFailure(error); // compare
     }
   });
 
@@ -430,8 +411,6 @@ program
   .command('confidence')
   .description('Assess AI confidence levels for specific requirements')
   .argument('<requirement>', 'Requirement to assess')
-  .option('--industry <industry>', 'Industry context')
-  .option('--complexity <complexity>', 'Requirement complexity level')
   .option('--detailed', 'Show detailed confidence breakdown')
   .action(async (requirement, options) => {
     try {
@@ -439,8 +418,7 @@ program
       await cli.assessConfidence(requirement, options);
       process.exit(0);
     } catch (error) {
-      logger.error('Confidence assessment failed:', error);
-      process.exit(1);
+      reportFailure(error); // confidence
     }
   });
 
@@ -449,53 +427,29 @@ program
   .description('AI-powered debugging assistance for Hedera integration issues')
   .argument('<issue>', 'Issue description or error message')
   .option('--context <context>', 'Additional context about the issue')
-  .option('--files <files...>', 'Related files to analyze')
-  .option('--logs <logfile>', 'Log file to analyze')
-  .option('--suggest-fixes', 'Provide fix suggestions')
   .action(async (issue, options) => {
     try {
       await ensureCliInitialized();
       await cli.debugIssue(issue, options);
       process.exit(0);
     } catch (error) {
-      logger.error('Debug assistance failed:', error);
-      process.exit(1);
-    }
-  });
-
-program
-  .command('deploy')
-  .description('Enterprise deployment with compliance checking and audit trails')
-  .option('--environment <env>', 'Target environment (development, staging, production)')
-  .option('--compliance-check', 'Run compliance validation before deployment')
-  .option('--audit-trail', 'Enable deployment audit trail')
-  .option('--rollback-plan', 'Generate rollback procedures')
-  .option('--monitoring', 'Set up monitoring and alerts')
-  .option('--dry-run', 'Simulate deployment without executing')
-  .action(async (options) => {
-    try {
-      await ensureCliInitialized();
-      await cli.enterpriseDeployment(options);
-      process.exit(0);
-    } catch (error) {
-      logger.error('Enterprise deployment failed:', error);
-      process.exit(1);
+      reportFailure(error); // debug
     }
   });
 
 program
   .command('create-token')
-  .description('Create a token directly on Hedera blockchain (live blockchain operation)')
+  .description('Create a fungible token on Hedera (network from HEDERA_NETWORK; live operation)')
   .option('-n, --name <name>', 'Token name', 'Test Token')
   .option('-s, --symbol <symbol>', 'Token symbol', 'TEST')
   .option('-d, --decimals <decimals>', 'Token decimals', '8')
-  .option('--supply <supply>', 'Initial supply', '1000000')
-  .option('--admin-key', 'Enable admin key', false)
-  .option('--supply-key', 'Enable supply key', false)
-  .option('--freeze-key', 'Enable freeze key', false)
-  .option('--wipe-key', 'Enable wipe key', false)
-  .option('--testnet', 'Use testnet (default)')
-  .option('--mainnet', 'Use mainnet (production)')
+  .option('--supply <supply>', 'Initial supply in the smallest unit (100000 with --decimals 2 = 1,000.00 tokens)', '1000000')
+  .option('--max-supply <maxSupply>', 'Cap the supply (smallest units); without it the supply is infinite')
+  .option('--admin-key', 'Set the admin key to your operator key', false)
+  .option('--supply-key', 'Set the supply key to your operator key (needed to mint)', false)
+  .option('--freeze-key', 'Set the freeze key to your operator key', false)
+  .option('--wipe-key', 'Set the wipe key to your operator key', false)
+  .option('-y, --yes', 'Skip the confirmation before spending HBAR on mainnet')
   .action(async (options) => {
     const globalOptions = program.opts();
     const allOptions = { ...options, ...globalOptions };
@@ -510,15 +464,16 @@ program
       const tokenOptions = {
         name: options.name,
         symbol: options.symbol,
-        decimals: parseInt(options.decimals),
-        initialSupply: parseInt(options.supply),
+        decimals: Number(options.decimals),
+        initialSupply: Number(options.supply),
+        ...(options.maxSupply !== undefined ? { maxSupply: Number(options.maxSupply) } : {}),
         adminKey: options.adminKey,
         supplyKey: options.supplyKey,
         freezeKey: options.freezeKey,
         wipeKey: options.wipeKey
       };
 
-      const result = await cli.createTokenOnBlockchain(tokenOptions);
+      const result = await cli.createTokenOnBlockchain(tokenOptions, { yes: options.yes });
       debugLogger.endCommand(true, result);
       debugLogger.success(`Token '${options.name}' created successfully`);
       process.exit(0);
@@ -529,7 +484,7 @@ program
         options: allOptions,
         stack: error?.stack
       });
-      console.error(chalk.red('❌ Token creation failed. Use --debug for detailed error information.'));
+      console.error(chalk.red(`❌ ${maskSecrets(error instanceof Error ? error.message : String(error))}`));
       process.exit(1);
     }
   });
@@ -601,7 +556,7 @@ program
       }
       process.exit(0);
     } catch (error: any) {
-      console.error(chalk.red('❌ Failed to retrieve logs:'), error.message);
+      console.error(chalk.red('❌ Failed to retrieve logs:'), maskSecrets(String(error?.message)));
       process.exit(1);
     }
   });
@@ -646,7 +601,7 @@ program
       console.log(chalk.yellow('\n💡 Tip: Use --debug flag with commands for detailed logging.'));
       process.exit(0);
     } catch (error: any) {
-      console.error(chalk.red('❌ Failed to retrieve last error:'), error.message);
+      console.error(chalk.red('❌ Failed to retrieve last error:'), maskSecrets(String(error?.message)));
       process.exit(1);
     }
   });
@@ -694,11 +649,9 @@ program
       console.log('  --debug                  - Enable debug logging');
       console.log('  --verbose               - Enable verbose output');
       console.log('  --trace                 - Enable trace logging with stack traces');
-      console.log('  --log-file <path>       - Custom log file path');
-      console.log('  --no-file-logging       - Disable file logging');
       process.exit(0);
     } catch (error: any) {
-      console.error(chalk.red('❌ Failed to retrieve debug information:'), error.message);
+      console.error(chalk.red('❌ Failed to retrieve debug information:'), maskSecrets(String(error?.message)));
       process.exit(1);
     }
   });

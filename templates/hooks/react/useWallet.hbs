@@ -1,6 +1,35 @@
 {{!-- META: {"name": "useWallet Hook", "description": "React hook for Hedera wallet management", "language": "typescript"} --}}
+'use client';
+
 {{#ifLanguage language "typescript"}}import { useState, useCallback, useEffect } from 'react';
-import { AccountId } from '@hashgraph/sdk';
+
+// APIs injected into the page by the HashPack and Blade browser extensions
+interface WalletConnectResult {
+  success: boolean;
+  accountId: string;
+  error?: string;
+}
+
+interface HashPackExtension {
+  connectToSite(): Promise<WalletConnectResult>;
+  getAccountInfo(): Promise<{ accountId: string }>;
+  disconnect(): Promise<void>;
+  signTransaction(transaction: unknown): Promise<unknown>;
+}
+
+interface BladeExtension {
+  connectWallet(): Promise<WalletConnectResult>;
+  getAccountInfo(): Promise<{ accountId: string }>;
+  disconnect(): Promise<void>;
+  signTransaction(transaction: unknown): Promise<unknown>;
+}
+
+declare global {
+  interface Window {
+    hashpack?: HashPackExtension;
+    bladeWallet?: BladeExtension;
+  }
+}
 
 interface WalletState {
   accountId: string | null;
@@ -136,7 +165,7 @@ export const useWallet = () => {
       setState(prev => ({
         ...prev,
         isConnecting: false,
-        error: error{{#ifLanguage language "typescript"}} as Error{{/ifLanguage}}.message || 'Connection failed'
+        error: (error{{#ifLanguage language "typescript"}} as Error{{/ifLanguage}}).message || 'Connection failed'
       }));
       throw error;
     }
@@ -222,7 +251,7 @@ export const useWallet = () => {
     } catch (error) {
       setState(prev => ({
         ...prev,
-        error: error{{#ifLanguage language "typescript"}} as Error{{/ifLanguage}}.message || 'Transaction signing failed'
+        error: (error{{#ifLanguage language "typescript"}} as Error{{/ifLanguage}}).message || 'Transaction signing failed'
       }));
       throw error;
     }
