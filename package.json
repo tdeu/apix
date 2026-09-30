@@ -124,6 +124,6 @@
   },
   "overrides": {
     "protobufjs": "7.6.6",
-    "@grpc/grpc-js": "1.12.7"
+    "@grpc/grpc-js": "1.13.6"
   }
 }

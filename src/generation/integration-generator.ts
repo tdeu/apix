@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { ProjectContext, IntegrationPlan, GeneratedFile, TemplateSelection, ConfigurationUpdate } from '../types';
 import { TemplateEngine } from '../templates/template-engine';
-import { generatedDependencyVersion } from './dependency-versions';
+import { generatedDependencyVersion, GENERATED_PACKAGE_OVERRIDES } from './dependency-versions';
 import { modulePathMap } from './module-paths';
 import { detectProjectLayout } from '../analysis/project-layout';
 import { PackageManager, Dependency } from '../utils/package-manager';
@@ -177,6 +177,12 @@ export class IntegrationGenerator {
       saved.push([file, await fs.pathExists(file) ? await fs.readFile(file, 'utf8') : null]);
     }
     try {
+      // Pin transitive packages (@grpc/grpc-js, protobufjs) to patched versions
+      // in the generated project itself: APIX's own overrides don't reach it, and
+      // it resolves the vulnerable versions @hashgraph/sdk pins otherwise. Written
+      // before install so npm resolves the override; rolled back with the rest on
+      // failure.
+      await this.ensureGeneratedOverrides(rootPath);
       await this.packageManager.addDependencies(deps);
     } catch (error) {
       for (const [file, content] of saved) {
@@ -188,6 +194,18 @@ export class IntegrationGenerator {
       }
       throw error;
     }
+  }
+
+  /**
+   * Merge GENERATED_PACKAGE_OVERRIDES into the generated project's package.json
+   * as npm `overrides`, keeping any the project already declares.
+   */
+  private async ensureGeneratedOverrides(rootPath: string): Promise<void> {
+    if (Object.keys(GENERATED_PACKAGE_OVERRIDES).length === 0) return;
+    const packageJsonPath = path.join(rootPath, 'package.json');
+    const pkg = await fs.readJSON(packageJsonPath);
+    pkg.overrides = { ...(pkg.overrides ?? {}), ...GENERATED_PACKAGE_OVERRIDES };
+    await fs.writeJSON(packageJsonPath, pkg, { spaces: 2 });
   }
 
   private async applyConfigUpdate(

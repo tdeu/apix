@@ -14,6 +14,29 @@ const GENERATED_DEPENDENCY_VERSIONS: Record<string, string> = {
   'server-only': '^0.0.1',
 };
 
+/**
+ * npm `overrides` written into generated projects' package.json.
+ *
+ * These MUST mirror the `overrides` in APIX's own package.json: the transitive
+ * packages @hashgraph/sdk pulls in carry advisories that APIX pins away for
+ * itself, but overrides in APIX's package.json do not reach the apps APIX
+ * generates, so each generated project needs its own copy for `npm audit` to
+ * come back clean.
+ *
+ * - @grpc/grpc-js: the SDK pins an exact 1.12.6, which has two high-severity
+ *   advisories (GHSA-m9gg-hp2v-232j, GHSA-f596-whhp-79r4), both fixed in 1.13.6
+ *   (the first patched release, the smallest bump from 1.12.6).
+ * - protobufjs: the SDK's @hashgraph/proto pulls a vulnerable protobufjs with a
+ *   critical advisory; 7.6.6 is patched.
+ *
+ * npm reads `overrides`; yarn uses `resolutions` and pnpm uses `pnpm.overrides`.
+ * The supported/tested stack installs with npm, so we write `overrides` only.
+ */
+export const GENERATED_PACKAGE_OVERRIDES: Record<string, string> = {
+  '@grpc/grpc-js': '1.13.6',
+  protobufjs: '7.6.6',
+};
+
 export function generatedDependencyVersion(name: string): string {
   const version = GENERATED_DEPENDENCY_VERSIONS[name];
   if (!version) {
