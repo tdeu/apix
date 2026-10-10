@@ -22,17 +22,8 @@ npm install -g apix-ai
 apix --version
 ```
 
-Until 2.1.0 is published, npm still serves the 2.0.3 hackathon release
-(`apix --version` prints 2.0.3). To use 2.1 now, install it from source:
-
-```bash
-git clone https://github.com/0xfishbone/apix.git
-cd apix
-npm ci
-npm run build
-npm link
-apix --version
-```
+`apix --version` should print 2.1.0 or later. If it prints 2.0.x, you have
+the hackathon release: run the install again.
 
 ## 3. Create a Next.js app
 

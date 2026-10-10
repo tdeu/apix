@@ -1,8 +1,9 @@
 # The 2.1 revival
 
 This document explains what happened to APIX between the October 2025
-hackathon build and 2.1.0, where things stand now, and what is left before
-the release. It is written for someone who wasn't involved. The working
+hackathon build and 2.1.0, where things stand now that 2.1.0 is released
+(npm, 2026-09-30), and what is left. It is written for someone who wasn't
+involved. The working
 rules are in [CLAUDE.md](../CLAUDE.md), open items in
 [BACKLOG.md](../BACKLOG.md), and the on-chain evidence in
 [TESTNET_PROOF.md](TESTNET_PROOF.md).
@@ -191,27 +192,26 @@ testnet HBAR, exits 1 if any step fails, and writes
 
 ## Current state
 
-| Check | Result (end of Phase 5a) |
+Checked on 2026-10-10, on master at `474a45f` (the commit published as
+2.1.0):
+
+| Check | Result |
 |---|---|
 | Build | `build:check` passes |
 | Lint | 0 errors, 409 warnings (tracked in BACKLOG) |
-| Tests | 26 test files, 246 tests, all passing (run one file at a time on Windows) |
+| Tests | 26 test files, 246 tests, all passing: in CI on Linux (Node 20 and 22), and on Windows run one file at a time |
 | Docs check | Every `apix` command, flag and relative link in the docs is real |
-| `npm audit --omit=dev` | 11 advisories: 7 low, 4 moderate, 0 high, 0 critical (transitive under `@hashgraph/sdk`, plus uuid) |
-| npm package | 71 files, 162.7 kB |
-| Testnet | Library proof 9/9 on SDK 2.80.0 |
+| `npm audit --omit=dev` | 0 high and 0 critical on the release date. On 2026-10-10: 2 critical, 9 high, 4 moderate, 7 low, from advisories published after the release (handlebars, shell-quote, braces). 2.1.1 fixes handlebars and shell-quote; `braces` has no patched version, so the repository tree still shows 9 high. The CI gate is now `npm run audit:prod` (the user's install tree, peer-only packages left out): 0 high and 0 critical |
+| npm package | `apix-ai@2.1.0`, 71 files |
+| CI on `474a45f` | build-test on Node 20 and 22 and gitleaks pass |
+| Nightly e2e (`--framework all`) | Fails: 25 of 27 cases pass or are refused as designed; `vite/wallet` and `vite/all` fail the type-check. 2.1.1 fixes the template; not yet re-run on GitHub |
+| Nightly testnet smoke | Skips every step, because the repo secrets aren't set |
+| Testnet | Library proof 9/9 on SDK 2.80.0, plus one token created after the grpc-js fix |
 
 Not verified yet:
 
-- **CI has never run**, because GitHub Actions isn't enabled on the repo.
-  The workflows exist (`.github/workflows/`) but have produced no results.
-- **Jest and the e2e harness on Linux**: everything above was run on a
-  Windows laptop.
-- **The full e2e matrix**: the Pages Router and Vite frameworks and every
-  case. Locally, the Next.js cases were run in Phase 3c and `hts` again in
-  Phase 5a.
-- **The Vite wallet case** (the experimental React/Vite `wallet`
-  integration).
+- **The testnet smoke on GitHub**: it has never really run (no repo
+  secrets).
 - **The default OpenAI model** (`gpt-4o-mini`), because no OpenAI key was
   available.
 - **Other gaps:**
@@ -220,36 +220,43 @@ Not verified yet:
   - The browser wallet flow and WalletConnect were never exercised.
   - Mainnet was never touched.
 
-## Release checklist
+## Release
 
-In order:
+What happened on 2026-09-30 (UTC):
 
-1. **Enable GitHub Actions** on the repo. *Who:* the repo owner.
-2. **Add the repo secrets** `HEDERA_ACCOUNT_ID` and `HEDERA_PRIVATE_KEY`,
-   from any testnet account (ideally a dedicated one), for the nightly
-   testnet smoke. *Who:* the repo owner.
-3. **Get CI green on master**: merge this pull request, then re-run the
-   workflows or push. That covers Jest on Linux, the audit gate, gitleaks
-   and the e2e job. *Who:* the repo owner, or anyone with write access.
-4. **Publish 2.1.0 to npm.** An npm owner of `apix-ai` adds maintainers if
-   needed (`npm owner add <user> apix-ai`), then runs `npm publish` from
-   `master`. Check `npm pack --dry-run` first. *Who:* an npm owner of
-   `apix-ai`.
-5. **Create the GitHub release** `v2.1.0` from the CHANGELOG entry. *Who:*
-   the repo owner, or anyone with write access.
+1. GitHub Actions was enabled on the repo.
+2. Pull request #8 (the whole revival) was merged into `master` by
+   0xfishbone at 18:40, as a merge commit (`aef91c7`), with no changes.
+3. Pull request #9 was merged at 19:14 (`474a45f`). It raises the
+   `@grpc/grpc-js` override to 1.13.6 and writes APIX's overrides into
+   generated apps. CI passed on that commit.
+4. `apix-ai@2.1.0` was published to npm at 19:34 from `474a45f`, by
+   0xfishbone.
+
+What is left, in order:
+
+1. **Merge and publish 2.1.1** promptly: it fixes the handlebars and
+   shell-quote advisories, which affect 2.1.0's dependencies, and the Vite
+   wallet type-check. *Who:* the repo owner merges; an npm
+   owner of `apix-ai` publishes.
+2. **Check the nightly e2e run** after the merge: the Vite cases only run
+   there. *Who:* anyone with write access.
+3. **Ask hiero-ledger to make the `react-native` peer optional**:
+   `braces` has no patched version and reaches users only through that
+   peer. *Who:* anyone.
+4. **Tag `v2.1.0`** at `474a45f` and create the GitHub release. *Who:*
+   anyone with write access.
+5. **Add the repo secrets** `HEDERA_ACCOUNT_ID` and `HEDERA_PRIVATE_KEY`
+   (ideally a dedicated testnet account) for the nightly testnet smoke.
+   *Who:* the repo owner.
 6. **Make the repository public.** *Who:* the repo owner.
-7. **Fill in the placeholders**: `DISCORD_INVITE_URL` in README.md, the
-   release date of the 2.1.0 entry in CHANGELOG.md, and the "until 2.1.0 is
-   published" notes in README.md and docs/getting-started.md. *Who:* anyone
-   with write access.
+7. **Verify the OpenAI model.** *Who:* anyone with an OpenAI key.
 
-Before or alongside this, see the [blocker-2.1] items in
-[BACKLOG.md](../BACKLOG.md). Verifying the OpenAI model needs someone with an
-OpenAI key.
+The details are under [2.1.x] in [BACKLOG.md](../BACKLOG.md).
 
 ## Pointers
 
-- [BACKLOG.md](../BACKLOG.md): open items, grouped as [blocker-2.1],
+- [BACKLOG.md](../BACKLOG.md): open items, grouped as [2.1.x],
   [2.1-nice] and [post-2.1], plus the history of each phase.
 - [CLAUDE.md](../CLAUDE.md): the working rules. Read these before changing
   anything.

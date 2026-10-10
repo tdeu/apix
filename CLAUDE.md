@@ -1,7 +1,7 @@
 # APIX: working rules (v2.1 revival, Sep 2026)
 
 ## Current status
-v2.1.0 revival complete, pending release. Read docs/REVIVAL_2.1.md first,
+v2.1.0 is released (npm, 2026-09-30). Read docs/REVIVAL_2.1.md first,
 then BACKLOG.md.
 
 This file supersedes docs/archive/CLAUDE.md, which is kept for history only.

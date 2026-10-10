@@ -1,12 +1,5 @@
 {{!-- META: {"name": "Wallet Service", "description": "Multi-wallet integration service for Hedera", "language": "typescript"} --}}
-{{#ifLanguage language "typescript"}}import { 
-  Client,
-  AccountId, 
-  PrivateKey,
-  Transaction,
-  TransactionId,
-  Hbar
-} from '@hashgraph/sdk';
+{{#ifLanguage language "typescript"}}import { Transaction } from '@hashgraph/sdk';
 
 export type WalletProvider = 'hashpack' | 'blade' | 'metamask';
 
@@ -133,7 +126,7 @@ export class HashPackAdapter implements WalletAdapter {
     }
   }
 
-  async getAccountInfo(accountId: string): Promise<any> {
+  async getAccountInfo(_accountId: string): Promise<any> {
     if (!this.hashpack) {
       throw new Error('HashPack wallet not connected');
     }
@@ -387,14 +380,7 @@ export class WalletService {
 export const walletService = new WalletService();
 
 export default WalletService;
-{{else}}const { 
-  Client,
-  AccountId, 
-  PrivateKey,
-  Transaction,
-  TransactionId,
-  Hbar
-} = require('@hashgraph/sdk');
+{{else}}const { Transaction } = require('@hashgraph/sdk');
 
 class HashPackAdapter {
   constructor() {
