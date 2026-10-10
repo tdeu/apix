@@ -10,7 +10,7 @@ code signs with your operator account on the server, and the private key
 never reaches the browser. Optional AI commands (Anthropic or OpenAI)
 explain Hedera concepts and help you choose an integration.
 
-**Status: v2.1.0, testnet-proven.** Every Hedera operation below was run on
+**Status: v2.1, testnet-proven.** Every Hedera operation below was run on
 testnet and verified on the mirror node. The IDs, links and fees are in
 [docs/TESTNET_PROOF.md](docs/TESTNET_PROOF.md).
 
@@ -42,10 +42,6 @@ testnet account from [portal.hedera.com](https://portal.hedera.com/faucet)
    ```bash
    npm install -g apix-ai
    ```
-
-   Until 2.1.0 is published, npm still serves the 2.0.3 hackathon release.
-   To use 2.1 now, install it from source
-   ([getting started](docs/getting-started.md#2-install-apix)).
 
 2. Create a Next.js app and add HTS:
 
@@ -275,10 +271,6 @@ Details: [CHANGELOG.md](CHANGELOG.md).
 
 - **Moustapha Diop**: Lead Developer ([@0xfishbone](https://github.com/0xfishbone))
 - **Thomas De Rouck**: Blockchain Specialist ([@tdeu](https://github.com/tdeu))
-
-## Community
-
-Discord: DISCORD_INVITE_URL
 
 ## License
 

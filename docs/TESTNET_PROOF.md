@@ -9,7 +9,9 @@ LangChain were removed
 ([re-verification](#re-verified-on-hashgraphsdk-2800)).
 
 - Dates: 2026-09-29 (UTC). Phase 4 proof, the Phase 4b re-proof, and the
-  Phase 5a re-verification of the library.
+  Phase 5a re-verification of the library. One more token was created on
+  2026-09-30 to check the grpc-js fix
+  ([grpc-js fix check](#grpc-js-fix-check-2026-09-30)).
 - APIX: branches `phase-4b/testnet-fixes` and `phase-5a/docs-release-prep`.
   The library proof script is `scripts/testnet-proof.ts`
   (`npm run proof:testnet`); [`testnet-proof.json`](testnet-proof.json)
@@ -137,6 +139,20 @@ supported integrations are byte-identical (checked with
 `npm run snapshot:templates`), and a fresh Next.js app with `apix add hts`
 installed, type-checked and built in the e2e harness. The CLI and
 generated-app rows were not re-run on testnet.
+
+## grpc-js fix check (2026-09-30)
+
+After the `@grpc/grpc-js` 1.13.6 override (PR #9, the last change before
+2.1.0 was published), Moustapha Diop created one token on testnet from his
+own operator account, `0.0.6853906`. His commit message says it was created
+through a regenerated Next.js app; the row below is what the mirror node
+shows, read back on 2026-10-10.
+
+| Operation | Entity ID | Transaction ID | HashScan | Mirror-verified |
+|---|---|---|---|---|
+| Create token APIX grpc Fix / GRPC (2 decimals, 100000 units, supply key) | 0.0.10796511 | 0.0.6853906@1790795163.376614884 | [token](https://hashscan.io/testnet/token/0.0.10796511) | ✅ INFINITE supply 100000, treasury 0.0.6853906, supply key set, no admin key, SUCCESS |
+
+Nothing else was re-run on testnet for that change.
 
 ## Fees observed
 

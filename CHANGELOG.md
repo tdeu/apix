@@ -1,6 +1,29 @@
 # Changelog
 
-## 2.1.0 (Unreleased)
+## 2.1.1 (2026-10-10)
+
+Documentation only. The code is the same as 2.1.0.
+
+### Changed
+
+- README.md and docs/getting-started.md no longer say that 2.1.0 is
+  unpublished, and the Discord placeholder is gone from the README.
+- This changelog dates 2.1.0 and lists the `@grpc/grpc-js` 1.13.6 fix that
+  shipped in it.
+- BACKLOG.md and docs/REVIVAL_2.1.md describe the state after the release,
+  and docs/TESTNET_PROOF.md records the testnet check of the grpc-js fix.
+
+### Known issues
+
+- `npm audit --omit=dev` reports critical and high advisories published
+  after 2.1.0 (handlebars, shell-quote, braces). They are not fixed in
+  2.1.1.
+- The experimental React/Vite `wallet` integration fails `tsc` in a fresh
+  Vite app (unused imports in the generated `wallet-service.ts`).
+
+Both are tracked in [BACKLOG.md](BACKLOG.md).
+
+## 2.1.0 (2026-09-30)
 
 The revival release. Every Hedera operation APIX performs or generates was
 run on testnet and verified on the mirror node
@@ -128,9 +151,16 @@ run on testnet and verified on the mirror node
 - Hedera inputs are validated before any network call, and the Hedera
   client is closed when the credentials are invalid.
 - Vulnerable dependencies were upgraded or overridden: no critical or high
-  advisories in production dependencies (`npm audit --omit=dev`). Upgrades:
-  `@hashgraph/sdk` 2.80.0, with `protobufjs` and `@grpc/grpc-js` overridden
-  (without the overrides, a critical and two high advisories return).
+  advisories in production dependencies on the release date
+  (`npm audit --omit=dev`). Upgrades: `@hashgraph/sdk` 2.80.0, with
+  `protobufjs` and `@grpc/grpc-js` overridden (without the overrides, a
+  critical and two high advisories return).
+- `@grpc/grpc-js` is overridden to 1.13.6. `@hashgraph/sdk` pins 1.12.6,
+  which has two high-severity advisories (GHSA-m9gg-hp2v-232j,
+  GHSA-f596-whhp-79r4), and the earlier 1.12.7 override was still affected.
+  Generated apps get the same overrides (`@grpc/grpc-js` 1.13.6,
+  `protobufjs` 7.6.6) in their `package.json` before install, so they don't
+  resolve the vulnerable versions either.
 - CI runs gitleaks, and the `.env.example` API key exposed in October 2025
   was removed (see `docs/archive/SECURITY_INCIDENT_REPORT.md`).
 
