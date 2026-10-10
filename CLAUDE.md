@@ -31,7 +31,7 @@ CONTRIBUTING.md and the guides in docs/.
 ## Process
 - We work in phases. Stay inside the current phase's scope. If you find
   something outside it, list it in your report instead of fixing it.
-- Canonical repo: github.com/0xfishbone/apix (origin).
+- Canonical repo: github.com/tdeu/apix (origin).
   Default branch: master. The revival's phase branches (revive/2.1 through
   phase-5a/docs-release-prep) are merged into master. New work branches off
   master and goes back into master by PR only.

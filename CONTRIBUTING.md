@@ -31,8 +31,8 @@ On a machine with little free memory, run the tests one file at a time:
 
 CI also runs `npm run audit:prod` and checks that `apix --version` matches
 `package.json`. `audit:prod` (scripts/audit-prod.mjs) resolves the tree a
-user gets from `npm install -g apix-ai` (dependencies and overrides, no
-lockfile) and fails on a high or critical advisory, leaving out peer-only
+user gets from `npm install -g apix-hedera` (dependencies and overrides,
+no lockfile) and fails on a high or critical advisory, leaving out peer-only
 packages. `npm audit --omit=dev` on the repository's own tree also runs,
 but doesn't block.
 

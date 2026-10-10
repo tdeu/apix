@@ -30,9 +30,9 @@ moderate and 7 low remain, as in 2.1.0).
     high findings, all of them `braces` and the packages that depend on it.
 - The CI audit gate now audits the user's install tree instead of the
   repository's: `npm run audit:prod` (scripts/audit-prod.mjs) resolves
-  APIX's `dependencies` and `overrides` fresh, as `npm install -g apix-ai`
-  does, and runs `npm audit --omit=dev --omit=peer --audit-level=high` on
-  it. Peer-only packages are left out for the reason above. `npm audit
+  APIX's `dependencies` and `overrides` fresh, as
+  `npm install -g apix-hedera` does, and runs
+  `npm audit --omit=dev --omit=peer --audit-level=high` on it. Peer-only packages are left out for the reason above. `npm audit
   --omit=dev` on the repository still runs in CI, without blocking.
 
 ### Fixed
@@ -44,6 +44,8 @@ moderate and 7 low remain, as in 2.1.0).
 
 ### Changed
 
+- Package published as apix-hedera; repository moved to
+  github.com/tdeu/apix. The command is still `apix`.
 - README.md and docs/getting-started.md no longer say that 2.1.0 is
   unpublished, and the Discord placeholder is gone from the README.
 - This changelog dates 2.1.0 and lists the `@grpc/grpc-js` 1.13.6 fix that

@@ -18,7 +18,7 @@ Hedera testnet. The steps match the run recorded in
 ## 2. Install APIX
 
 ```bash
-npm install -g apix-ai
+npm install -g apix-hedera
 apix --version
 ```
 
