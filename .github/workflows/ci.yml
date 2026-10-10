@@ -25,7 +25,14 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: npm audit --omit=dev --audit-level=high
+      # The gate: the tree a user gets from `npm install -g apix-ai`, resolved
+      # fresh, without peer-only packages (scripts/audit-prod.mjs)
+      - run: npm run audit:prod
+      # Informational: this repository's own tree. braces also reaches it
+      # through dev tools (jest, nodemon), so this step is expected to fail
+      - name: npm audit of the repository tree (informational)
+        run: npm audit --omit=dev
+        continue-on-error: true
       - run: npm run build:check
       - run: npm run lint
       - run: npm test
