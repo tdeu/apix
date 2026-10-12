@@ -1,5 +1,5 @@
 {
-  "name": "apix-ai",
+  "name": "apix-hedera",
   "version": "2.1.1",
   "description": "CLI that adds working Hedera integrations (HTS, HCS, smart contracts, wallet) to Next.js apps, with optional AI help",
   "main": "dist/cli/index.js",
@@ -51,7 +51,7 @@
     "apix:create-token": "npm run apix -- create-token --name 'DemoToken' --symbol 'DEMO' --supply 1000000",
     "install:global": "npm run build && npm install -g .",
     "link:local": "npm run build && npm link",
-    "unlink": "npm unlink -g apix-ai",
+    "unlink": "npm unlink -g apix-hedera",
     "cli:help": "npx ts-node src/cli/index.ts --help",
     "cli:health": "npx ts-node src/cli/index.ts health --quick",
     "cli:analyze": "npx ts-node src/cli/index.ts analyze --directory .",
@@ -76,12 +76,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/0xfishbone/apix.git"
+    "url": "git+https://github.com/tdeu/apix.git"
   },
   "bugs": {
-    "url": "https://github.com/0xfishbone/apix/issues"
+    "url": "https://github.com/tdeu/apix/issues"
   },
-  "homepage": "https://github.com/0xfishbone/apix#readme",
+  "homepage": "https://github.com/tdeu/apix#readme",
   "engines": {
     "node": ">=20"
   },

@@ -1,5 +1,7 @@
 # APIX
 
+Published as apix-hedera from 2.1.1 (earlier versions: apix-ai).
+
 **A CLI that adds working Hedera integrations to a Next.js app.**
 Hedera Africa Hackathon 2025, Developer Tools & Infrastructure track.
 
@@ -16,7 +18,7 @@ testnet and verified on the mirror node. The IDs, links and fees are in
 
 What changed in 2.1 and why: [docs/REVIVAL_2.1.md](docs/REVIVAL_2.1.md).
 
-Repository: [github.com/0xfishbone/apix](https://github.com/0xfishbone/apix)
+Repository: [github.com/tdeu/apix](https://github.com/tdeu/apix)
 
 ## Support matrix
 
@@ -40,7 +42,7 @@ testnet account from [portal.hedera.com](https://portal.hedera.com/faucet)
 1. Install APIX:
 
    ```bash
-   npm install -g apix-ai
+   npm install -g apix-hedera
    ```
 
 2. Create a Next.js app and add HTS:

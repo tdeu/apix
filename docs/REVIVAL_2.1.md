@@ -98,8 +98,10 @@ are merged into `master` together, through one pull request.
 
 ## Key decisions
 
-- **The fork is canonical** (github.com/0xfishbone/apix): that's where the
-  revival lives and where the release will come from.
+- **The canonical repo is github.com/tdeu/apix**, from 2.1.1. The revival
+  was done on the fork, github.com/0xfishbone/apix, and 2.1.0 was released
+  from there as `apix-ai`. From 2.1.1 the npm package is `apix-hedera`; the
+  command is still `apix`.
 - **Next.js App Router + TypeScript only** (a support allowlist). It's the
   one stack that is tested end to end. React/Vite gets `wallet` only
   (experimental), and everything else is refused with a message instead of
@@ -152,7 +154,7 @@ own** testnet account from [portal.hedera.com](https://portal.hedera.com/faucet)
 (its account ID and DER-encoded private key).
 
 ```bash
-git clone https://github.com/0xfishbone/apix.git
+git clone https://github.com/tdeu/apix.git
 cd apix
 npm ci
 npm run build:check
@@ -202,7 +204,7 @@ Checked on 2026-10-10, on master at `474a45f` (the commit published as
 | Tests | 26 test files, 246 tests, all passing: in CI on Linux (Node 20 and 22), and on Windows run one file at a time |
 | Docs check | Every `apix` command, flag and relative link in the docs is real |
 | `npm audit --omit=dev` | 0 high and 0 critical on the release date. On 2026-10-10: 2 critical, 9 high, 4 moderate, 7 low, from advisories published after the release (handlebars, shell-quote, braces). 2.1.1 fixes handlebars and shell-quote; `braces` has no patched version, so the repository tree still shows 9 high. The CI gate is now `npm run audit:prod` (the user's install tree, peer-only packages left out): 0 high and 0 critical |
-| npm package | `apix-ai@2.1.0`, 71 files |
+| npm package | `apix-ai@2.1.0`, 71 files. 2.1.1 will be published as `apix-hedera` |
 | CI on `474a45f` | build-test on Node 20 and 22 and gitleaks pass |
 | Nightly e2e (`--framework all`) | Fails: 25 of 27 cases pass or are refused as designed; `vite/wallet` and `vite/all` fail the type-check. 2.1.1 fixes the template; not yet re-run on GitHub |
 | Nightly testnet smoke | Skips every step, because the repo secrets aren't set |
@@ -235,22 +237,24 @@ What happened on 2026-09-30 (UTC):
 
 What is left, in order:
 
-1. **Merge and publish 2.1.1** promptly: it fixes the handlebars and
-   shell-quote advisories, which affect 2.1.0's dependencies, and the Vite
-   wallet type-check. *Who:* the repo owner merges; an npm
-   owner of `apix-ai` publishes.
-2. **Check the nightly e2e run** after the merge: the Vite cases only run
-   there. *Who:* anyone with write access.
+The repository is now github.com/tdeu/apix (public, owned by tdeu), and the
+npm package is `apix-hedera` from 2.1.1 (npm owner: studio_mt).
+
+1. **Publish 2.1.1 as `apix-hedera`** promptly: it fixes the handlebars
+   and shell-quote advisories, which affect 2.1.0's dependencies, and the
+   Vite wallet type-check. *Who:* tdeu merges the pull request on
+   tdeu/apix; studio_mt publishes.
+2. **Check the nightly e2e run** on tdeu/apix: the Vite cases only run
+   there. *Who:* anyone with write access to tdeu/apix.
 3. **Ask hiero-ledger to make the `react-native` peer optional**:
    `braces` has no patched version and reaches users only through that
    peer. *Who:* anyone.
-4. **Tag `v2.1.0`** at `474a45f` and create the GitHub release. *Who:*
-   anyone with write access.
-5. **Add the repo secrets** `HEDERA_ACCOUNT_ID` and `HEDERA_PRIVATE_KEY`
-   (ideally a dedicated testnet account) for the nightly testnet smoke.
-   *Who:* the repo owner.
-6. **Make the repository public.** *Who:* the repo owner.
-7. **Verify the OpenAI model.** *Who:* anyone with an OpenAI key.
+4. **Create the GitHub release** for the tag `v2.1.0` (`474a45f`) on
+   tdeu/apix. *Who:* tdeu.
+5. **Set the repo secrets** `HEDERA_ACCOUNT_ID` and `HEDERA_PRIVATE_KEY`
+   on tdeu/apix (ideally a dedicated testnet account) for the nightly
+   testnet smoke. *Who:* tdeu.
+6. **Verify the OpenAI model.** *Who:* anyone with an OpenAI key.
 
 The details are under [2.1.x] in [BACKLOG.md](../BACKLOG.md).
 

@@ -1,5 +1,5 @@
 /**
- * Audit the dependency tree a user gets from `npm install -g apix-ai`.
+ * Audit the dependency tree a user gets from `npm install -g apix-hedera`.
  *
  * npm ignores this repository's lockfile on a user install, so the tree is
  * resolved fresh from package.json's dependencies and overrides, without the
