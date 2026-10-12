@@ -246,9 +246,10 @@ npm package is `apix-hedera` from 2.1.1 (npm owner: studio_mt).
    tdeu/apix; studio_mt publishes.
 2. **Check the nightly e2e run** on tdeu/apix: the Vite cases only run
    there. *Who:* anyone with write access to tdeu/apix.
-3. **Ask hiero-ledger to make the `react-native` peer optional**:
-   `braces` has no patched version and reaches users only through that
-   peer. *Who:* anyone.
+3. **Migrate to `@hiero-ledger/sdk`** (2.2.0): the renamed SDK no longer
+   pulls in `react-native`, and `braces` with it. Until then, 2.1.2 keeps
+   both out of the CLI's own install with an `npm-shrinkwrap.json`;
+   generated apps still get them. *Who:* anyone, by PR.
 4. **Create the GitHub release** for the tag `v2.1.0` (`474a45f`) on
    tdeu/apix. *Who:* tdeu.
 5. **Set the repo secrets** `HEDERA_ACCOUNT_ID` and `HEDERA_PRIVATE_KEY`
