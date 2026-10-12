@@ -25,8 +25,8 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      # The gate: the tree a user gets from `npm install -g apix-hedera`, resolved
-      # fresh, without peer-only packages (scripts/audit-prod.mjs)
+      # The gate: pack the tarball, install it globally as a user's npm would,
+      # and audit what ends up on disk (scripts/audit-prod.mjs)
       - run: npm run audit:prod
       # Informational: this repository's own tree. braces also reaches it
       # through dev tools (jest, nodemon), so this step is expected to fail
@@ -60,7 +60,7 @@ jobs:
       - run: npm run e2e:generate -- --framework next --case baseline,all --out "$RUNNER_TEMP/apix-e2e"
       - name: Upload e2e logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-generate-logs
           path: |
@@ -77,6 +77,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
