@@ -50,3 +50,6 @@ note.md
 
 # Claude Code local settings (per machine)
 .claude/settings.local.json
+
+# Staged by prepack from npm-shrinkwrap.release.json, removed by postpack
+/npm-shrinkwrap.json

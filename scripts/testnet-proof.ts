@@ -9,12 +9,22 @@
  *
  * `--smoke` (used by the nightly CI job) only creates a token and a topic and
  * submits one message.
+ *
+ * APIX_PROOF_ROOT=<dir of an installed apix-hedera> runs the same steps with
+ * that installation's compiled code and its own node_modules (the tree a user
+ * gets) instead of this repository's sources. docs/testnet-proof.json is left
+ * alone in that mode.
  */
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import { hederaOperations } from '../src/services/hedera-operations';
+import type { HederaOperationsService } from '../src/services/hedera-operations';
 import { maskSecrets } from '../src/utils/secrets';
+
+const INSTALLED_ROOT = process.env.APIX_PROOF_ROOT ? path.resolve(process.env.APIX_PROOF_ROOT) : undefined;
+const hederaOperations: HederaOperationsService = INSTALLED_ROOT
+  ? require(path.join(INSTALLED_ROOT, 'dist', 'services', 'hedera-operations')).hederaOperations
+  : require('../src/services/hedera-operations').hederaOperations;
 
 const MIRROR = 'https://testnet.mirrornode.hedera.com/api/v1';
 const HASHSCAN = 'https://hashscan.io/testnet';
@@ -175,6 +185,7 @@ async function main(): Promise<void> {
   const recipient = process.env.APIX_DEMO_RECIPIENT ?? '';
   const startedAt = new Date().toISOString();
   console.log(`Testnet proof ${SMOKE ? '(smoke) ' : ''}started ${startedAt}, operator ${operator}`);
+  if (INSTALLED_ROOT) console.log(`Using the installed tree at ${INSTALLED_ROOT}`);
 
   await hederaOperations.initialize();
 
@@ -331,9 +342,10 @@ async function main(): Promise<void> {
 
   hederaOperations.close();
 
-  const sdkVersion = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'node_modules', '@hashgraph', 'sdk', 'package.json'), 'utf8')).version;
+  const sdkVersion = JSON.parse(fs.readFileSync(path.join(INSTALLED_ROOT ?? path.join(__dirname, '..'), 'node_modules', '@hashgraph', 'sdk', 'package.json'), 'utf8')).version;
   const report = { startedAt, finishedAt: new Date().toISOString(), network, operator, recipient, sdkVersion, smoke: SMOKE, steps };
-  if (!SMOKE) {
+  console.log(`@hashgraph/sdk ${sdkVersion}`);
+  if (!SMOKE && !INSTALLED_ROOT) {
     const out = path.join(__dirname, '..', 'docs', 'testnet-proof.json');
     fs.writeFileSync(out, JSON.stringify(report, null, 2) + '\n');
     console.log(`Results written to ${path.relative(process.cwd(), out)}`);

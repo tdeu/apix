@@ -11,6 +11,7 @@
     "!dist/**/__tests__/**",
     "!dist/docs-check/**",
     "templates",
+    "npm-shrinkwrap.json",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
@@ -18,7 +19,8 @@
   "scripts": {
     "build": "tsc",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
-    "prepack": "npm run clean && npm run build",
+    "prepack": "npm run clean && npm run build && node scripts/shrinkwrap.mjs stage",
+    "postpack": "node scripts/shrinkwrap.mjs unstage",
     "build:check": "tsc --noEmit",
     "build:strict": "tsc --noEmit --strict",
     "dev": "nodemon --exec ts-node src/cli/index.ts",
@@ -34,6 +36,7 @@
     "proof:testnet": "ts-node --transpile-only scripts/testnet-proof.ts",
     "audit:mocks": "./scripts/audit-mocks.sh",
     "audit:prod": "node scripts/audit-prod.mjs",
+    "shrinkwrap": "node scripts/shrinkwrap.mjs",
     "precommit": "npm run build:check && npm run lint && npm test",
     "validate:env": "node -e \"require('dotenv').config(); console.log('Environment check (values not shown):'); ['HEDERA_ACCOUNT_ID', 'HEDERA_PRIVATE_KEY', 'HEDERA_NETWORK', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY'].forEach(key => console.log(key + ':', process.env[key] ? 'set' : 'missing'));\"",
     "apix": "npx ts-node src/cli/index.ts",
