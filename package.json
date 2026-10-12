@@ -1,6 +1,6 @@
 {
   "name": "apix-hedera",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "CLI that adds working Hedera integrations (HTS, HCS, smart contracts, wallet) to Next.js apps, with optional AI help",
   "main": "dist/cli/index.js",
   "bin": {

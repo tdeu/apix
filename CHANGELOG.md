@@ -1,6 +1,18 @@
 # Changelog
 
-## 2.1.1 (Unreleased)
+## 2.1.2 (Unreleased)
+
+### Changed
+
+- The CLI no longer calls itself "enterprise". `apix --help` now says "Add
+  working Hedera integrations to your Next.js app", and the descriptions
+  of `chat`, `recommend`, `explain` and `compare`, the `--verbose` banner
+  and the messages of `generate` say plainly what each one does. No
+  command, flag or behaviour changed.
+- CI: `actions/checkout` and `actions/setup-node` v4 -> v7 in the three
+  workflows (they run on Node 24; v4 ran on the deprecated Node 20).
+
+## 2.1.1 (2026-10-12)
 
 Security fixes, Vite wallet fix, post-release docs.
 
