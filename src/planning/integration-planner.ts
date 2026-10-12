@@ -262,7 +262,7 @@ import {
           'Native token creation and management',
           'Low-cost transactions',
           'Built-in compliance features',
-          'Enterprise-grade security'
+          'Token rules enforced by the network, not by contract code'
         ],
         requirements: [
           'Hedera testnet account',
