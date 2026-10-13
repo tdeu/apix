@@ -106,7 +106,7 @@ function setupLogging(options: any) {
 
 program
   .name('apix')
-  .description('Enterprise AI-powered Hedera development assistant')
+  .description('Add working Hedera integrations to your Next.js app')
   .version(packageJson.version)
   .option('-q, --quiet', 'Minimal output (errors only)')
   .option('-v, --verbose', 'Detailed output')
@@ -121,7 +121,7 @@ program
     if (!options.quiet) {
       console.log(chalk.bold('APIX AI'), chalk.gray(`v${packageJson.version}`));
       if (options.verbose) {
-        console.log(chalk.gray('Enterprise Hedera Development Assistant\n'));
+        console.log(chalk.gray('Hedera integrations for Next.js apps\n'));
       }
     }
   });
@@ -264,7 +264,7 @@ program
   });
 
 // =============================================================================
-// ENTERPRISE AI COMMANDS
+// AI COMMANDS
 // =============================================================================
 
 program
@@ -277,7 +277,7 @@ program
     const allOptions = { ...options, ...globalOptions };
 
     debugLogger.startCommand('generate', [integration, JSON.stringify(options)]);
-    debugLogger.debug('Starting enterprise generation', {
+    debugLogger.debug('Starting AI-assisted generation', {
       integration,
       options: allOptions
     });
@@ -286,11 +286,11 @@ program
       await ensureCliInitialized();
       const result = await cli.generateEnterpriseIntegration(integration, options);
       debugLogger.endCommand(true, result);
-      debugLogger.success(`Enterprise integration '${integration}' generated successfully`);
+      debugLogger.success(`Integration '${integration}' generated successfully`);
       process.exit(0);
     } catch (error: any) {
       debugLogger.endCommand(false);
-      debugLogger.error('Enterprise generation failed', error, {
+      debugLogger.error('Generation failed', error, {
         command: 'generate',
         integration,
         options: allOptions,
@@ -323,7 +323,7 @@ program
 
 program
   .command('chat')
-  .description('Interactive conversational interface for enterprise Hedera development')
+  .description('Chat with the AI assistant about Hedera development')
   .option('--context <context>', 'Initial business context')
   .option('--industry <industry>', 'Industry context')
   .option('--session-file <file>', 'Load previous conversation session')
@@ -362,7 +362,7 @@ program
 
 program
   .command('recommend')
-  .description('AI-powered enterprise Hedera service recommendations')
+  .description('Ask the AI which Hedera services fit your use case')
   .option('--industry <industry>', 'Industry context')
   .action(async (options) => {
     const globalOptions = program.opts();
@@ -379,7 +379,7 @@ program
 
 program
   .command('explain')
-  .description('AI-powered explanations of Hedera concepts and enterprise patterns')
+  .description('Ask the AI to explain a Hedera concept')
   .argument('<concept>', 'Concept to explain (e.g., "HTS vs smart contracts for loyalty points")')
   .option('--industry <industry>', 'Industry-specific explanation')
   .action(async (concept, options) => {
@@ -394,7 +394,7 @@ program
 
 program
   .command('compare')
-  .description('AI-powered comparison of Hedera approaches for enterprise use cases')
+  .description('Ask the AI to compare Hedera approaches for a use case')
   .argument('<approaches>', 'Approaches to compare (e.g., "HCS vs smart contracts for audit trails")')
   .option('--industry <industry>', 'Industry context')
   .action(async (approaches, options) => {

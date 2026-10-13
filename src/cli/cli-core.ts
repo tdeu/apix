@@ -809,10 +809,10 @@ export class APIxCLI {
 
   async generateEnterpriseIntegration(integration: string, options: any): Promise<void> {
     requireAIKey('generate');
-    logger.info('Enterprise integration generation with AI classification:', { integration, options });
+    logger.info('Integration generation with AI classification:', { integration, options });
 
-    console.log(chalk.blue.bold('\n🤖 AI-Powered Enterprise Integration\n'));
-    const spinner = ora('Analyzing enterprise requirements...').start();
+    console.log(chalk.blue.bold('\n🤖 AI-Assisted Integration\n'));
+    const spinner = ora('Analyzing your requirements...').start();
 
     const requirementDescription = `Generate ${integration} integration for enterprise use case: ${options.description || 'Standard enterprise implementation'}`;
 
@@ -1080,7 +1080,7 @@ export class APIxCLI {
               'Account Service': 'For identity management and account operations'
             };
             console.log(chalk.green(`   ✅ ${service}`));
-            console.log(chalk.gray(`      ${serviceDescriptions[service as keyof typeof serviceDescriptions] || 'Enterprise blockchain service'}`));
+            console.log(chalk.gray(`      ${serviceDescriptions[service as keyof typeof serviceDescriptions] || 'Hedera service'}`));
           });
         }
 

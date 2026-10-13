@@ -30,11 +30,18 @@ On a machine with little free memory, run the tests one file at a time:
 `npx jest --runInBand <file>`.
 
 CI also runs `npm run audit:prod` and checks that `apix --version` matches
-`package.json`. `audit:prod` (scripts/audit-prod.mjs) resolves the tree a
-user gets from `npm install -g apix-hedera` (dependencies and overrides,
-no lockfile) and fails on a high or critical advisory, leaving out peer-only
-packages. `npm audit --omit=dev` on the repository's own tree also runs,
-but doesn't block.
+`package.json`. `audit:prod` (scripts/audit-prod.mjs) packs the tarball,
+installs it globally into a temp prefix the way a user's npm does, and
+fails on a high or critical advisory in what ends up on disk. `npm audit
+--omit=dev` on the repository's own tree also runs, but doesn't block.
+
+The published package ships an `npm-shrinkwrap.json`, because `overrides`
+in `package.json` don't apply to a user's install. The tree it pins is kept
+in `npm-shrinkwrap.release.json` (production dependencies only, overrides
+applied, no auto-installed peers); `prepack` copies it into place and
+`postpack` removes it. After changing a dependency, an override or the
+version, run `npm run shrinkwrap` and commit the result: `npm pack` refuses
+to run when it is out of date.
 
 ## Generated-code e2e harness
 
