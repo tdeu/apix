@@ -1,0 +1,79 @@
+{
+  "startedAt": "2026-10-13T13:47:35.428Z",
+  "finishedAt": "2026-10-13T13:48:12.257Z",
+  "network": "mainnet",
+  "operator": "0.0.10917500",
+  "sdkVersion": "2.80.0",
+  "balanceBeforeTinybar": 4000000001,
+  "balanceAfterTinybar": 2813728725,
+  "balanceChangeTinybar": 1186271276,
+  "totalChargedFeeTinybar": 1186271277,
+  "operatorKeyBefore": null,
+  "operatorKeyAfter": "ECDSA_SECP256K1",
+  "stoppedEarly": false,
+  "corrections": [
+    "Amended by hand on 2026-10-13 from the mainnet mirror node; everything else is as the run wrote it.",
+    "Step 1 as written by the run: chargedFeeTinybar 0, \"consensus 1791899257.596197103\", \"charged fee 0.00000000 HBAR\", and totalChargedFeeTinybar 12975945. The script had read the first record of the transaction ID, which is the zero-fee child record (CRYPTOUPDATEACCOUNT, nonce 1) that completed the hollow operator account. The token creation itself is the nonce-0 record at consensus 1791899257.596197104, charged 1173295332 tinybars. The script now selects the record by nonce.",
+    "balanceChangeTinybar was added. It is 1 tinybar less than the charged fees because account 0.0.10231006, unrelated to this proof, sent 1 tinybar to the operator during the run (consensus 1791899263.016527104)."
+  ],
+  "steps": [
+    {
+      "operation": "Create fungible token APIX Mainnet Proof / APIXM (admin + supply key)",
+      "status": "ok",
+      "mirrorVerified": true,
+      "notes": [
+        "mirror: transaction result SUCCESS, consensus 1791899257.596197104",
+        "mirror: charged fee 11.73295332 HBAR",
+        "mirror: \"APIX Mainnet Proof\" APIXM, decimals 2, supply 1000 (INFINITE), treasury 0.0.10917500, admin key set, supply key set"
+      ],
+      "entityId": "0.0.10917503",
+      "transactionId": "0.0.10917500@1791899251.588247010",
+      "hashscan": "https://hashscan.io/mainnet/token/0.0.10917503",
+      "chargedFeeTinybar": 1173295332
+    },
+    {
+      "operation": "Mint 1.00 APIXM (100 units)",
+      "status": "ok",
+      "mirrorVerified": true,
+      "notes": [
+        "receipt: new total supply 1100",
+        "mirror: transaction result SUCCESS, consensus 1791899264.626861931",
+        "mirror: charged fee 0.01161677 HBAR",
+        "mirror: total supply 1100"
+      ],
+      "entityId": "0.0.10917503",
+      "transactionId": "0.0.10917500@1791899256.815112663",
+      "chargedFeeTinybar": 1161677,
+      "hashscan": "https://hashscan.io/mainnet/transaction/1791899264.626861931"
+    },
+    {
+      "operation": "Create HCS topic",
+      "status": "ok",
+      "mirrorVerified": true,
+      "notes": [
+        "mirror: transaction result SUCCESS, consensus 1791899270.718300104",
+        "mirror: charged fee 0.11616784 HBAR",
+        "mirror: topic memo \"APIX mainnet proof\""
+      ],
+      "entityId": "0.0.10917504",
+      "transactionId": "0.0.10917500@1791899266.021919266",
+      "hashscan": "https://hashscan.io/mainnet/topic/0.0.10917504",
+      "chargedFeeTinybar": 11616784
+    },
+    {
+      "operation": "Submit topic message",
+      "status": "ok",
+      "mirrorVerified": true,
+      "notes": [
+        "receipt: sequence 1",
+        "mirror: transaction result SUCCESS, consensus 1791899286.785292931",
+        "mirror: charged fee 0.00197484 HBAR",
+        "mirror: sequence 1 = \"APIX mainnet proof 2026-10-13T13:47:35.428Z\""
+      ],
+      "entityId": "0.0.10917504",
+      "transactionId": "0.0.10917500@1791899269.945781945",
+      "chargedFeeTinybar": 197484,
+      "hashscan": "https://hashscan.io/mainnet/transaction/1791899286.785292931"
+    }
+  ]
+}
