@@ -68,8 +68,8 @@ runs every case.
 `npm run proof:testnet` runs APIX's own Hedera operations on **testnet**
 (token create, mint and transfer, a topic with messages, a contract deploy,
 call and read) and checks each result on the mirror node. It writes
-`docs/testnet-proof.json` and exits 1 if any step fails. It refuses to run
-unless `HEDERA_NETWORK=testnet`.
+`docs/testnet-proof.json` and exits 1 if any step fails. Without the
+mainnet flags below, it refuses to run unless `HEDERA_NETWORK=testnet`.
 
 It reads `.env` at the repo root:
 
@@ -83,6 +83,30 @@ APIX_DEMO_RECIPIENT=0.0.yyyyy   # an account with automatic token associations
 A full run spends about 29 testnet HBAR (free from the
 [faucet](https://portal.hedera.com/faucet)). Update
 [docs/TESTNET_PROOF.md](docs/TESTNET_PROOF.md) when the results change.
+
+### Mainnet mode
+
+The same script has a minimal mainnet mode. **It spends real HBAR** (about
+12 HBAR at October 2026 fees, nearly all of it the token creation). It runs
+only when all three agree, and refuses otherwise:
+
+- `HEDERA_NETWORK=mainnet` in the environment,
+- the flag `--mainnet`,
+- the flag `--i-understand-this-spends-real-hbar`.
+
+Keep mainnet credentials outside the repository and point the script at
+them with `APIX_ENV_FILE`:
+
+```bash
+APIX_ENV_FILE=/path/outside/the/repo/.env.mainnet \
+  npm run proof:testnet -- --mainnet --i-understand-this-spends-real-hbar
+```
+
+It reads the balance from the mainnet mirror node first and stops under
+25 HBAR. Then it creates one token, mints once, creates one topic and
+submits one message (no contract, no transfer), checking each on the mirror
+node. It stops at the first step that fails and never retries. Results go
+to `docs/mainnet-proof.json`.
 
 ## Nightly testnet smoke
 
