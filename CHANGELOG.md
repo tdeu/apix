@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.2.0 (Unreleased)
+## 2.2.0 (2026-10-14)
 
 ### Changed: Hedera SDK is now `@hiero-ledger/sdk`
 
