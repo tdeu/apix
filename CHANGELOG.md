@@ -1,6 +1,18 @@
 # Changelog
 
-## 2.1.2 (Unreleased)
+## Unreleased
+
+- Verified on Hedera mainnet (docs/MAINNET_PROOF.md): token creation, mint,
+  topic creation and a topic message, each checked on the mainnet mirror
+  node.
+- `npm run proof:testnet` has a mainnet mode for that proof. It spends real
+  HBAR and runs only with `HEDERA_NETWORK=mainnet`, `--mainnet` and
+  `--i-understand-this-spends-real-hbar`. `APIX_ENV_FILE` loads the
+  credentials from a file outside the repository.
+- The proof script reads a transaction's charged fee from its own record
+  (nonce 0), not from a child record of the same transaction ID.
+
+## 2.1.2 (2026-10-13)
 
 ### Security
 

@@ -266,6 +266,7 @@ Details: [CHANGELOG.md](CHANGELOG.md).
 - [Integrations](docs/integrations.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Testnet proof](docs/TESTNET_PROOF.md)
+- [Mainnet proof](docs/MAINNET_PROOF.md)
 - [Contributing](CONTRIBUTING.md)
 - [Hackathon-era documents](docs/archive/README.md) (not maintained)
 
