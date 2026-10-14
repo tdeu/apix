@@ -29,7 +29,7 @@ the hackathon release: run the install again.
 
 APIX supports Next.js with the App Router and TypeScript
 ([support matrix](../README.md#support-matrix)). It was tested with
-create-next-app 16.3.6 (Next.js 16.3.6).
+create-next-app 16.4.0 (Next.js 16.4.0).
 
 ```bash
 npx create-next-app@latest my-hedera-app --ts --app --src-dir --eslint --tailwind --import-alias "@/*" --use-npm --yes
