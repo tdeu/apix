@@ -5,6 +5,7 @@ import chalk from 'chalk';
 import { logger } from '../utils/logger';
 import { ProjectContext } from '../types';
 import { EnvironmentValidator, HEDERA_CREDENTIALS_HELP } from '../utils/environment-validator';
+import { declaredHederaSdk, HEDERA_SDK_PACKAGE, HEDERA_SDK_PACKAGES } from '../utils/hedera-sdk';
 
 export interface HealthCheckResult {
   status: 'pass' | 'fail' | 'warning';
@@ -208,8 +209,8 @@ export class HealthChecker {
       const warnings: string[] = [];
 
       // Check for Hedera SDK
-      if (!allDeps['@hiero-ledger/sdk']) {
-        issues.push('Missing @hiero-ledger/sdk - required for Hedera integration');
+      if (!declaredHederaSdk(packageJson)) {
+        issues.push(`Missing ${HEDERA_SDK_PACKAGE} - required for Hedera integration`);
       }
 
       // Check for framework dependencies
@@ -313,21 +314,21 @@ export class HealthChecker {
     try {
       const packagePath = path.join(this.context.rootPath, 'package.json');
       const packageJson = await fs.readJson(packagePath);
-      const hederaSdkDeclared = packageJson.dependencies?.['@hiero-ledger/sdk'] || 
-                               packageJson.devDependencies?.['@hiero-ledger/sdk'];
+      const sdk = declaredHederaSdk(packageJson);
 
-      if (!hederaSdkDeclared) {
+      if (!sdk) {
         return {
           status: 'fail',
           message: 'Hedera SDK not declared in dependencies',
-          fixSuggestion: 'Run: npm install @hiero-ledger/sdk'
+          fixSuggestion: `Run: npm install ${HEDERA_SDK_PACKAGE}`
         };
       }
+      const hederaSdkDeclared = sdk.range;
 
       // Check actual installed version from node_modules
       let actualVersion: string;
       try {
-        const installedPackagePath = path.join(this.context.rootPath, 'node_modules', '@hiero-ledger', 'sdk', 'package.json');
+        const installedPackagePath = path.join(this.context.rootPath, 'node_modules', ...sdk.name.split('/'), 'package.json');
         const installedPackage = await fs.readJson(installedPackagePath);
         actualVersion = installedPackage.version;
       } catch (nodeModulesError) {
@@ -352,7 +353,7 @@ export class HealthChecker {
           status: 'warning',
           message: 'Cannot parse Hedera SDK version',
           details: [`Declared: ${hederaSdkDeclared}`, `Found: ${actualVersion}`],
-          fixSuggestion: 'Reinstall: npm install @hiero-ledger/sdk@latest'
+          fixSuggestion: `Reinstall: npm install ${sdk.name}@latest`
         };
       }
 
@@ -370,7 +371,7 @@ export class HealthChecker {
             `Installed: ${actualVersion}`,
             'Recommended: >= 2.40.0'
           ],
-          fixSuggestion: 'Update to latest version: npm install @hiero-ledger/sdk@latest'
+          fixSuggestion: `Update to latest version: npm install ${sdk.name}@latest`
         };
       }
 
@@ -378,6 +379,7 @@ export class HealthChecker {
         status: 'pass',
         message: 'Hedera SDK is properly installed and up to date',
         details: [
+          `Package: ${sdk.name}`,
           `Declared: ${hederaSdkDeclared}`,
           `Installed: ${actualVersion}`
         ]
@@ -465,7 +467,7 @@ export class HealthChecker {
         { pattern: 'TokenCreateTransaction', name: 'Token creation functionality' },
         { pattern: 'TokenMintTransaction', name: 'Token minting functionality' },
         { pattern: 'TokenTransferTransaction|TransferTransaction', name: 'Token transfer functionality' },
-        { pattern: '@hiero-ledger/sdk', name: 'Hedera SDK import' }
+        { pattern: HEDERA_SDK_PACKAGES.join('|'), name: 'Hedera SDK import' }
       ];
 
       const missing: string[] = [];
@@ -881,18 +883,18 @@ export class HealthChecker {
   private async checkSdkArea(): Promise<HealthArea> {
     try {
       const packageJson = await this.readPackageJson();
-      const declared = packageJson?.dependencies?.['@hiero-ledger/sdk'] || packageJson?.devDependencies?.['@hiero-ledger/sdk'];
-      if (!declared) {
-        return { name: 'Hedera SDK', status: 'not configured', message: '@hiero-ledger/sdk is not a dependency', hint: 'Run: apix add hts' };
+      const sdk = declaredHederaSdk(packageJson);
+      if (!sdk) {
+        return { name: 'Hedera SDK', status: 'not configured', message: `${HEDERA_SDK_PACKAGE} is not a dependency`, hint: 'Run: apix add hts' };
       }
-      const installedPath = path.join(this.context.rootPath, 'node_modules', '@hiero-ledger', 'sdk', 'package.json');
+      const installedPath = path.join(this.context.rootPath, 'node_modules', ...sdk.name.split('/'), 'package.json');
       if (!await fs.pathExists(installedPath)) {
-        return { name: 'Hedera SDK', status: 'error', message: `@hiero-ledger/sdk ${declared} declared but not installed`, hint: 'Run npm install' };
+        return { name: 'Hedera SDK', status: 'error', message: `${sdk.name} ${sdk.range} declared but not installed`, hint: 'Run npm install' };
       }
       const installed = (await fs.readJson(installedPath)).version;
-      return { name: 'Hedera SDK', status: 'ok', message: `@hiero-ledger/sdk ${installed} installed (declared ${declared})` };
+      return { name: 'Hedera SDK', status: 'ok', message: `${sdk.name} ${installed} installed (declared ${sdk.range})` };
     } catch (error: any) {
-      return { name: 'Hedera SDK', status: 'error', message: `Cannot check @hiero-ledger/sdk: ${error.message}` };
+      return { name: 'Hedera SDK', status: 'error', message: `Cannot check the Hedera SDK: ${error.message}` };
     }
   }
 

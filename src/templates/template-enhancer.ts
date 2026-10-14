@@ -1,5 +1,6 @@
 import { ProjectContext } from '../types';
 import { logger } from '../utils/logger';
+import { isHederaSdkPackage } from '../utils/hedera-sdk';
 
 export interface TemplateContext {
   // Project information
@@ -235,7 +236,7 @@ export class TemplateEnhancer {
 
   private static detectExistingHTS(context: ProjectContext): boolean {
     // Check dependencies for existing Hedera SDK
-    return context.dependencies.some(dep => dep.name === '@hiero-ledger/sdk');
+    return context.dependencies.some(dep => isHederaSdkPackage(dep.name));
   }
 
   private static detectExistingWallet(context: ProjectContext): boolean {

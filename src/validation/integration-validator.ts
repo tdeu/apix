@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { ProjectContext, IntegrationPlan, GeneratedFile } from '../types';
 import { logger } from '../utils/logger';
+import { isHederaSdkPackage } from '../utils/hedera-sdk';
 
 export interface ValidationRule {
   id: string;
@@ -79,10 +80,10 @@ export class IntegrationValidator {
     this.rules.push({
       id: 'hedera-sdk-dependency',
       name: 'Hedera SDK Dependency',
-      description: 'Ensure @hiero-ledger/sdk is available',
+      description: 'Ensure @hiero-ledger/sdk (or the older @hashgraph/sdk) is available',
       severity: 'info', // Changed from 'error' to 'info' so it doesn't fail
       check: async (context) => {
-        const hasHederaSDK = context.dependencies.some(dep => dep.name === '@hiero-ledger/sdk');
+        const hasHederaSDK = context.dependencies.some(dep => isHederaSdkPackage(dep.name));
         
         return {
           passed: true, // Always pass - let the integration process handle dependency installation
