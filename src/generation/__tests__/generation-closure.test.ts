@@ -76,7 +76,7 @@ describe.each(['hts', 'smart-contract', 'consensus'])('`apix add %s` on a Next.j
       const content = await fs.readFile(path.join(root, file), 'utf8');
       expect({ file, first: content.trimStart().split('\n')[0].trim() }).toEqual({ file, first: "import 'server-only';" });
     }
-    expect(dependencies).toEqual(expect.arrayContaining(['@hashgraph/sdk', 'server-only']));
+    expect(dependencies).toEqual(expect.arrayContaining(['@hiero-ledger/sdk', 'server-only']));
   });
 
   it("marks hooks and components with 'use client'", async () => {
@@ -134,9 +134,9 @@ describe('signing model and dependencies', () => {
     expect(create).not.toMatch(/body\.treasuryAccountId|createToken\(body\)/);
   }, 120_000);
 
-  it('declares @hashgraph/sdk for wallet', async () => {
+  it('declares @hiero-ledger/sdk for wallet', async () => {
     await generate('wallet');
     const pkg = await fs.readJSON(path.join(root, 'package.json'));
-    expect(pkg.dependencies['@hashgraph/sdk']).toBeDefined();
+    expect(pkg.dependencies['@hiero-ledger/sdk']).toBeDefined();
   }, 120_000);
 });

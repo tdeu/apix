@@ -1,6 +1,6 @@
 {{!-- META: {"name": "Consensus Operations", "description": "Hedera Consensus Service (HCS) topics and messages", "language": "typescript"} --}}
 {{#ifFramework framework "next.js"}}import 'server-only';
-{{/ifFramework}}import { Client, TopicCreateTransaction, TopicId, TopicMessageSubmitTransaction } from '@hashgraph/sdk';
+{{/ifFramework}}import { Client, TopicCreateTransaction, TopicId, TopicMessageSubmitTransaction } from '@hiero-ledger/sdk';
 import { createDefaultClient } from '{{importFrom "hedera-client"}}';
 
 // Hedera limits (same rules as APIX's InputSanitizer)

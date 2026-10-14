@@ -224,7 +224,7 @@ function require_<T>(value: T | undefined, what: string): T {
 // --- Proof ----------------------------------------------------------------
 
 function sdkVersion(): string {
-  return JSON.parse(fs.readFileSync(path.join(INSTALLED_ROOT ?? path.join(__dirname, '..'), 'node_modules', '@hashgraph', 'sdk', 'package.json'), 'utf8')).version;
+  return JSON.parse(fs.readFileSync(path.join(INSTALLED_ROOT ?? path.join(__dirname, '..'), 'node_modules', '@hiero-ledger', 'sdk', 'package.json'), 'utf8')).version;
 }
 
 /** Balance and key of an account, from the mirror node */
@@ -370,7 +370,7 @@ async function mainnetProof(): Promise<void> {
   console.log(`Charged fees: ${hbar(totalFeeTinybar)} HBAR; balance change: ${hbar(before.balanceTinybar - after.balanceTinybar)} HBAR`);
 
   const version = sdkVersion();
-  console.log(`@hashgraph/sdk ${version}`);
+  console.log(`@hiero-ledger/sdk ${version}`);
   const report = {
     startedAt,
     finishedAt: new Date().toISOString(),
@@ -560,7 +560,7 @@ async function main(): Promise<void> {
 
   const version = sdkVersion();
   const report = { startedAt, finishedAt: new Date().toISOString(), network, operator, recipient, sdkVersion: version, smoke: SMOKE, steps };
-  console.log(`@hashgraph/sdk ${version}`);
+  console.log(`@hiero-ledger/sdk ${version}`);
   if (!SMOKE && !INSTALLED_ROOT) {
     const out = path.join(__dirname, '..', 'docs', 'testnet-proof.json');
     fs.writeFileSync(out, JSON.stringify(report, null, 2) + '\n');

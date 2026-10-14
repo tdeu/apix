@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { ProjectContext, SupportedFramework, Dependency, ProjectStructure, ExistingIntegration } from '../types';
 import { logger } from '../utils/logger';
+import { HEDERA_SDK_PACKAGES } from '../utils/hedera-sdk';
 
 export interface CompatibilityCheck {
   supported: boolean;
@@ -412,8 +413,9 @@ export class ProjectAnalyzer {
 
   private async detectAccountIntegration(projectPath: string, dependencies: Dependency[]): Promise<ExistingIntegration | null> {
     // Check for Hedera SDK
-    const hasHederaSDK = dependencies.some(dep => dep.name === '@hashgraph/sdk');
-    
+    const hederaSdk = HEDERA_SDK_PACKAGES.map(name => dependencies.find(dep => dep.name === name)).find(Boolean);
+    const hasHederaSDK = !!hederaSdk;
+
     if (hasHederaSDK) {
       // Look for basic Hedera client usage
       const accountFiles = await this.scanForImportPatterns(projectPath, [
@@ -427,7 +429,7 @@ export class ProjectAnalyzer {
         type: 'account',
         files: accountFiles,
         active: hasHederaSDK,
-        version: dependencies.find(dep => dep.name === '@hashgraph/sdk')?.version
+        version: hederaSdk?.version
       };
     }
 

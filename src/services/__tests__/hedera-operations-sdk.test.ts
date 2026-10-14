@@ -5,7 +5,7 @@ import {
   ContractCallQuery, ContractCreateFlow, ContractExecuteTransaction, PrivateKey, Status, TokenCreateTransaction,
   TokenMintTransaction, TokenSupplyType, TopicCreateTransaction, TopicMessageSubmitTransaction, TransactionId,
   TransferTransaction, TokenId, TopicId, ContractId
-} from '@hashgraph/sdk';
+} from '@hiero-ledger/sdk';
 import { HederaOperationsService, buildContractParameters } from '../hedera-operations';
 
 jest.mock('../../utils/logger');

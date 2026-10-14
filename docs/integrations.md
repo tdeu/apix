@@ -46,7 +46,7 @@ HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY must be set on the server (e.g. in .env
 
 ## hts
 
-Packages: `@hashgraph/sdk` (~2.80.0, the version APIX is tested with), `server-only`.
+Packages: `@hiero-ledger/sdk` (~2.90.0, the version APIX is tested with), `server-only`.
 
 | File | Purpose |
 |---|---|
@@ -81,7 +81,7 @@ recipient associate the token from their wallet first.
 
 ## consensus (alias: hcs)
 
-Packages: `@hashgraph/sdk`, `server-only`.
+Packages: `@hiero-ledger/sdk`, `server-only`.
 
 | File | Purpose |
 |---|---|
@@ -96,7 +96,7 @@ submit key.
 
 ## smart-contract (alias: contract)
 
-Packages: `@hashgraph/sdk`, `server-only`. No routes: you call the module
+Packages: `@hiero-ledger/sdk`, `server-only`. No routes: you call the module
 from your own server code.
 
 | File | Purpose |
@@ -111,7 +111,7 @@ back on testnet ([evidence](TESTNET_PROOF.md#3-generated-apps-nextjs)).
 
 ## wallet
 
-Packages: `@hashgraph/sdk`. Browser-only code.
+Packages: `@hiero-ledger/sdk`. Browser-only code.
 
 | File | Purpose |
 |---|---|

@@ -35,7 +35,7 @@ import os from 'os';
 import path from 'path';
 
 // Pinned so results are reproducible; bump deliberately.
-const CREATE_NEXT_APP_VERSION = '16.3.6';
+const CREATE_NEXT_APP_VERSION = '16.4.0';
 const CREATE_VITE_VERSION = '9.2.1';
 
 // Every type `apix add` accepts, including aliases and refused ones.

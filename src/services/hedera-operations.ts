@@ -2,7 +2,7 @@ import {
   Client, AccountId, PrivateKey, TokenCreateTransaction, TokenMintTransaction, TokenType, TokenSupplyType, Hbar,
   TransferTransaction, TokenId, ContractCreateFlow, ContractExecuteTransaction, ContractCallQuery,
   ContractFunctionParameters, ContractId, TopicCreateTransaction, TopicMessageSubmitTransaction, TopicId, Status
-} from '@hashgraph/sdk';
+} from '@hiero-ledger/sdk';
 import { logger } from '../utils/logger';
 import { EnvironmentValidator } from '../utils/environment-validator';
 import { InputSanitizer } from '../utils/input-sanitizer';
@@ -188,7 +188,7 @@ export function buildContractParameters(params: ContractParam[] = []): ContractF
         if (/^0x[0-9a-fA-F]{40}$/.test(value)) {
           evm = value.slice(2);
         } else if (/^\d+\.\d+\.\d+$/.test(value)) {
-          evm = AccountId.fromString(value).toSolidityAddress();
+          evm = AccountId.fromString(value).toEvmAddress();
         } else {
           throw new Error(`${label} must be a 0x-prefixed 20-byte EVM address or a 0.0.x ID`);
         }
@@ -506,7 +506,7 @@ export class HederaOperationsService {
         explorerUrl: this.getExplorerUrl(contractId, 'contract'),
         details: {
           contractId,
-          evmAddress: `0x${ContractId.fromString(contractId).toSolidityAddress()}`,
+          evmAddress: `0x${ContractId.fromString(contractId).toEvmAddress()}`,
           gas: options.gas,
           initialBalance: options.initialBalance || 0,
           network: this.network,

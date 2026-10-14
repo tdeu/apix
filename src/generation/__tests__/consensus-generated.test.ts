@@ -1,13 +1,13 @@
 // src/generation/__tests__/consensus-generated.test.ts
 //
 // Runs the consensus module `apix add consensus` generates (transpiled, with the
-// real @hashgraph/sdk and a stub server-only) to check its input validation and
+// real @hiero-ledger/sdk and a stub server-only) to check its input validation and
 // that it needs no credentials until it is actually used.
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import ts from 'typescript';
-import { PrivateKey } from '@hashgraph/sdk';
+import { PrivateKey } from '@hiero-ledger/sdk';
 import { IntegrationGenerator } from '../integration-generator';
 import { IntegrationPlanner } from '../../planning/integration-planner';
 import { PackageManager } from '../../utils/package-manager';
@@ -66,7 +66,7 @@ describe('generated consensus-operations', () => {
 
     // Runtime deps: the real SDK (junction, no admin rights needed) and a no-op server-only
     await fs.ensureDir(path.join(root, 'node_modules'));
-    await fs.symlink(path.join(REPO_ROOT, 'node_modules', '@hashgraph'), path.join(root, 'node_modules', '@hashgraph'), 'junction');
+    await fs.symlink(path.join(REPO_ROOT, 'node_modules', '@hiero-ledger'), path.join(root, 'node_modules', '@hiero-ledger'), 'junction');
     await fs.outputFile(path.join(root, 'node_modules', 'server-only', 'index.js'), '');
 
     for (const file of ['client', 'consensus-operations']) {

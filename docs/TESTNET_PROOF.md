@@ -16,9 +16,11 @@ LangChain were removed
   The library proof script is `scripts/testnet-proof.ts`
   (`npm run proof:testnet`); [`testnet-proof.json`](testnet-proof.json)
   holds the raw output of the latest run (the Phase 5a re-verification).
-- `@hashgraph/sdk` **2.80.0**: installed in APIX (pinned exactly) and used by
-  every run below. Generated apps get `~2.80.0`, so they install the same
-  version (or a 2.80 patch release), never an untested minor. The Phase 4 and
+- SDK: since 2.2.0, `@hiero-ledger/sdk` **2.90.0**, pinned exactly; generated
+  apps get `~2.90.0`. Only the
+  [2.2.0 re-verification](#re-verified-on-hiero-ledgersdk-2900-220) ran on
+  it. Every earlier run below used `@hashgraph/sdk` **2.80.0**, with
+  `~2.80.0` in generated apps. The Phase 4 and
   4b runs still had hedera-agent-kit 3.8.2 installed (unused since 4b); it
   was removed in Phase 5a.
 - Network: testnet. Operator `0.0.10780747` (ECDSA); demo recipient
@@ -153,6 +155,34 @@ shows, read back on 2026-10-10.
 | Create token APIX grpc Fix / GRPC (2 decimals, 100000 units, supply key) | 0.0.10796511 | 0.0.6853906@1790795163.376614884 | [token](https://hashscan.io/testnet/token/0.0.10796511) | ✅ INFINITE supply 100000, treasury 0.0.6853906, supply key set, no admin key, SUCCESS |
 
 Nothing else was re-run on testnet for that change.
+
+## Re-verified on @hiero-ledger/sdk 2.90.0 (2.2.0)
+
+The library proof re-run for 2.2.0 (2026-10-14, 13:24 UTC), after the move
+from `@hashgraph/sdk` 2.80.0 to `@hiero-ledger/sdk` 2.90.0. It ran against
+an installed copy of APIX, not this repository's sources: the 2.2.0 tarball
+from `npm pack`, installed globally through `npm run audit:prod` (so with the
+shipped shrinkwrap applied), and `APIX_PROOF_ROOT` pointing at that install.
+All 9 steps passed and all 9 were mirror-verified. The contract's EVM
+address read back from the mirror node, `0x…a83741`, is 0.0.11024193, which
+checks the `toSolidityAddress()` -> `toEvmAddress()` change.
+
+| Operation | Entity ID | Transaction ID | HashScan | Mirror-verified |
+|---|---|---|---|---|
+| Create token APIX Proof / APIXP (2 decimals, 100000 units, admin + supply key) | 0.0.11024177 | 0.0.10780747@1791984272.157221561 | [token](https://hashscan.io/testnet/token/0.0.11024177) | ✅ INFINITE supply 100000, treasury 0.0.10780747, admin and supply key set, SUCCESS |
+| Mint 5000 units | 0.0.11024177 | 0.0.10780747@1791984273.535695167 | [tx](https://hashscan.io/testnet/transaction/1791984282.020529719) | ✅ SUCCESS, supply 100000 → 105000 |
+| Transfer 1000 units to 0.0.10777128 | 0.0.11024177 | 0.0.10780747@1791984283.100400733 | [tx](https://hashscan.io/testnet/transaction/1791984289.491618484) | ✅ SUCCESS, recipient balance 1000 |
+| Create HCS topic | 0.0.11024184 | 0.0.10780747@1791984286.931007106 | [topic](https://hashscan.io/testnet/topic/0.0.11024184) | ✅ memo "APIX testnet proof", SUCCESS |
+| Submit topic message 1 | 0.0.11024184 | 0.0.10780747@1791984291.187416128 | [tx](https://hashscan.io/testnet/transaction/1791984298.930227104) | ✅ sequence 1, content matches |
+| Submit topic message 2 | 0.0.11024184 | 0.0.10780747@1791984299.085241141 | [tx](https://hashscan.io/testnet/transaction/1791984303.790230433) | ✅ sequence 2, content matches |
+| Deploy `StringStore` (solc 0.8.37, 861 bytes) | 0.0.11024193 | 0.0.10780747@1791984308.993120390 | [contract](https://hashscan.io/testnet/contract/0.0.11024193) | ✅ SUCCESS, evm 0x0000000000000000000000000000000000a83741 |
+| `set("hello from APIX")` | 0.0.11024193 | 0.0.10780747@1791984312.577846595 | [tx](https://hashscan.io/testnet/transaction/1791984318.850838182) | ✅ SUCCESS |
+| `get()` (`queryContract`) | 0.0.11024193 | (query, no transaction) | [contract](https://hashscan.io/testnet/contract/0.0.11024193) | ✅ `queryContract` and a mirror-node `eth_call` both return "hello from APIX" |
+
+A fresh Next.js 16.3.6 app with `apix add hts`, `consensus` and
+`smart-contract` (from the same install) installed, type-checked and built,
+with no `react-native` in its tree. The CLI and generated-app rows in
+sections 2 and 3 were not re-run on testnet.
 
 ## Fees observed
 

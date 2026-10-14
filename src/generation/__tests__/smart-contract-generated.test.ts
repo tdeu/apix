@@ -1,7 +1,7 @@
 // src/generation/__tests__/smart-contract-generated.test.ts
 //
 // Runs the module `apix add smart-contract` generates (transpiled, with the real
-// @hashgraph/sdk and a stub server-only): no fake deploy, validated bytecode.
+// @hiero-ledger/sdk and a stub server-only): no fake deploy, validated bytecode.
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
@@ -60,7 +60,7 @@ describe('generated smart-contract-operations', () => {
     install.mockRestore();
 
     await fs.ensureDir(path.join(root, 'node_modules'));
-    await fs.symlink(path.join(REPO_ROOT, 'node_modules', '@hashgraph'), path.join(root, 'node_modules', '@hashgraph'), 'junction');
+    await fs.symlink(path.join(REPO_ROOT, 'node_modules', '@hiero-ledger'), path.join(root, 'node_modules', '@hiero-ledger'), 'junction');
     await fs.outputFile(path.join(root, 'node_modules', 'server-only', 'index.js'), '');
 
     for (const file of ['client', 'smart-contract-operations']) {

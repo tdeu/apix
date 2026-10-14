@@ -1,5 +1,5 @@
 // src/services/__tests__/hedera-operations.test.ts
-import { Client, PrivateKey } from '@hashgraph/sdk';
+import { Client, PrivateKey } from '@hiero-ledger/sdk';
 import { HederaOperationsService, TokenCreationOptions } from '../hedera-operations';
 
 // Mock dependencies

@@ -177,9 +177,9 @@ export class IntegrationGenerator {
       saved.push([file, await fs.pathExists(file) ? await fs.readFile(file, 'utf8') : null]);
     }
     try {
-      // Pin transitive packages (@grpc/grpc-js, protobufjs) to patched versions
-      // in the generated project itself: APIX's own overrides don't reach it, and
-      // it resolves the vulnerable versions @hashgraph/sdk pins otherwise. Written
+      // Pin transitive packages (ws under ethers) to patched versions in the
+      // generated project itself: APIX's own overrides don't reach it, and it
+      // resolves the vulnerable versions @hiero-ledger/sdk pins otherwise. Written
       // before install so npm resolves the override; rolled back with the rest on
       // failure.
       await this.ensureGeneratedOverrides(rootPath);

@@ -3,9 +3,10 @@
  *
  * Why: package.json `overrides` do not apply when APIX is installed as a
  * dependency or globally, so without a shrinkwrap users get whatever npm
- * resolves (unpatched protobufjs and @grpc/grpc-js), plus react-native as an
- * auto-installed peer of react-native-get-random-values, which APIX never
- * loads in Node. A shrinkwrap in the tarball pins the tree users install.
+ * resolves (the ws 8.17.1 that ethers pins, with high advisories). Up to 2.1.x
+ * it also kept out react-native, an auto-installed peer of the old
+ * @hashgraph/sdk's react-native-get-random-values; the check below still fails
+ * if it ever comes back. A shrinkwrap in the tarball pins the tree users install.
  *
  * The shipped tree is kept in npm-shrinkwrap.release.json, not in
  * npm-shrinkwrap.json: a root npm-shrinkwrap.json would replace
@@ -35,6 +36,15 @@ const STAGED = path.join(root, 'npm-shrinkwrap.json');
 const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 const pkg = readJson(path.join(root, 'package.json'));
 
+/** The lockfile location `name` resolves to when required from the package at `from` */
+function resolveFrom(lock, from, name) {
+  for (let dir = from; ; dir = dir.slice(0, Math.max(dir.lastIndexOf('/node_modules/'), 0))) {
+    const location = dir ? `${dir}/node_modules/${name}` : `node_modules/${name}`;
+    if (lock.packages[location]) return location;
+    if (!dir) return undefined;
+  }
+}
+
 /** Fails unless the release shrinkwrap matches package.json and has none of the forbidden packages. */
 function check(lock) {
   const problems = [];
@@ -42,10 +52,23 @@ function check(lock) {
   if (lock.name !== pkg.name || self.name !== pkg.name) problems.push(`name is ${self.name}, package.json says ${pkg.name}`);
   if (lock.version !== pkg.version || self.version !== pkg.version) problems.push(`version is ${self.version}, package.json says ${pkg.version}`);
   if (JSON.stringify(self.dependencies ?? {}) !== JSON.stringify(pkg.dependencies ?? {})) problems.push('dependencies differ from package.json');
-  for (const [name, version] of Object.entries(pkg.overrides ?? {})) {
-    const entries = Object.entries(lock.packages).filter(([location]) => location.endsWith(`node_modules/${name}`));
-    for (const [location, entry] of entries) {
-      if (entry.version !== version) problems.push(`${location} is ${entry.version}, the override says ${version}`);
+  for (const [name, override] of Object.entries(pkg.overrides ?? {})) {
+    const locations = Object.keys(lock.packages).filter(location => location.endsWith(`node_modules/${name}`));
+    if (typeof override === 'string') {
+      for (const location of locations) {
+        const { version } = lock.packages[location];
+        if (version !== override) problems.push(`${location} is ${version}, the override says ${override}`);
+      }
+      continue;
+    }
+    // Scoped override ({ parent: { child: version } }): check the child each
+    // copy of the parent resolves, nested first, then up the tree as Node does
+    for (const parent of locations) {
+      for (const [child, version] of Object.entries(override)) {
+        const resolved = resolveFrom(lock, parent, child);
+        if (!resolved) problems.push(`${parent} has no ${child} in the tree`);
+        else if (lock.packages[resolved].version !== version) problems.push(`${resolved} (used by ${parent}) is ${lock.packages[resolved].version}, the override says ${version}`);
+      }
     }
   }
   for (const name of FORBIDDEN) {

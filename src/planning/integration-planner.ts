@@ -308,7 +308,7 @@ import {
       
       // Add dependencies (server-only makes a client-side import of the
       // operator key a build error)
-      plan.dependencies = context.framework === 'next.js' ? ['@hashgraph/sdk', 'server-only'] : ['@hashgraph/sdk'];
+      plan.dependencies = context.framework === 'next.js' ? ['@hiero-ledger/sdk', 'server-only'] : ['@hiero-ledger/sdk'];
       
       // Select templates based on framework
       plan.templates = this.selectHTSTemplates(context.framework, htsConfig, plan.layout!);
@@ -334,8 +334,8 @@ import {
 
     private async createWalletPlan(plan: IntegrationPlan): Promise<IntegrationPlan> {
       plan.type = 'wallet';
-      // lib/hedera/wallet-service imports @hashgraph/sdk
-      plan.dependencies = ['@hashgraph/sdk'];
+      // lib/hedera/wallet-service imports @hiero-ledger/sdk
+      plan.dependencies = ['@hiero-ledger/sdk'];
       plan.templates = [
         {
           templateId: 'utils/common/wallet-service',
@@ -402,7 +402,7 @@ import {
         }
       ];
 
-      plan.dependencies.push('@hashgraph/sdk');
+      plan.dependencies.push('@hiero-ledger/sdk');
       if (plan.context.framework === 'next.js') {
         plan.dependencies.push('server-only');
       }
@@ -438,7 +438,7 @@ import {
         }))
       ];
 
-      plan.dependencies.push('@hashgraph/sdk', 'server-only');
+      plan.dependencies.push('@hiero-ledger/sdk', 'server-only');
       plan.newFiles = this.newFilesFor(plan.templates);
       return plan;
     }
