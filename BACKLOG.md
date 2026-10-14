@@ -17,14 +17,16 @@ github.com/0xfishbone/apix. From 2.1.1 the package is `apix-hedera` (npm
 owner: studio_mt) and the repository is github.com/tdeu/apix. What is still
 open, as checked on 2026-10-10:
 
-- [2.2.0] **Migrate to `@hiero-ledger/sdk`** (removes react-native at the
-  source); redo the testnet proof. `@hashgraph/sdk` stops at 2.81.0 and
-  still depends on `react-native-get-random-values`; the renamed SDK
-  dropped it from 2.86 (latest checked: 2.89.1). The work: imports in
-  `src` and in every template, the SDK pin in generated apps, and the full
-  testnet proof. Its tree has its own high advisories as of 2026-10-12
-  (`@grpc/grpc-js` 1.12.7, `protobufjs` 8.x, `ws`), so the overrides and
-  the shrinkwrap stay. *Who:* anyone, by PR. M-L.
+- [2.2.0] **Migrate to `@hiero-ledger/sdk`**: done on branch
+  `release/2.2.0` (2026-10-14), not yet merged or published. CLI on
+  `@hiero-ledger/sdk` 2.90.0, generated apps on `~2.90.0`, library testnet
+  proof 9/9 against the installed tarball. As of 2.90.0 the only high
+  advisory left in the SDK's tree is `ws` 8.17.1 (pinned by `ethers`
+  6.16.0); the protobufjs and grpc-js overrides are gone, replaced by an
+  `ethers` -> `ws` 8.21.3 override, and the shrinkwrap stays. Before
+  publishing: merge the PR, then `npm publish` and the post-publish checks
+  (as for 2.1.2, with 196 packages). Drop the `ws` override once the SDK
+  moves to an `ethers` that pins a patched `ws` (6.17.0 has `ws` 8.21.0).
 - [2.1.x] **`braces` and `react-native` in generated apps.** `braces` 3.0.3
   has a high advisory (GHSA-vfj7-8cjw-p6xm) and no patched version. It
   comes through `@hashgraph/sdk` -> `@hashgraph/cryptography` ->
@@ -36,7 +38,8 @@ open, as checked on 2026-10-10:
   `npm audit --audit-level=high` is expected to fail there (not re-run in
   a generated app). This repository also has `braces` through development
   tools (jest, nodemon), which don't ship. The SDK migration above fixes
-  the generated apps.
+  the generated apps from 2.2.0 (checked: a Next.js app with hts,
+  consensus and smart-contract has no `react-native` or `braces`).
 - [2.1.x] **Check the shrinkwrap after publishing 2.1.2.**
   `npm view apix-hedera@2.1.2 _hasShrinkwrap` must print `true`, and a
   fresh `npm install -g apix-hedera` must give 226 packages with no

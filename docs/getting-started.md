@@ -43,7 +43,7 @@ apix add hts
 ```
 
 This writes the files listed in [integrations.md](integrations.md#hts),
-installs `@hashgraph/sdk` and `server-only`, and prints the next steps. No
+installs `@hiero-ledger/sdk` and `server-only`, and prints the next steps. No
 Hedera call is made.
 
 ## 5. Configure the server
