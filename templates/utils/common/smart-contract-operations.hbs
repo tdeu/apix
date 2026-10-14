@@ -8,7 +8,7 @@
   ContractFunctionParameters,
   ContractId,
   Hbar
-} from '@hashgraph/sdk';
+} from '@hiero-ledger/sdk';
 import { createDefaultClient } from '{{importFrom "hedera-client"}}';
 
 export interface ContractDeployParams {
@@ -185,7 +185,7 @@ export default SmartContractManager;
   Hbar,
   FileCreateTransaction,
   FileAppendTransaction
-} = require('@hashgraph/sdk');
+} = require('@hiero-ledger/sdk');
 const { createDefaultClient } = require('{{importFrom "hedera-client"}}');
 
 class SmartContractManager {

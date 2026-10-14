@@ -1,5 +1,5 @@
 {{!-- META: {"name": "Wallet Service", "description": "Multi-wallet integration service for Hedera", "language": "typescript"} --}}
-{{#ifLanguage language "typescript"}}import { Transaction } from '@hashgraph/sdk';
+{{#ifLanguage language "typescript"}}import { Transaction } from '@hiero-ledger/sdk';
 
 export type WalletProvider = 'hashpack' | 'blade' | 'metamask';
 
@@ -380,7 +380,7 @@ export class WalletService {
 export const walletService = new WalletService();
 
 export default WalletService;
-{{else}}const { Transaction } = require('@hashgraph/sdk');
+{{else}}const { Transaction } = require('@hiero-ledger/sdk');
 
 class HashPackAdapter {
   constructor() {

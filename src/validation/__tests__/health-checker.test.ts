@@ -49,9 +49,9 @@ describe('HealthChecker areas', () => {
     await fs.writeJSON(path.join(root, 'package.json'), {
       name: 'app',
       version: '1.0.0',
-      dependencies: { '@hashgraph/sdk': '^2.80.0' }
+      dependencies: { '@hiero-ledger/sdk': '^2.80.0' }
     });
-    await fs.outputJSON(path.join(root, 'node_modules', '@hashgraph', 'sdk', 'package.json'), { version: '2.80.0' });
+    await fs.outputJSON(path.join(root, 'node_modules', '@hiero-ledger', 'sdk', 'package.json'), { version: '2.80.0' });
   });
 
   afterEach(async () => {

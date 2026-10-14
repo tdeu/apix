@@ -1,6 +1,6 @@
 // src/templates/__tests__/sdk-compat.test.ts
 //
-// Type-checks generated code against the @hashgraph/sdk installed in this repo,
+// Type-checks generated code against the @hiero-ledger/sdk installed in this repo,
 // so an SDK bump that breaks the templates fails CI. react, next/server and
 // server-only aren't installed here, so they are shimmed as `any`: whatever
 // errors remain come from our code or the SDK.
@@ -18,7 +18,7 @@ import { ProjectContext } from '../../types';
 jest.mock('../../utils/logger');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
-const SDK_DIR = path.join(REPO_ROOT, 'node_modules', '@hashgraph', 'sdk');
+const SDK_DIR = path.join(REPO_ROOT, 'node_modules', '@hiero-ledger', 'sdk');
 
 const SHIMS = `
 declare module 'react';
@@ -48,7 +48,7 @@ function compilerOptions(baseUrl: string): ts.CompilerOptions {
     typeRoots: [path.join(REPO_ROOT, 'node_modules', '@types')],
     // Not the repo root: bare imports must not resolve to files in this repo
     baseUrl,
-    paths: { '@hashgraph/sdk': [SDK_DIR] },
+    paths: { '@hiero-ledger/sdk': [SDK_DIR] },
   };
 }
 
@@ -64,12 +64,12 @@ function format(diagnostic: ts.Diagnostic): string {
 }
 
 function isSdkDeclaration(symbol: ts.Symbol | undefined): boolean {
-  return !!symbol?.declarations?.some(d => d.getSourceFile().fileName.replace(/\\/g, '/').includes('/@hashgraph/'));
+  return !!symbol?.declarations?.some(d => d.getSourceFile().fileName.replace(/\\/g, '/').includes('/@hiero-ledger/'));
 }
 
 /** True if the diagnostic is about an SDK import, member, call or value */
 function isSdkDiagnostic(program: ts.Program, diagnostic: ts.Diagnostic): boolean {
-  if (ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n').includes('"@hashgraph/sdk"')) return true;
+  if (ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n').includes('"@hiero-ledger/sdk"')) return true;
   if (!diagnostic.file || diagnostic.start === undefined) return false;
 
   const checker = program.getTypeChecker();
@@ -113,7 +113,7 @@ function nextContext(rootPath: string): ProjectContext {
   };
 }
 
-describe('templates against the installed @hashgraph/sdk', () => {
+describe('templates against the installed @hiero-ledger/sdk', () => {
   let tmp: string;
   let shimsFile: string;
 

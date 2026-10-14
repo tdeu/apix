@@ -31,9 +31,9 @@ function projectContext(rootPath: string): ProjectContext {
 }
 
 describe('generated dependency versions', () => {
-  it('pins the SDK range to the @hashgraph/sdk version APIX itself uses', async () => {
+  it('pins the SDK range to the @hiero-ledger/sdk version APIX itself uses', async () => {
     const ownPackage = await fs.readJSON(path.join(__dirname, '..', '..', '..', 'package.json'));
-    expect(HEDERA_SDK_VERSION_RANGE).toBe(`~${ownPackage.dependencies['@hashgraph/sdk']}`);
+    expect(HEDERA_SDK_VERSION_RANGE).toBe(`~${ownPackage.dependencies['@hiero-ledger/sdk']}`);
   });
 
   it('refuses to invent a version for an unknown dependency', () => {
@@ -56,7 +56,7 @@ describe('IntegrationGenerator', () => {
     await fs.remove(root);
   });
 
-  it('writes the pinned @hashgraph/sdk range into the generated package.json', async () => {
+  it('writes the pinned @hiero-ledger/sdk range into the generated package.json', async () => {
     const context = projectContext(root);
     const plan = await new IntegrationPlanner().createIntegrationPlan('hts', { name: 'MyToken', symbol: 'MTK' }, context);
     const generator = new IntegrationGenerator();
@@ -65,8 +65,8 @@ describe('IntegrationGenerator', () => {
     await generator.generateIntegration(plan, context);
 
     const written = await fs.readJSON(path.join(root, 'package.json'));
-    expect(written.dependencies['@hashgraph/sdk']).toBe(HEDERA_SDK_VERSION_RANGE);
-    expect(written.dependencies['@hashgraph/sdk']).not.toBe('latest');
+    expect(written.dependencies['@hiero-ledger/sdk']).toBe(HEDERA_SDK_VERSION_RANGE);
+    expect(written.dependencies['@hiero-ledger/sdk']).not.toBe('latest');
   });
 
   it('does not offer walletconnect as a provider in generated wallet code', async () => {

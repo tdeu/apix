@@ -208,8 +208,8 @@ export class HealthChecker {
       const warnings: string[] = [];
 
       // Check for Hedera SDK
-      if (!allDeps['@hashgraph/sdk']) {
-        issues.push('Missing @hashgraph/sdk - required for Hedera integration');
+      if (!allDeps['@hiero-ledger/sdk']) {
+        issues.push('Missing @hiero-ledger/sdk - required for Hedera integration');
       }
 
       // Check for framework dependencies
@@ -313,21 +313,21 @@ export class HealthChecker {
     try {
       const packagePath = path.join(this.context.rootPath, 'package.json');
       const packageJson = await fs.readJson(packagePath);
-      const hederaSdkDeclared = packageJson.dependencies?.['@hashgraph/sdk'] || 
-                               packageJson.devDependencies?.['@hashgraph/sdk'];
+      const hederaSdkDeclared = packageJson.dependencies?.['@hiero-ledger/sdk'] || 
+                               packageJson.devDependencies?.['@hiero-ledger/sdk'];
 
       if (!hederaSdkDeclared) {
         return {
           status: 'fail',
           message: 'Hedera SDK not declared in dependencies',
-          fixSuggestion: 'Run: npm install @hashgraph/sdk'
+          fixSuggestion: 'Run: npm install @hiero-ledger/sdk'
         };
       }
 
       // Check actual installed version from node_modules
       let actualVersion: string;
       try {
-        const installedPackagePath = path.join(this.context.rootPath, 'node_modules', '@hashgraph', 'sdk', 'package.json');
+        const installedPackagePath = path.join(this.context.rootPath, 'node_modules', '@hiero-ledger', 'sdk', 'package.json');
         const installedPackage = await fs.readJson(installedPackagePath);
         actualVersion = installedPackage.version;
       } catch (nodeModulesError) {
@@ -352,7 +352,7 @@ export class HealthChecker {
           status: 'warning',
           message: 'Cannot parse Hedera SDK version',
           details: [`Declared: ${hederaSdkDeclared}`, `Found: ${actualVersion}`],
-          fixSuggestion: 'Reinstall: npm install @hashgraph/sdk@latest'
+          fixSuggestion: 'Reinstall: npm install @hiero-ledger/sdk@latest'
         };
       }
 
@@ -370,7 +370,7 @@ export class HealthChecker {
             `Installed: ${actualVersion}`,
             'Recommended: >= 2.40.0'
           ],
-          fixSuggestion: 'Update to latest version: npm install @hashgraph/sdk@latest'
+          fixSuggestion: 'Update to latest version: npm install @hiero-ledger/sdk@latest'
         };
       }
 
@@ -465,7 +465,7 @@ export class HealthChecker {
         { pattern: 'TokenCreateTransaction', name: 'Token creation functionality' },
         { pattern: 'TokenMintTransaction', name: 'Token minting functionality' },
         { pattern: 'TokenTransferTransaction|TransferTransaction', name: 'Token transfer functionality' },
-        { pattern: '@hashgraph/sdk', name: 'Hedera SDK import' }
+        { pattern: '@hiero-ledger/sdk', name: 'Hedera SDK import' }
       ];
 
       const missing: string[] = [];
@@ -881,18 +881,18 @@ export class HealthChecker {
   private async checkSdkArea(): Promise<HealthArea> {
     try {
       const packageJson = await this.readPackageJson();
-      const declared = packageJson?.dependencies?.['@hashgraph/sdk'] || packageJson?.devDependencies?.['@hashgraph/sdk'];
+      const declared = packageJson?.dependencies?.['@hiero-ledger/sdk'] || packageJson?.devDependencies?.['@hiero-ledger/sdk'];
       if (!declared) {
-        return { name: 'Hedera SDK', status: 'not configured', message: '@hashgraph/sdk is not a dependency', hint: 'Run: apix add hts' };
+        return { name: 'Hedera SDK', status: 'not configured', message: '@hiero-ledger/sdk is not a dependency', hint: 'Run: apix add hts' };
       }
-      const installedPath = path.join(this.context.rootPath, 'node_modules', '@hashgraph', 'sdk', 'package.json');
+      const installedPath = path.join(this.context.rootPath, 'node_modules', '@hiero-ledger', 'sdk', 'package.json');
       if (!await fs.pathExists(installedPath)) {
-        return { name: 'Hedera SDK', status: 'error', message: `@hashgraph/sdk ${declared} declared but not installed`, hint: 'Run npm install' };
+        return { name: 'Hedera SDK', status: 'error', message: `@hiero-ledger/sdk ${declared} declared but not installed`, hint: 'Run npm install' };
       }
       const installed = (await fs.readJson(installedPath)).version;
-      return { name: 'Hedera SDK', status: 'ok', message: `@hashgraph/sdk ${installed} installed (declared ${declared})` };
+      return { name: 'Hedera SDK', status: 'ok', message: `@hiero-ledger/sdk ${installed} installed (declared ${declared})` };
     } catch (error: any) {
-      return { name: 'Hedera SDK', status: 'error', message: `Cannot check @hashgraph/sdk: ${error.message}` };
+      return { name: 'Hedera SDK', status: 'error', message: `Cannot check @hiero-ledger/sdk: ${error.message}` };
     }
   }
 

@@ -412,7 +412,7 @@ export class ProjectAnalyzer {
 
   private async detectAccountIntegration(projectPath: string, dependencies: Dependency[]): Promise<ExistingIntegration | null> {
     // Check for Hedera SDK
-    const hasHederaSDK = dependencies.some(dep => dep.name === '@hashgraph/sdk');
+    const hasHederaSDK = dependencies.some(dep => dep.name === '@hiero-ledger/sdk');
     
     if (hasHederaSDK) {
       // Look for basic Hedera client usage
@@ -427,7 +427,7 @@ export class ProjectAnalyzer {
         type: 'account',
         files: accountFiles,
         active: hasHederaSDK,
-        version: dependencies.find(dep => dep.name === '@hashgraph/sdk')?.version
+        version: dependencies.find(dep => dep.name === '@hiero-ledger/sdk')?.version
       };
     }
 

@@ -33,8 +33,8 @@ import zlib from 'node:zlib';
 
 const AUDIT_ARGS = ['audit', '--omit=dev', '--audit-level=high'];
 // Reported after the install: heavy or unpatched packages we keep out of it,
-// and the two packages our overrides pin
-const WATCHED = ['react-native', 'metro', 'braces', 'protobufjs', '@grpc/grpc-js'];
+// the package our override pins (ws) and the SDK's other advisory-prone deps
+const WATCHED = ['react-native', 'metro', 'braces', 'protobufjs', '@grpc/grpc-js', 'ws'];
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));

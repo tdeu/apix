@@ -235,7 +235,7 @@ export class TemplateEnhancer {
 
   private static detectExistingHTS(context: ProjectContext): boolean {
     // Check dependencies for existing Hedera SDK
-    return context.dependencies.some(dep => dep.name === '@hashgraph/sdk');
+    return context.dependencies.some(dep => dep.name === '@hiero-ledger/sdk');
   }
 
   private static detectExistingWallet(context: ProjectContext): boolean {

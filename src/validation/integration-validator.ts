@@ -79,10 +79,10 @@ export class IntegrationValidator {
     this.rules.push({
       id: 'hedera-sdk-dependency',
       name: 'Hedera SDK Dependency',
-      description: 'Ensure @hashgraph/sdk is available',
+      description: 'Ensure @hiero-ledger/sdk is available',
       severity: 'info', // Changed from 'error' to 'info' so it doesn't fail
       check: async (context) => {
-        const hasHederaSDK = context.dependencies.some(dep => dep.name === '@hashgraph/sdk');
+        const hasHederaSDK = context.dependencies.some(dep => dep.name === '@hiero-ledger/sdk');
         
         return {
           passed: true, // Always pass - let the integration process handle dependency installation
